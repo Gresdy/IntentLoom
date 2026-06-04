@@ -954,7 +954,6 @@ function AgencyExpertDetail({
     setImporting(true);
     try {
       await onImport();
-      console.log("[AgencyExpertDetail] 导入成功");
     } catch (e) {
       console.error("[AgencyExpertDetail] 导入失败：", e);
     } finally {

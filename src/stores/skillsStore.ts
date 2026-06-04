@@ -265,7 +265,6 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
         set({ busy: true, busyText: "Importing..." });
         await invoke("import_local_skill", { dir: selected });
         await get().scanLocalSkills();
-        console.log("[skills]", "Skill imported successfully.");
       }
     } catch (e) {
       console.error("Import failed", e);
@@ -288,7 +287,6 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
         set({ busy: true, busyText: "Exporting..." });
         const paths = skills.map((s) => s.path);
         await invoke("export_local_skills", { paths, targetDir: target });
-        console.log("[skills]", `Exported to ${target}`);
       }
     } catch (e) {
       console.error("Export failed", e);
@@ -304,7 +302,6 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
       const paths = skills.map((s) => s.path);
       await invoke("delete_local_skills", { paths });
       await get().scanLocalSkills();
-      console.log("[skills]", "Deleted successfully.");
     } catch (e) {
       console.error("Delete failed", e);
       console.error("[skills]", "Delete failed.");
@@ -361,7 +358,6 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
         targetProjectIds,
       });
 
-      console.log("[skills]", `Installed to ${installTarget}`);
       await get().scanLocalSkills();
     } catch (e) {
       console.error("Install failed", e);
@@ -398,7 +394,6 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
         const paths = uninstallTarget.split("|");
         await invoke("uninstall_skill_from_ides", { paths });
       }
-      console.log("[skills]", "Uninstalled successfully.");
       await get().scanLocalSkills();
     } catch (e) {
       console.error("Uninstall failed", e);
@@ -471,7 +466,6 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     try {
       const paths = skills.map((s) => s.path);
       await invoke("adopt_ide_skills", { paths });
-      console.log("[skills]", `Managed ${skills.length} skills.`);
       await get().scanLocalSkills();
     } catch (e) {
       console.error("Adopt failed", e);

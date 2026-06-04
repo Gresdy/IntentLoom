@@ -152,18 +152,13 @@ export const useStreamingAI = () => {
       // 监听流式文本输出
       const unlistenChunk = await listen<string>('ai-stream-chunk', (event) => {
         const content = event.payload;
-        console.log('[ai-stream-chunk] received:', content);
         const conv = getCurrentConversation();
-        console.log('[ai-stream-chunk] conversation:', conv ? 'exists' : 'null', 'messages:', conv?.messages.length);
         if (conv && conv.messages.length > 0) {
           const lastMsg = conv.messages[conv.messages.length - 1];
-          console.log('[ai-stream-chunk] lastMsg role:', lastMsg.role, 'current content length:', (lastMsg.content || '').length);
           const currentContent = lastMsg.content || '';
           const newContent = currentContent + content;
-          console.log('[ai-stream-chunk] updating content, new length:', newContent.length);
           updateLastMessage({ content: newContent });
         } else {
-          console.log('[ai-stream-chunk] NO MESSAGE TO UPDATE!');
         }
       });
       
@@ -173,18 +168,14 @@ export const useStreamingAI = () => {
         
         switch (eventType) {
           case 'thinking':
-            console.log('[useStreamingAI] received thinking event:', data);
             // 追加思考内容到 useMessageStore
             appendThinking(data.content || '');
             // 同时更新 conversationStore 中的消息
             const convForThinking = getCurrentConversation();
-            console.log('[useStreamingAI] convForThinking:', convForThinking ? 'exists' : 'null', 'messages:', convForThinking?.messages.length);
             if (convForThinking && convForThinking.messages.length > 0) {
               const lastMsgForThinking = convForThinking.messages[convForThinking.messages.length - 1];
-              console.log('[useStreamingAI] lastMsgForThinking role:', lastMsgForThinking.role);
               const currentThinking = lastMsgForThinking.thinking || '';
               const newThinking = currentThinking + (data.content || '');
-              console.log('[useStreamingAI] updating thinking, new length:', newThinking.length);
               updateLastMessage({ thinking: newThinking });
             }
             break;

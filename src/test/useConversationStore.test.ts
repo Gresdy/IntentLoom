@@ -3,7 +3,14 @@ import { useConversationStore } from "@/stores/conversationStore";
 import type { Message } from "@/types/message";
 
 const stubMsg = (role: Message["role"], content: string): Message =>
-  ({ id: Math.random().toString(36).slice(2), role, content, createdAt: Date.now() } as Message);
+  ({
+    id: Math.random().toString(36).slice(2),
+    role,
+    content,
+    type: "text",
+    timestamp: Date.now(),
+    createdAt: Date.now(),
+  } as Message);
 
 describe("useConversationStore", () => {
   beforeEach(() => {

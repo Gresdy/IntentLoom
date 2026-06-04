@@ -6,10 +6,11 @@ const makeProvider = (id: string, name: string): Provider =>
   ({
     id,
     name,
+    type: "claude",
     cli: "claude-code",
     enabled: true,
     settingsConfig: { ANTHROPIC_MODEL: `${name}-opus` },
-  } as Provider);
+  } as unknown as Provider);
 
 describe("useModelStore", () => {
   beforeEach(() => {

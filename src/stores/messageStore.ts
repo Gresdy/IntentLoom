@@ -108,11 +108,8 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   },
   
   appendThinking: (content) => {
-    console.log('[appendThinking] called with:', content);
     set((state) => {
-      console.log('[appendThinking] state.currentThinking:', state.currentThinking);
       const newThinking = (state.currentThinking || '') + content;
-      console.log('[appendThinking] newThinking:', newThinking);
       return {
         currentThinking: newThinking,
         messages: state.messages.map((msg, idx) =>

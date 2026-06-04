@@ -64,7 +64,6 @@ export const useConversationStore = create<ConversationState>()(
       addMessageToCurrent: (message) => {
         set((state) => {
           if (!state.currentConversationId) {
-            console.log('[conversationStore] addMessageToCurrent: no currentConversationId');
             return state;
           }
           
@@ -79,7 +78,6 @@ export const useConversationStore = create<ConversationState>()(
                 : c
             ),
           };
-          console.log('[conversationStore] addMessageToCurrent:', message.role, 'total messages:', updated.conversations.find(c => c.id === state.currentConversationId)?.messages.length);
           return updated;
         });
       },
@@ -87,7 +85,6 @@ export const useConversationStore = create<ConversationState>()(
       updateLastMessage: (updates) => {
         set((state) => {
           if (!state.currentConversationId) {
-            console.log('[conversationStore] updateLastMessage: no currentConversationId');
             return state;
           }
           
@@ -97,7 +94,6 @@ export const useConversationStore = create<ConversationState>()(
               
               const messages = [...c.messages];
               if (messages.length === 0) {
-                console.log('[conversationStore] updateLastMessage: no messages');
                 return c;
               }
               
@@ -106,7 +102,6 @@ export const useConversationStore = create<ConversationState>()(
                 ...updates,
               };
               
-              console.log('[conversationStore] updateLastMessage:', updates, 'updated message length:', messages[messages.length - 1].content?.length);
               return {
                 ...c,
                 messages,
