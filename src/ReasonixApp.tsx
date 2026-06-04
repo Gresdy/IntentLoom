@@ -1,0 +1,659 @@
+import { useCallback, useState, useEffect, lazy, Suspense } from "react";
+import {
+  SquarePen, History, Settings, Command, Moon, Sun, Bot,
+  FolderOpen, Search, Terminal, Code, Server,
+  Logs, MessageSquare,
+  ChartBar, Users, ChevronRight, X,
+  Sparkles, MessageCircle,
+} from "lucide-react";
+import { useReasonixController } from "./lib/reasonixAdapter";
+import type { Mode } from "./lib/reasonixAdapter";
+import { Transcript } from "./components/Chat/ReasonixTranscript";
+import { Composer } from "./components/Chat/ReasonixComposer";
+import { StatusBar } from "./components/layout/ReasonixStatusBar";
+import { SettingsDrawer } from "./components/layout/SettingsDrawer";
+import { HistoryDrawer } from "./components/layout/HistoryDrawer";
+import { CommandPalette, useCommandPalette } from "./components/common/CommandPalette";
+import { ToastContainer } from "./components/common/ToastContainer";
+import { useThemeStore } from "./stores/useThemeStore";
+import { useModelStore } from "./stores/useModelStore";
+import type { AppId } from "./shared/types";
+import { invoke } from "./lib/tauri";
+
+// Lazy load panels
+const AgentsPanel = lazy(() => import("./components/LeftPanel/AgentsPanel").then(m => ({ default: m.AgentsPanel })));
+const ProjectsPanel = lazy(() => import("./components/LeftPanel/ProjectsPanel").then(m => ({ default: m.ProjectsPanel })));
+const SkillsPanel = lazy(() => import("./components/LeftPanel/SkillsPanel").then(m => ({ default: m.SkillsPanel })));
+const PromptsPanel = lazy(() => import("./components/LeftPanel/PromptsPanel").then(m => ({ default: m.PromptsPanel })));
+const McpPanel = lazy(() => import("./components/LeftPanel/McpPanel").then(m => ({ default: m.McpPanel })));
+const UsageDashboard = lazy(() => import("./components/LeftPanel/UsageDashboard").then(m => ({ default: m.UsageDashboard })));
+const LogsPanel = lazy(() => import("./components/LeftPanel/LogsPanel").then(m => ({ default: m.LogsPanel })));
+const ExpertPanel = lazy(() => import("./components/LeftPanel/ExpertPanel").then(m => ({ default: m.ExpertPanel })));
+
+type NavKey = "chat" | "projects" | "agents" | "model" | "prompts" | "mcp" | "usage" | "skills" | "expert" | "sessions" | "logs" | "hermes" | "search" | "settings";
+
+interface NavItem {
+  key: NavKey;
+  icon: React.ReactNode;
+  label: string;
+  badge?: number;
+}
+
+const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
+  {
+    items: [
+      { key: "chat", icon: <MessageCircle size={18} />, label: "聊天" },
+      { key: "agents", icon: <Bot size={18} />, label: "AI 助手" },
+      { key: "sessions", icon: <MessageSquare size={18} />, label: "会话管理" },
+    ],
+  },
+  {
+    label: "项目",
+    items: [
+      { key: "projects", icon: <FolderOpen size={18} />, label: "项目管理" },
+      { key: "skills", icon: <Code size={18} />, label: "Skills" },
+      { key: "expert", icon: <Users size={18} />, label: "专家" },
+      { key: "prompts", icon: <Sparkles size={18} />, label: "Prompts" },
+    ],
+  },
+  {
+    label: "系统",
+    items: [
+      { key: "model", icon: <Terminal size={18} />, label: "模型配置" },
+      { key: "mcp", icon: <Server size={18} />, label: "MCP" },
+      { key: "usage", icon: <ChartBar size={18} />, label: "用量统计" },
+      { key: "logs", icon: <Logs size={18} />, label: "日志" },
+      { key: "hermes", icon: <Bot size={18} />, label: "Hermes Agent" },
+    ],
+  },
+];
+
+// Agent tabs config
+const ALL_AGENTS: { id: AppId; label: string; shortLabel: string }[] = [
+  { id: "claude", label: "Claude Code", shortLabel: "Claude" },
+  { id: "codex", label: "Codex", shortLabel: "Codex" },
+  { id: "gemini", label: "Gemini CLI", shortLabel: "Gemini" },
+  { id: "opencode", label: "OpenCode", shortLabel: "OpenCode" },
+  { id: "openclaw", label: "OpenClaw", shortLabel: "OpenClaw" },
+];
+
+const PANEL_TITLES: Record<NavKey, string> = {
+  chat: "聊天",
+  projects: "项目管理",
+  agents: "AI 助手",
+  model: "模型配置",
+  prompts: "Prompts",
+  mcp: "MCP",
+  usage: "用量统计",
+  skills: "Skills",
+  expert: "专家",
+  sessions: "会话管理",
+  logs: "日志",
+  hermes: "Hermes Agent",
+  search: "搜索",
+  settings: "设置",
+};
+
+export const ReasonixApp: React.FC = () => {
+  const {
+    state, send, cancel, approve,
+    setPlan, setBypass,
+    newSession, listSessions, resumeSession, deleteSession, renameSession, pickWorkspace,
+  } = useReasonixController();
+
+  const [mode, setMode] = useState<Mode>("normal");
+  const [histView, setHistView] = useState<any[] | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [activeNav, setActiveNav] = useState<NavKey>("chat");
+  const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const { mode: themeMode, setMode: setThemeMode } = useThemeStore();
+  const { currentApp, setCurrentApp } = useModelStore();
+
+  // Navigation: chat = close panel, others = open panel
+  const handleNavClick = useCallback((key: NavKey) => {
+    if (key === "chat") {
+      setActiveNav("chat");
+      setRightPanelOpen(false);
+    } else if (key === "settings") {
+      setSettingsOpen(true);
+    } else {
+      setActiveNav(key);
+      setRightPanelOpen(true);
+    }
+  }, []);
+
+  // Switch agent
+  const handleAgentSwitch = useCallback((appId: AppId) => {
+    setCurrentApp(appId);
+    // Also switch via backend if available
+    invoke("switch_agent", { agentId: appId }).catch(() => {});
+  }, [setCurrentApp]);
+
+  // Toggle mode
+  const applyMode = useCallback((m: Mode) => {
+    setMode(m);
+    setPlan(m === "plan");
+    setBypass(m === "yolo");
+  }, [setPlan, setBypass]);
+
+  const cycleMode = useCallback(() => {
+    const next = mode === "normal" ? "plan" : mode === "plan" ? "yolo" : "normal";
+    if (next === "yolo") {
+      const ok = window.confirm("YOLO 模式允许 AI 不经确认直接执行操作。确定开启？");
+      if (!ok) return;
+    }
+    applyMode(next);
+  }, [mode, applyMode]);
+
+  // Global shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key === "k") {
+        e.preventDefault();
+        setCmdPaletteOpen(true);
+      } else if (mod && e.key === "n") {
+        e.preventDefault();
+        newSession();
+      } else if (mod && e.key === "b") {
+        e.preventDefault();
+        setSidebarExpanded((v) => !v);
+      } else if (mod && e.shiftKey && e.key === "T") {
+        e.preventDefault();
+        setThemeMode(themeMode === "dark" ? "light" : "dark");
+      } else if (e.key === "Escape") {
+        if (cmdPaletteOpen) setCmdPaletteOpen(false);
+        else if (rightPanelOpen) setRightPanelOpen(false);
+        else if (histView !== null) setHistView(null);
+        else if (settingsOpen) setSettingsOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [newSession, setThemeMode, themeMode, cmdPaletteOpen, rightPanelOpen, histView, settingsOpen]);
+
+  // Command palette commands
+  const commands = useCommandPalette({
+    onNewChat: () => { newSession(); setCmdPaletteOpen(false); },
+    onOpenFolder: async () => { await pickWorkspace?.(); setCmdPaletteOpen(false); },
+    onSettings: () => { setSettingsOpen(true); setCmdPaletteOpen(false); },
+    onToggleTheme: () => { setThemeMode(themeMode === "dark" ? "light" : "dark"); },
+  });
+
+  const modeColors: Record<Mode, string> = {
+    normal: "#a3a3ab",
+    plan: "#d97757",
+    yolo: "#e5484d",
+  };
+
+  // Right panel content
+  const renderRightPanel = () => {
+    switch (activeNav) {
+      case "agents":
+        return (
+          <Suspense fallback={<PanelLoader />}>
+            <AgentsPanel />
+          </Suspense>
+        );
+      case "projects":
+        return (
+          <Suspense fallback={<PanelLoader />}>
+            <ProjectsPanel />
+          </Suspense>
+        );
+      case "skills":
+        return (
+          <Suspense fallback={<PanelLoader />}>
+            <SkillsPanel />
+          </Suspense>
+        );
+      case "prompts":
+        return (
+          <Suspense fallback={<PanelLoader />}>
+            <PromptsPanel />
+          </Suspense>
+        );
+      case "mcp":
+        return (
+          <Suspense fallback={<PanelLoader />}>
+            <McpPanel />
+          </Suspense>
+        );
+      case "usage":
+        return (
+          <Suspense fallback={<PanelLoader />}>
+            <UsageDashboard />
+          </Suspense>
+        );
+      case "logs":
+        return (
+          <Suspense fallback={<PanelLoader />}>
+            <LogsPanel />
+          </Suspense>
+        );
+      case "expert":
+        return (
+          <Suspense fallback={<PanelLoader />}>
+            <ExpertPanel />
+          </Suspense>
+        );
+      case "sessions":
+        return (
+          <Suspense fallback={<PanelLoader />}>
+            <SessionsPanel
+              onResume={(path) => { setHistView(null); resumeSession(path); setRightPanelOpen(false); }}
+              onDelete={(path) => deleteSession(path)}
+              onRename={(path, title) => renameSession(path, title)}
+            />
+          </Suspense>
+        );
+      case "hermes":
+        return <HermesPanel />;
+      case "model":
+        return <ModelPanel />;
+      case "search":
+        return <SearchPanel />;
+      default:
+        return (
+          <div style={{ padding: 24, color: "var(--fg-dim)", fontSize: 13 }}>
+            选择左侧菜单查看功能
+          </div>
+        );
+    }
+  };
+
+  return (
+    <div className="app">
+      {/* ── Sidebar ── */}
+      <nav className={`sidebar${sidebarExpanded ? " sidebar--expanded" : ""}`} data-testid="sidebar">
+        <div className="sidebar__header">
+          <div className="sidebar__logo">I</div>
+          <span className="sidebar__title">IntentLoom</span>
+        </div>
+
+        <div className="sidebar__nav">
+          {NAV_GROUPS.map((group, gi) => (
+            <div key={gi} className="sidebar__nav-group">
+              {sidebarExpanded && group.label && (
+                <div className="sidebar__nav-group-label">{group.label}</div>
+              )}
+              {group.items.map((item) => (
+                <button
+                  key={item.key}
+                  className={`sidebar__nav-item${activeNav === item.key && rightPanelOpen ? " active" : ""}`}
+                  onClick={() => handleNavClick(item.key)}
+                  title={!sidebarExpanded ? item.label : undefined}
+                >
+                  <span className="sidebar__nav-item-icon">{item.icon}</span>
+                  <span className="sidebar__nav-item-label">{item.label}</span>
+                </button>
+              ))}
+              {gi < NAV_GROUPS.length - 1 && (
+                <div className="sidebar__nav-separator" />
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="sidebar__footer">
+          <button
+            className="sidebar__nav-item"
+            onClick={() => handleNavClick("settings")}
+            title={!sidebarExpanded ? "设置" : undefined}
+          >
+            <span className="sidebar__nav-item-icon"><Settings size={18} /></span>
+            <span className="sidebar__nav-item-label">设置</span>
+          </button>
+
+          <button
+            className="sidebar__toggle"
+            onClick={() => setSidebarExpanded(!sidebarExpanded)}
+          >
+            <ChevronRight size={14} className="sidebar__toggle-icon" style={{ transform: sidebarExpanded ? "rotate(180deg)" : undefined }} />
+            {sidebarExpanded && <span>收起</span>}
+          </button>
+        </div>
+      </nav>
+
+      {/* ── Main Area ── */}
+      <div className="main-area">
+        {/* Top Bar */}
+        <header className="topbar">
+          {/* Agent Tabs */}
+          <div className="agent-tabs">
+            {ALL_AGENTS.map((agent) => (
+              <button
+                key={agent.id}
+                className={`agent-tab${currentApp === agent.id ? " active" : ""}`}
+                onClick={() => handleAgentSwitch(agent.id)}
+                title={agent.label}
+              >
+                <Bot size={12} />
+                {sidebarExpanded ? agent.label : agent.shortLabel}
+              </button>
+            ))}
+          </div>
+
+          {/* Spacer */}
+          <div className="topbar__spacer" />
+
+          {/* Model path */}
+          <span className="topbar__model">{state.meta?.cwd || "IntentLoom"}</span>
+
+          {/* Right controls */}
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            {/* Mode toggle */}
+            <button
+              className="mode-badge"
+              style={{
+                background: "var(--bg-soft)",
+                color: modeColors[mode],
+                border: mode === "yolo" ? "1px solid #e5484d" : "1px solid var(--border)",
+                fontSize: 11,
+                padding: "3px 8px",
+                borderRadius: 6,
+                cursor: "pointer",
+              }}
+              onClick={cycleMode}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: modeColors[mode], display: "inline-block" }} />
+              {mode === "normal" ? "NORMAL" : mode === "plan" ? "PLAN" : "YOLO"}
+            </button>
+
+            <button className="chip chip--icon" onClick={() => setCmdPaletteOpen(true)} title="命令面板 (Ctrl+K)">
+              <Command size={13} />
+            </button>
+            <button className="chip chip--icon" onClick={() => listSessions().then(setHistView)} disabled={state.running} title="历史记录">
+              <History size={13} />
+            </button>
+            <button className="chip chip--icon" onClick={() => pickWorkspace?.()} title="选择工作目录">
+              <FolderOpen size={13} />
+            </button>
+            <button className="chip chip--icon" onClick={() => setThemeMode(themeMode === "dark" ? "light" : "dark")} title="切换主题">
+              {themeMode === "dark" ? <Sun size={13} /> : <Moon size={13} />}
+            </button>
+            <button className="chip chip--icon" onClick={newSession} title="新建会话">
+              <SquarePen size={13} />
+            </button>
+          </div>
+        </header>
+
+        {/* Startup error */}
+        {state.meta?.startupErr && (
+          <div className="banner banner--error">{state.meta.startupErr}</div>
+        )}
+
+        {/* Main Content */}
+        <main className="main">
+          <Transcript items={state.items} onNewChat={newSession} onPickWorkspace={pickWorkspace} />
+        </main>
+
+        {/* Footer */}
+        <footer className="footer">
+          <Composer
+            running={state.running}
+            mode={mode}
+            onSend={send}
+            onCancel={cancel}
+            onCycleMode={cycleMode}
+          />
+          <StatusBar
+            running={state.running}
+            mode={mode}
+            turnStartAt={state.turnStartAt}
+            turnTokens={state.turnTokens}
+            onOpenFolder={() => pickWorkspace?.()}
+            cwd={state.meta?.cwd}
+          />
+        </footer>
+      </div>
+
+      {/* ── Right Panel (slide-in) ── */}
+      {rightPanelOpen && (
+        <>
+          <div className="right-panel-backdrop" onClick={() => setRightPanelOpen(false)} />
+          <div className="right-panel">
+            <div className="right-panel__head">
+              <div className="right-panel__title">
+                <Sparkles size={14} style={{ color: "var(--accent)" }} />
+                {PANEL_TITLES[activeNav]}
+              </div>
+              <button className="chip chip--icon" onClick={() => setRightPanelOpen(false)}>
+                <X size={14} />
+              </button>
+            </div>
+            <div className="right-panel__body">
+              {renderRightPanel()}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Command Palette ── */}
+      <CommandPalette
+        isOpen={cmdPaletteOpen}
+        onClose={() => setCmdPaletteOpen(false)}
+        commands={commands}
+      />
+
+      {/* ── Toast ── */}
+      <ToastContainer />
+
+      {/* ── Permission Modal ── */}
+      {state.approval && (
+        <div className="modal-backdrop">
+          <div className="modal animate-fadeIn">
+            <div className="modal__head">
+              <div className="modal__title">⚠️ 权限请求</div>
+            </div>
+            <div className="approval" style={{ padding: "16px" }}>
+              <div className="approval__tool">{state.approval.tool}</div>
+              <div className="approval__args">{state.approval.args}</div>
+              <div className="approval__actions">
+                <button className="approval__btn" onClick={() => approve(state.approval!.id, false)}>拒绝</button>
+                <button className="approval__btn approval__btn--allow" onClick={() => approve(state.approval!.id, true)}>允许</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── History Drawer ── */}
+      {histView !== null && (
+        <HistoryDrawer
+          sessions={histView}
+          onResume={(path) => { setHistView(null); resumeSession(path); }}
+          onDelete={(path) => { deleteSession(path); listSessions().then(setHistView); }}
+          onRename={(path, title) => { renameSession(path, title); listSessions().then(setHistView); }}
+          onClose={() => setHistView(null)}
+        />
+      )}
+
+      {/* ── Settings Drawer ── */}
+      {settingsOpen && <SettingsDrawer onClose={() => setSettingsOpen(false)} />}
+    </div>
+  );
+};
+
+// ── Supporting Components ─────────────────────────────────────────────────────
+
+function PanelLoader() {
+  return (
+    <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
+      <div style={{ width: 24, height: 24, border: "2px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+    </div>
+  );
+}
+
+function SessionsPanel({ onResume, onDelete, onRename: _onRename }: {
+  onResume: (path: string) => void;
+  onDelete: (path: string) => void;
+  onRename: (path: string, title: string) => void;
+}) {
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    invoke<any[]>("list_sessions").then(setSessions).catch(() => setSessions([])).finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <PanelLoader />;
+  if (!sessions.length) return (
+    <div style={{ padding: 40, textAlign: "center", color: "var(--fg-dim)", fontSize: 13 }}>
+      暂无会话记录
+    </div>
+  );
+
+  return (
+    <div style={{ padding: 12 }}>
+      {sessions.map((s) => (
+        <div key={s.id || s.path} style={{
+          display: "flex", alignItems: "center", gap: 10,
+          padding: "10px 12px", borderRadius: 8, background: "var(--bg)",
+          marginBottom: 6, cursor: "pointer",
+          border: "1px solid var(--border-soft)",
+        }}
+          onClick={() => onResume(s.path)}
+        >
+          <MessageSquare size={14} style={{ color: "var(--fg-dim)", flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, color: "var(--fg)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title || "无标题会话"}</div>
+            {s.preview && <div style={{ fontSize: 11, color: "var(--fg-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.preview}</div>}
+          </div>
+          <button className="chip chip--icon" style={{ flexShrink: 0 }} onClick={(e) => { e.stopPropagation(); onDelete(s.path); }}>
+            <X size={12} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ModelPanel() {
+  const { currentProviderId, providers, switchProvider } = useModelStore();
+  const providerList = Object.values(providers);
+
+  return (
+    <div style={{ padding: 16 }}>
+      <div style={{ marginBottom: 16 }}>
+        <h3 style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", marginBottom: 8 }}>当前模型</h3>
+        <select
+          value={currentProviderId}
+          onChange={(e) => switchProvider(e.target.value)}
+          style={{
+            width: "100%", padding: "8px 12px", background: "var(--bg)", color: "var(--fg)",
+            border: "1px solid var(--border)", borderRadius: 8, fontSize: 13,
+          }}
+        >
+          {providerList.map((p) => (
+            <option key={p.id} value={p.id}>{p.name} {p.settingsConfig?.ANTHROPIC_MODEL ? "(" + p.settingsConfig.ANTHROPIC_MODEL + ")" : ""}</option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <h3 style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", marginBottom: 8 }}>可用模型</h3>
+        {providerList.map((p) => (
+          <div key={p.id} style={{
+            padding: "10px 12px", borderRadius: 8, marginBottom: 6,
+            background: currentProviderId === p.id ? "var(--accent-soft)" : "var(--bg)",
+            border: `1px solid ${currentProviderId === p.id ? "var(--accent)" : "var(--border-soft)"}`,
+            cursor: "pointer",
+          }}
+            onClick={() => switchProvider(p.id)}
+          >
+            <div style={{ fontSize: 13, fontWeight: 500, color: currentProviderId === p.id ? "var(--accent)" : "var(--fg)" }}>{p.name}</div>
+            <div style={{ fontSize: 11, color: "var(--fg-faint)", fontFamily: "var(--mono)" }}>{p.settingsConfig?.ANTHROPIC_MODEL || p.name}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SearchPanel() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<any[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  const handleSearch = useCallback(async () => {
+    if (!query.trim()) return;
+    setSearching(true);
+    try {
+      const res = await invoke<any[]>("search_code", { query, cwd: "" });
+      setResults(res);
+    } catch {
+      setResults([]);
+    } finally {
+      setSearching(false);
+    }
+  }, [query]);
+
+  return (
+    <div style={{ padding: 16 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+          placeholder="搜索代码..."
+          style={{
+            flex: 1, padding: "8px 12px", background: "var(--bg)", color: "var(--fg)",
+            border: "1px solid var(--border)", borderRadius: 8, fontSize: 13,
+          }}
+        />
+        <button onClick={handleSearch} disabled={searching} className="chip chip--on">
+          <Search size={13} />
+        </button>
+      </div>
+      {results.map((r, i) => (
+        <div key={i} style={{ padding: "10px", borderBottom: "1px solid var(--border-soft)" }}>
+          <div style={{ fontSize: 12, fontFamily: "var(--mono)", color: "var(--accent)" }}>{r.file}</div>
+          <div style={{ fontSize: 12, color: "var(--fg)", marginTop: 4 }}>{r.line}</div>
+        </div>
+      ))}
+      {!results.length && query && !searching && (
+        <div style={{ color: "var(--fg-faint)", fontSize: 13, textAlign: "center", padding: 20 }}>
+          无结果
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HermesPanel() {
+  const switchHermesMode = (window as any).__hermesStore?.switchHermesMode;
+
+  return (
+    <div style={{ padding: 16 }}>
+      <div style={{ padding: 16, borderRadius: 8, background: "var(--bg)", border: "1px solid var(--border-soft)", marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <Bot size={18} style={{ color: "var(--accent)" }} />
+          <span style={{ fontWeight: 600, fontSize: 14 }}>Hermes Agent</span>
+          <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: "var(--ok)", color: "var(--accent-fg)" }}>已激活</span>
+        </div>
+        <p style={{ fontSize: 12, color: "var(--fg-dim)" }}>
+          Hermes 是 IntentLoom 的本地 AI 助手，运行在您的设备上，保护隐私。
+        </p>
+      </div>
+      <div>
+        <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>模式</h3>
+        {["normal", "plan", "yolo"].map((m) => (
+          <button
+            key={m}
+            onClick={() => switchHermesMode?.(m)}
+            style={{
+              display: "block", width: "100%", padding: "8px 12px", marginBottom: 4,
+              borderRadius: 8, border: "1px solid var(--border-soft)",
+              background: "var(--bg)", color: "var(--fg-dim)",
+              fontSize: 13, textAlign: "left", cursor: "pointer",
+            }}
+          >
+            {m.toUpperCase()}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}

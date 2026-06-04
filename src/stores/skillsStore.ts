@@ -1,20 +1,8 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
-import type { RemoteSkill, LocalSkill, IdeSkill, IdeOption, DownloadTask, MarketSortMode, MarketStatus, ProjectConfig, Overview } from "../composables/types";
-import { normalizeSkillName } from "../composables/utils";
-import { STORAGE_KEYS, defaultMarketStatuses, defaultEnabledMarkets } from "../composables/constants";
-
-// Update state
-interface UpdateState {
-  checking: boolean;
-  updateAvailable: boolean;
-  latestVersion: string;
-  downloading: boolean;
-  downloadProgress: number;
-  downloaded: boolean;
-  upToDate: boolean;
-  error: string | null;
-}
+import type { RemoteSkill, LocalSkill, IdeSkill, IdeOption, DownloadTask, MarketSortMode, MarketStatus, Overview } from "./skillTypes";
+import { normalizeSkillName } from "./skillUtils";
+import { STORAGE_KEYS, defaultMarketStatuses, defaultEnabledMarkets } from "./skillConstants";
 
 interface SkillsState {
   // Market search
@@ -64,18 +52,6 @@ interface SkillsState {
   // Active tab
   activeTab: "local" | "market" | "ide" | "projects" | "settings";
 
-  // Toast
-  toasts: Array<{ id: string; type: "success" | "error" | "info"; content: string }>;
-
-  // Update store
-  update: UpdateState;
-  appName: string;
-  currentVersion: string;
-
-  // Project
-  projects: ProjectConfig[];
-  selectedProjectId: string | null;
-
   // Actions
   setQuery: (query: string) => void;
   setMarketSortMode: (mode: MarketSortMode) => void;
@@ -92,7 +68,7 @@ interface SkillsState {
 
   openInstallModal: (skill: LocalSkill) => void;
   closeInstallModal: () => void;
-  confirmInstallToIde: (installTarget: "ide" | "project", targetIds: string[], projects: ProjectConfig[]) => Promise<void>;
+  confirmInstallToIde: (installTarget: "ide" | "project", targetIds: string[]) => Promise<void>;
 
   openUninstallModal: (targetName: string, mode: "ide" | "local", target: string) => void;
   openUninstallManyModal: (paths: string[]) => void;
@@ -114,24 +90,8 @@ interface SkillsState {
   retryDownload: (taskId: string) => void;
   removeFromQueue: (taskId: string) => void;
 
-  loadAppInfo: () => Promise<void>;
-  checkUpdate: () => Promise<void>;
-  downloadUpdate: () => Promise<void>;
-  installAndRestart: () => Promise<void>;
-
-  loadProjects: () => void;
-  addProject: (path: string, name: string, ideTargets: string[]) => ProjectConfig | undefined;
-  removeProject: (projectId: string) => boolean;
-  updateProjectIdeTargets: (projectId: string, ideTargets: string[]) => boolean;
-  updateDetectedIdeDirs: (projectId: string, detectedIdeDirs: Array<{ label: string; relativeDir: string; absolutePath: string }>) => boolean;
-
-  addToast: (type: "success" | "error" | "info", content: string) => void;
-  removeToast: (id: string) => void;
-
   setActiveTab: (tab: "local" | "market" | "ide" | "projects" | "settings") => void;
 }
-
-let updateObj: any = null;
 
 export const useSkillsStore = create<SkillsState>((set, get) => ({
   // Initial state
@@ -174,24 +134,6 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 
   activeTab: "local",
 
-  toasts: [],
-
-  update: {
-    checking: false,
-    updateAvailable: false,
-    latestVersion: "",
-    downloading: false,
-    downloadProgress: 0,
-    downloaded: false,
-    upToDate: false,
-    error: null,
-  },
-  appName: "Skills Manager",
-  currentVersion: "0.3.5",
-
-  projects: [],
-  selectedProjectId: null,
-
   // Actions
   setQuery: (query) => set({ query }),
 
@@ -225,7 +167,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
       });
     } catch (e) {
       console.error("Search failed", e);
-      get().addToast("error", "Search failed. Please try again.");
+      console.error("[skills]", "Search failed. Please try again.");
     } finally {
       set({ loading: false });
     }
@@ -304,7 +246,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
       });
     } catch (e) {
       console.error("Scan failed", e);
-      get().addToast("error", "Failed to scan local skills.");
+      console.error("[skills]", "Failed to scan local skills.");
     } finally {
       set({ localLoading: false });
     }
@@ -323,11 +265,11 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
         set({ busy: true, busyText: "Importing..." });
         await invoke("import_local_skill", { dir: selected });
         await get().scanLocalSkills();
-        get().addToast("success", "Skill imported successfully.");
+        console.log("[skills]", "Skill imported successfully.");
       }
     } catch (e) {
       console.error("Import failed", e);
-      get().addToast("error", "Import failed.");
+      console.error("[skills]", "Import failed.");
     } finally {
       set({ busy: false, busyText: "" });
     }
@@ -346,11 +288,11 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
         set({ busy: true, busyText: "Exporting..." });
         const paths = skills.map((s) => s.path);
         await invoke("export_local_skills", { paths, targetDir: target });
-        get().addToast("success", `Exported to ${target}`);
+        console.log("[skills]", `Exported to ${target}`);
       }
     } catch (e) {
       console.error("Export failed", e);
-      get().addToast("error", "Export failed.");
+      console.error("[skills]", "Export failed.");
     } finally {
       set({ busy: false, busyText: "" });
     }
@@ -362,10 +304,10 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
       const paths = skills.map((s) => s.path);
       await invoke("delete_local_skills", { paths });
       await get().scanLocalSkills();
-      get().addToast("success", "Deleted successfully.");
+      console.log("[skills]", "Deleted successfully.");
     } catch (e) {
       console.error("Delete failed", e);
-      get().addToast("error", "Delete failed.");
+      console.error("[skills]", "Delete failed.");
     } finally {
       set({ busy: false, busyText: "" });
     }
@@ -403,7 +345,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     set({ showInstallModal: false, pendingInstallSkill: null });
   },
 
-  confirmInstallToIde: async (installTarget, targetIds, _projects) => {
+  confirmInstallToIde: async (installTarget, targetIds) => {
     const { pendingInstallSkill } = get();
     if (!pendingInstallSkill) return;
 
@@ -419,11 +361,11 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
         targetProjectIds,
       });
 
-      get().addToast("success", `Installed to ${installTarget}`);
+      console.log("[skills]", `Installed to ${installTarget}`);
       await get().scanLocalSkills();
     } catch (e) {
       console.error("Install failed", e);
-      get().addToast("error", "Installation failed.");
+      console.error("[skills]", "Installation failed.");
     } finally {
       set({ busy: false, busyText: "", pendingInstallSkill: null });
     }
@@ -456,11 +398,11 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
         const paths = uninstallTarget.split("|");
         await invoke("uninstall_skill_from_ides", { paths });
       }
-      get().addToast("success", "Uninstalled successfully.");
+      console.log("[skills]", "Uninstalled successfully.");
       await get().scanLocalSkills();
     } catch (e) {
       console.error("Uninstall failed", e);
-      get().addToast("error", "Uninstall failed.");
+      console.error("[skills]", "Uninstall failed.");
     } finally {
       set({ busy: false, busyText: "", uninstallTarget: null });
     }
@@ -482,13 +424,13 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   addCustomIde: () => {
     const { customIdeName, customIdeDir, customIdeOptions } = get();
     if (!customIdeName.trim() || !customIdeDir.trim()) {
-      get().addToast("error", "Please fill in IDE name and directory.");
+      console.error("[skills]", "Please fill in IDE name and directory.");
       return;
     }
 
     const exists = customIdeOptions.some((o) => o.label === customIdeName);
     if (exists) {
-      get().addToast("error", "IDE name already exists.");
+      console.error("[skills]", "IDE name already exists.");
       return;
     }
 
@@ -516,7 +458,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
       await invoke("open_directory", { path });
     } catch (e) {
       console.error("Failed to open directory", e);
-      get().addToast("error", "Failed to open directory.");
+      console.error("[skills]", "Failed to open directory.");
     }
   },
 
@@ -529,11 +471,11 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     try {
       const paths = skills.map((s) => s.path);
       await invoke("adopt_ide_skills", { paths });
-      get().addToast("success", `Managed ${skills.length} skills.`);
+      console.log("[skills]", `Managed ${skills.length} skills.`);
       await get().scanLocalSkills();
     } catch (e) {
       console.error("Adopt failed", e);
-      get().addToast("error", "Failed to add to central management.");
+      console.error("[skills]", "Failed to add to central management.");
     } finally {
       set({ busy: false, busyText: "" });
     }
@@ -583,166 +525,6 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
         recentTaskStatus: newRecentStatus,
       };
     });
-  },
-
-  loadAppInfo: async () => {
-    try {
-      const { getName, getVersion } = await import("@tauri-apps/api/app");
-      const name = await getName();
-      const version = await getVersion();
-      set({ appName: name, currentVersion: version });
-    } catch {
-      // Use defaults
-    }
-  },
-
-  checkUpdate: async () => {
-    const { update } = get();
-    if (update.checking) return;
-
-    set((s) => ({ update: { ...s.update, checking: true, updateAvailable: false, upToDate: false, downloaded: false, error: null } }));
-
-    try {
-      const { check } = await import("@tauri-apps/plugin-updater");
-      updateObj = await check();
-      if (updateObj) {
-        set((s) => ({ update: { ...s.update, latestVersion: updateObj!.version, updateAvailable: true } }));
-      } else {
-        set((s) => ({ update: { ...s.update, upToDate: true } }));
-      }
-    } catch (e) {
-      set((s) => ({ update: { ...s.update, error: e instanceof Error ? e.message : "Update check failed" } }));
-    } finally {
-      set((s) => ({ update: { ...s.update, checking: false } }));
-    }
-  },
-
-  downloadUpdate: async () => {
-    if (!updateObj) return;
-
-    set((s) => ({ update: { ...s.update, downloading: true, downloadProgress: 0 } }));
-
-    try {
-      await updateObj.downloadAndInstall((event: any) => {
-        switch (event.event) {
-          case "Started":
-            set((s) => ({ update: { ...s.update, downloadProgress: 0 } }));
-            break;
-          case "Progress":
-            set((s) => ({ update: { ...s.update, downloadProgress: Math.min(s.update.downloadProgress + 5, 90) } }));
-            break;
-          case "Finished":
-            set((s) => ({ update: { ...s.update, downloadProgress: 100, downloaded: true, downloading: false } }));
-            break;
-        }
-      });
-    } catch (e) {
-      set((s) => ({ update: { ...s.update, error: e instanceof Error ? e.message : "Download failed", downloading: false } }));
-    }
-  },
-
-  installAndRestart: async () => {
-    try {
-      const { relaunch } = await import("@tauri-apps/plugin-process");
-      await relaunch();
-    } catch (e) {
-      set((s) => ({ update: { ...s.update, error: e instanceof Error ? e.message : "Restart failed" } }));
-    }
-  },
-
-  loadProjects: () => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEYS.PROJECTS);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return;
-      const projects = parsed.filter(
-        (item: any) =>
-          item &&
-          typeof item.id === "string" &&
-          typeof item.name === "string" &&
-          typeof item.path === "string" &&
-          Array.isArray(item.ideTargets)
-      );
-      set({ projects });
-      if (projects.length > 0 && !get().selectedProjectId) {
-        set({ selectedProjectId: projects[0].id });
-      }
-    } catch {
-      // Ignore
-    }
-  },
-
-  addProject: (path, name, ideTargets) => {
-    const { projects } = get();
-    const existing = projects.find((p) => p.path === path);
-    if (existing) return existing;
-
-    const id = `project-${path.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-")}`;
-    const newProject: ProjectConfig = {
-      id,
-      name,
-      path,
-      ideTargets,
-      detectedIdeDirs: [],
-    };
-
-    const newProjects = [...projects, newProject].sort((a, b) => a.name.localeCompare(b.name));
-    set({ projects: newProjects, selectedProjectId: id });
-    localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(newProjects));
-    return newProject;
-  },
-
-  removeProject: (projectId) => {
-    const { projects, selectedProjectId } = get();
-    const index = projects.findIndex((p) => p.id === projectId);
-    if (index === -1) return false;
-
-    const newProjects = projects.filter((p) => p.id !== projectId);
-    set({
-      projects: newProjects,
-      selectedProjectId: selectedProjectId === projectId ? newProjects[0]?.id || null : selectedProjectId,
-    });
-    localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(newProjects));
-    return true;
-  },
-
-  updateProjectIdeTargets: (projectId, ideTargets) => {
-    const { projects } = get();
-    const project = projects.find((p) => p.id === projectId);
-    if (!project) return false;
-
-    project.ideTargets = ideTargets;
-    set({ projects: [...projects] });
-    localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects));
-    return true;
-  },
-
-  updateDetectedIdeDirs: (projectId, detectedIdeDirs) => {
-    const { projects } = get();
-    const project = projects.find((p) => p.id === projectId);
-    if (!project) return false;
-
-    project.detectedIdeDirs = detectedIdeDirs;
-    set({ projects: [...projects] });
-    localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects));
-    return true;
-  },
-
-  addToast: (type, content) => {
-    const id = `toast-${Date.now()}`;
-    set((state) => ({
-      toasts: [...state.toasts, { id, type, content }],
-    }));
-    setTimeout(() => {
-      get().removeToast(id);
-    }, 3000);
-  },
-
-  removeToast: (id) => {
-    set((state) => ({
-      toasts: state.toasts.filter((t) => t.id !== id),
-    }));
   },
 
   setActiveTab: (tab) => set({ activeTab: tab }),

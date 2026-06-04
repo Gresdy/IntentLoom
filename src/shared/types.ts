@@ -35,6 +35,15 @@ export interface Plan {
 
 export type AICLI = "claude-code" | "gemini" | "codex" | "opencode" | "openclaw";
 
+export type AppId = AICLI | "claude" | "hermes";
+
+export interface ExpertSnapshot {
+  expertId: number;
+  sessionId: string;
+  content: string;
+  timestamp: number;
+}
+
 export interface Provider {
   id: string;
   name: string;
@@ -78,4 +87,34 @@ export interface SkillsDirs {
   opencode: string;
   qoder: string;
   trae: string;
+}
+
+export interface Expert {
+  id: string;
+  name: string;
+  description: string;
+  system_prompt: string;
+  color: string;
+  enabled: boolean;
+  is_template: boolean;
+  department?: string;
+  priority?: number;
+  created_at?: string;
+  sortOrder?: number;
+  skills?: string[];
+  mcpServers?: string[];
+  knowledgeBase?: string;
+  avatar?: string;
+  systemPrompt?: string;
+  model?: string;
+  isActive?: boolean;
+  projectId?: number;
+}
+
+export interface ExpertTemplate {
+  id: string;
+  name: string;
+  description: string;
+  systemPrompt: string;
+  color: string;
 }

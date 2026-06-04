@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Input, Button, Spin, Empty, Modal, Form, Checkbox, Tag, Popconfirm } from "@arco-design/web-react";
-import { Download, Refresh, Plus } from "@icon-park/react";
+import { Download, RefreshCw, Plus } from "lucide-react";
 import type { Skill } from "../../shared/types";
 
 // 动态导入invoke函数
@@ -27,6 +26,11 @@ const IDE_OPTIONS = [
   { label: "Windsurf", value: "windsurf" },
 ];
 
+const btnStyle: React.CSSProperties = { padding: "4px 10px", fontSize: 12, border: "1px solid var(--border)", background: "var(--bg-soft)", color: "var(--fg)", borderRadius: "var(--radius)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 };
+const btnPrimaryStyle: React.CSSProperties = { ...btnStyle, background: "var(--accent)", borderColor: "var(--accent)", color: "var(--accent-fg)", fontWeight: 600 };
+const btnDangerStyle: React.CSSProperties = { ...btnPrimaryStyle, background: "var(--err)", borderColor: "var(--err)", color: "#fff" };
+const inputStyle: React.CSSProperties = { width: "100%", padding: "8px 12px", background: "var(--bg)", color: "var(--fg)", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: 13, boxSizing: "border-box" as const };
+
 export const SkillsPanel: React.FC = () => {
   const [query, setQuery] = useState("");
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -39,6 +43,7 @@ export const SkillsPanel: React.FC = () => {
   const [ideSkills, setIdeSkills] = useState<Skill[]>([]);
   const [showCustomIdeModal, setShowCustomIdeModal] = useState(false);
   const [customIdeForm, setCustomIdeForm] = useState({ name: "", path: "" });
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   useEffect(() => {
     loadInstalled();
@@ -57,7 +62,7 @@ export const SkillsPanel: React.FC = () => {
   const loadIdeSkills = async () => {
     try {
       const list = await invoke("list_installed_skills");
-      const filtered = (list as Skill[]).filter((skill: Skill) => 
+      const filtered = (list as Skill[]).filter((skill: Skill) =>
         skill.symlinks[platform]
       );
       setIdeSkills(filtered);
@@ -127,7 +132,7 @@ export const SkillsPanel: React.FC = () => {
     try {
       await invoke("uninstall_skill", { skillName: skillId, platform });
       await loadInstalled();
-      alert("技能卸载成功");
+      setDeleteTarget(null);
     } catch (err) {
       console.error("Failed to uninstall skill:", err);
       alert("技能卸载失败，请检查权限");
@@ -170,11 +175,11 @@ export const SkillsPanel: React.FC = () => {
       alert("请先选择要删除的技能");
       return;
     }
-    
+
     if (!confirm(`确定要删除选中的 ${selectedSkills.length} 个技能吗？`)) {
       return;
     }
-    
+
     try {
       for (const skillId of selectedSkills) {
         await invoke("uninstall_skill", { skillName: skillId, platform });
@@ -193,11 +198,11 @@ export const SkillsPanel: React.FC = () => {
       alert("暂无技能可删除");
       return;
     }
-    
+
     if (!confirm(`确定要删除所有 ${installed.length} 个技能吗？`)) {
       return;
     }
-    
+
     try {
       for (const skill of installed) {
         await invoke("uninstall_skill", { skillName: skill.id, platform });
@@ -238,62 +243,67 @@ export const SkillsPanel: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200">
         <div className="flex space-x-0">
-          <button
-            onClick={() => setTab("local")}
-            className={`px-4 py-2 font-medium transition-all duration-200 ${
-              tab === "local"
-                ? "bg-black text-white"
-                : "text-gray-600 hover:bg-gray-100"
-            }`}
-          >
-            Local Skills
-          </button>
-          <button
-            onClick={() => setTab("market")}
-            className={`px-4 py-2 font-medium transition-all duration-200 ${
-              tab === "market"
-                ? "bg-black text-white"
-                : "text-gray-600 hover:bg-gray-100"
-            }`}
-          >
-            Market
-          </button>
-          <button
-            onClick={() => setTab("ide")}
-            className={`px-4 py-2 font-medium transition-all duration-200 ${
-              tab === "ide"
-                ? "bg-black text-white"
-                : "text-gray-600 hover:bg-gray-100"
-            }`}
-          >
-            IDE Browser
-          </button>
-          <button
-            onClick={() => setTab("project")}
-            className={`px-4 py-2 font-medium transition-all duration-200 ${
-              tab === "project"
-                ? "bg-black text-white"
-                : "text-gray-600 hover:bg-gray-100"
-            }`}
-          >
-            Projects
-          </button>
-          <button
-            onClick={() => setTab("settings")}
-            className={`px-4 py-2 font-medium transition-all duration-200 ${
-              tab === "settings"
-                ? "bg-black text-white"
-                : "text-gray-600 hover:bg-gray-100"
-            }`}
-          >
-            Settings
-          </button>
+          {(["local", "market", "ide", "project", "settings"] as TabKey[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-4 py-2 font-medium transition-all duration-200 ${
+                tab === t ? "bg-black text-white" : "text-gray-600 hover:bg-gray-100"
+              }`}
+            >
+              {t === "local" ? "Local Skills" : t === "market" ? "Market" : t === "ide" ? "IDE Browser" : t === "project" ? "Projects" : "Settings"}
+            </button>
+          ))}
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm">🌐</span>
           <span className="text-sm">⚙️</span>
         </div>
       </div>
+
+      {/* Delete Confirm */}
+      {deleteTarget && (
+        <div className="modal-backdrop" onClick={() => setDeleteTarget(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__title">确定要删除这个技能吗？</div>
+            <div className="modal__actions">
+              <button className="btn" onClick={() => setDeleteTarget(null)}>取消</button>
+              <button className="btn" style={btnDangerStyle} onClick={() => handleUninstall(deleteTarget)}>删除</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom IDE Modal */}
+      {showCustomIdeModal && (
+        <div className="modal-backdrop" onClick={() => setShowCustomIdeModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__title">添加自定义 IDE</div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: 13, color: "var(--fg-dim)", marginBottom: 4 }}>IDE 名称 *</label>
+              <input
+                style={inputStyle}
+                value={customIdeForm.name}
+                onChange={(e) => setCustomIdeForm({ ...customIdeForm, name: e.target.value })}
+                placeholder="例如：MyCustomIDE"
+              />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: 13, color: "var(--fg-dim)", marginBottom: 4 }}>技能路径 *</label>
+              <input
+                style={inputStyle}
+                value={customIdeForm.path}
+                onChange={(e) => setCustomIdeForm({ ...customIdeForm, path: e.target.value })}
+                placeholder="例如：/Users/username/.myide/skills"
+              />
+            </div>
+            <div className="modal__actions">
+              <button className="btn" onClick={() => setShowCustomIdeModal(false)}>取消</button>
+              <button className="btn btn--primary" onClick={handleCreateCustomIde}>确定</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-4">
@@ -307,9 +317,10 @@ export const SkillsPanel: React.FC = () => {
                   Total {installed.length}
                 </div>
                 <div className="flex items-center">
-                  <Checkbox
-                    onChange={(checked) => {
-                      if (checked) {
+                  <input
+                    type="checkbox"
+                    onChange={(e) => {
+                      if (e.target.checked) {
                         setSelectedSkills(installed.map(skill => skill.id));
                       } else {
                         setSelectedSkills([]);
@@ -323,12 +334,12 @@ export const SkillsPanel: React.FC = () => {
             </div>
 
             <div className="flex items-center justify-between">
-              <Input
+              <input
+                type="text"
                 placeholder="Search name, description or path"
                 value={query}
-                onChange={setQuery}
-                className="w-full max-w-2xl"
-                size="default"
+                onChange={(e) => setQuery(e.target.value)}
+                style={{ ...inputStyle, maxWidth: 480 }}
               />
               <div className="text-sm text-gray-500 ml-4">
                 Showing {installed.length} / {installed.length}
@@ -336,16 +347,16 @@ export const SkillsPanel: React.FC = () => {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button size="small" icon={<Refresh size={14} />} onClick={loadInstalled}>Refresh</Button>
-              <Button size="small" type="primary" icon={<Plus size={14} />} onClick={handleImportLocalSkill}>Import Local Skill</Button>
-              <Button size="small" disabled={selectedSkills.length === 0} onClick={handleBatchInstall}>Batch install to IDE ({selectedSkills.length})</Button>
-              <Button size="small" disabled={selectedSkills.length === 0} type="primary" status="danger" onClick={handleBatchDelete}>Delete selected ({selectedSkills.length})</Button>
-              <Button size="small" type="primary" status="danger" onClick={handleDeleteAll}>Delete all</Button>
+              <button style={btnStyle} onClick={loadInstalled}><RefreshCw size={14} /> Refresh</button>
+              <button style={btnPrimaryStyle} onClick={handleImportLocalSkill}><Plus size={14} /> Import Local Skill</button>
+              <button style={btnStyle} disabled={selectedSkills.length === 0} onClick={handleBatchInstall}>Batch install to IDE ({selectedSkills.length})</button>
+              <button style={btnDangerStyle} disabled={selectedSkills.length === 0} onClick={handleBatchDelete}>Delete selected ({selectedSkills.length})</button>
+              <button style={btnDangerStyle} onClick={handleDeleteAll}>Delete all</button>
             </div>
 
             {loading ? (
               <div className="flex justify-center py-12">
-                <Spin size={40} />
+                <div className="ico spin" style={{ fontSize: 24 }}>&#9881;</div>
               </div>
             ) : installed.length > 0 ? (
               <div className="space-y-2">
@@ -355,9 +366,10 @@ export const SkillsPanel: React.FC = () => {
                     className="border border-gray-200 rounded-lg p-3 hover:border-gray-300 transition-all duration-200"
                   >
                     <div className="flex items-start gap-3">
-                      <Checkbox
+                      <input
+                        type="checkbox"
                         checked={selectedSkills.includes(skill.id)}
-                        onChange={(checked) => handleSkillSelect(skill.id, checked!)}
+                        onChange={(e) => handleSkillSelect(skill.id, e.target.checked)}
                         className="mt-1"
                       />
                       <div className="flex-1">
@@ -373,29 +385,23 @@ export const SkillsPanel: React.FC = () => {
                           <p className="text-sm text-gray-600 mt-1">{skill.description}</p>
                         )}
                         <p className="text-xs text-gray-500 mt-1">{skill.local_path}</p>
-                        
+
                         <div className="flex flex-wrap gap-1 mt-2">
                           {IDE_OPTIONS.map((ide) => (
-                            <Tag
+                            <span
                               key={ide.value}
-                              color={skill.symlinks[ide.value] ? 'green' : 'gray'}
-                              size="small"
-                              className="text-xs"
+                              className="badge"
+                              style={skill.symlinks[ide.value] ? { color: "var(--ok)", borderColor: "var(--ok)" } : undefined}
                             >
                               {ide.label}
-                            </Tag>
+                            </span>
                           ))}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button size="small" type="primary" onClick={() => handleInstallToIde(skill)}>Install to IDE</Button>
-                        <Button size="small" onClick={() => handleOpenFolder(skill)}>Open Folder</Button>
-                        <Popconfirm
-                          title="确定要删除这个技能吗？"
-                          onOk={() => handleUninstall(skill.id)}
-                        >
-                          <Button size="small" type="primary" status="danger">Delete</Button>
-                        </Popconfirm>
+                        <button style={btnPrimaryStyle} onClick={() => handleInstallToIde(skill)}>Install to IDE</button>
+                        <button style={btnStyle} onClick={() => handleOpenFolder(skill)}>Open Folder</button>
+                        <button style={btnDangerStyle} onClick={() => setDeleteTarget(skill.id)}>Delete</button>
                       </div>
                     </div>
                   </div>
@@ -403,7 +409,7 @@ export const SkillsPanel: React.FC = () => {
               </div>
             ) : (
               <div className="border border-gray-200 rounded-lg p-8 text-center">
-                <Empty description="暂未安装任何 Skill" />
+                <div style={{ padding: 40, textAlign: "center", color: "var(--fg-faint)", fontSize: 13 }}>暂未安装任何 Skill</div>
               </div>
             )}
           </div>
@@ -412,23 +418,23 @@ export const SkillsPanel: React.FC = () => {
         {tab === "market" && (
           <div className="space-y-4">
             <h2 className="text-lg font-semibold text-gray-800">Marketplace Search</h2>
-            
+
             <div className="flex gap-3">
-              <Input
+              <input
+                type="text"
                 placeholder="Search skills (name / description / author)"
                 value={query}
-                onChange={setQuery}
-                onPressEnter={handleSearch}
-                className="flex-1"
-                size="default"
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                style={{ ...inputStyle, flex: 1 }}
               />
-              <Button size="small" type="primary" onClick={handleSearch}>Search</Button>
-              <Button size="small" onClick={loadInstalled}>Refresh</Button>
+              <button style={btnPrimaryStyle} onClick={handleSearch}>Search</button>
+              <button style={btnStyle} onClick={loadInstalled}>Refresh</button>
             </div>
 
             {loading ? (
               <div className="flex justify-center py-12">
-                <Spin size={40} />
+                <div className="ico spin" style={{ fontSize: 24 }}>&#9881;</div>
               </div>
             ) : skills.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -455,23 +461,20 @@ export const SkillsPanel: React.FC = () => {
                         {skill.repo_url}
                       </div>
                     )}
-                    <Button
-                      size="small"
-                      type="primary"
-                      loading={installing === skill.id}
-                      icon={<Download size={14} />}
+                    <button
+                      style={{ ...btnPrimaryStyle, width: "100%", justifyContent: "center" }}
+                      disabled={installing === skill.id || !skill.repo_url}
                       onClick={() => handleInstall(skill)}
-                      disabled={!skill.repo_url}
-                      className="w-full"
                     >
-                      Download
-                    </Button>
+                      <Download size={14} />
+                      {installing === skill.id ? "Installing..." : "Download"}
+                    </button>
                   </div>
                 ))}
               </div>
             ) : (
               <div className="border border-gray-200 rounded-lg p-8 text-center">
-                <Empty description="搜索 Skills 后在此显示" />
+                <div style={{ padding: 40, textAlign: "center", color: "var(--fg-faint)", fontSize: 13 }}>搜索 Skills 后在此显示</div>
               </div>
             )}
           </div>
@@ -485,35 +488,26 @@ export const SkillsPanel: React.FC = () => {
                 {ideSkills.length} skills
               </div>
             </div>
-            
+
             <div className="flex flex-wrap gap-2 mb-4">
               {IDE_OPTIONS.map((ide) => (
-                <Button
+                <button
                   key={ide.value}
-                  size="small"
-                  type={platform === ide.value ? "primary" : "default"}
+                  style={platform === ide.value ? btnPrimaryStyle : btnStyle}
                   onClick={() => {
                     setPlatform(ide.value);
                     loadIdeSkills();
                   }}
                 >
                   {ide.label}
-                </Button>
+                </button>
               ))}
             </div>
 
             <div className="flex gap-2 mb-4">
-              <Input
-                placeholder="IDE name"
-                className="flex-1"
-                size="small"
-              />
-              <Input
-                placeholder="e.g., myide/skills"
-                className="flex-1"
-                size="small"
-              />
-              <Button size="small" type="primary">Add IDE</Button>
+              <input type="text" placeholder="IDE name" style={{ ...inputStyle, flex: 1 }} />
+              <input type="text" placeholder="e.g., myide/skills" style={{ ...inputStyle, flex: 1 }} />
+              <button style={btnPrimaryStyle}>Add IDE</button>
             </div>
 
             {ideSkills.length > 0 ? (
@@ -532,8 +526,8 @@ export const SkillsPanel: React.FC = () => {
                         <p className="text-xs text-gray-500 mt-1">{skill.symlinks[platform]}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button size="small" onClick={() => handleOpenFolder(skill)}>Open Folder</Button>
-                        <Button size="small" type="primary" status="danger" onClick={() => handleUninstall(skill.id)}>Uninstall</Button>
+                        <button style={btnStyle} onClick={() => handleOpenFolder(skill)}>Open Folder</button>
+                        <button style={btnDangerStyle} onClick={() => handleUninstall(skill.id)}>Uninstall</button>
                       </div>
                     </div>
                   </div>
@@ -541,7 +535,7 @@ export const SkillsPanel: React.FC = () => {
               </div>
             ) : (
               <div className="border border-gray-200 rounded-lg p-8 text-center">
-                <Empty description={`当前 IDE (${platform}) 暂无已安装的技能`} />
+                <div style={{ padding: 40, textAlign: "center", color: "var(--fg-faint)", fontSize: 13 }}>当前 IDE ({platform}) 暂无已安装的技能</div>
               </div>
             )}
           </div>
@@ -551,7 +545,7 @@ export const SkillsPanel: React.FC = () => {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-gray-800">Projects</h2>
-              <Button size="small" type="primary">Add Project</Button>
+              <button style={btnPrimaryStyle}>Add Project</button>
             </div>
             <p className="text-sm text-gray-600">Configure separate Skills environments for different projects.</p>
 
@@ -563,17 +557,17 @@ export const SkillsPanel: React.FC = () => {
                     <p className="text-xs text-gray-500">/Users/wrt/IdeaProjects/demo</p>
                     <p className="text-xs text-gray-600 mt-1">IDE Targets: 3</p>
                     <div className="flex flex-wrap gap-1 mt-2">
-                      <Tag size="small" color="green">Cursor</Tag>
-                      <Tag size="small" color="green">Claude Code</Tag>
-                      <Tag size="small" color="green">Qoder</Tag>
+                      <span className="badge" style={{ color: "var(--ok)", borderColor: "var(--ok)" }}>Cursor</span>
+                      <span className="badge" style={{ color: "var(--ok)", borderColor: "var(--ok)" }}>Claude Code</span>
+                      <span className="badge" style={{ color: "var(--ok)", borderColor: "var(--ok)" }}>Qoder</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button size="small">Deselect</Button>
-                    <Button size="small">Configure</Button>
-                    <Button size="small">Open Directory</Button>
-                    <Button size="small" type="primary">Link Skills</Button>
-                    <Button size="small" type="primary" status="danger">Remove</Button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button style={btnStyle}>Deselect</button>
+                    <button style={btnStyle}>Configure</button>
+                    <button style={btnStyle}>Open Directory</button>
+                    <button style={btnPrimaryStyle}>Link Skills</button>
+                    <button style={btnDangerStyle}>Remove</button>
                   </div>
                 </div>
               </div>
@@ -590,31 +584,6 @@ export const SkillsPanel: React.FC = () => {
           </div>
         )}
       </div>
-
-      {/* Custom IDE Modal */}
-      <Modal
-        title="添加自定义 IDE"
-        visible={showCustomIdeModal}
-        onCancel={() => setShowCustomIdeModal(false)}
-        onOk={handleCreateCustomIde}
-      >
-        <Form>
-          <Form.Item label="IDE 名称" required>
-            <Input
-              value={customIdeForm.name}
-              onChange={(value) => setCustomIdeForm({ ...customIdeForm, name: value })}
-              placeholder="例如：MyCustomIDE"
-            />
-          </Form.Item>
-          <Form.Item label="技能路径" required>
-            <Input
-              value={customIdeForm.path}
-              onChange={(value) => setCustomIdeForm({ ...customIdeForm, path: value })}
-              placeholder="例如：/Users/username/.myide/skills"
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
     </div>
   );
 };
