@@ -34,8 +34,7 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
       </span>
       <button
         onClick={onClose}
-        className="p-1 rounded hover:bg-bg-soft transition-colors"
-        style={{ color: "var(--fg-faint)" }}
+        className="p-1 rounded hover:bg-bg-soft transition-colors ilo-fg-faint"
       >
         <X size={14} />
       </button>

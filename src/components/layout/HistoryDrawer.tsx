@@ -67,10 +67,9 @@ export function HistoryDrawer({ sessions, onResume, onDelete, onRename, onClose 
 
         {/* 搜索 */}
         <div 
-          className="flex items-center gap-2 mx-4 mt-4 p-2 rounded-lg"
-          style={{ background: "var(--bg)" }}
+          className="flex items-center gap-2 mx-4 mt-4 p-2 rounded-lg ilo-bg-app"
         >
-          <Search size={14} style={{ color: "var(--fg-faint)" }} />
+          <Search size={14} className="ilo-fg-faint" />
           <input
             type="text"
             placeholder="搜索会话..."
@@ -84,7 +83,7 @@ export function HistoryDrawer({ sessions, onResume, onDelete, onRename, onClose 
         {/* 会话列表 */}
         <div className="drawer__body">
           {filteredSessions.length === 0 ? (
-            <div className="text-center py-12" style={{ color: "var(--fg-faint)" }}>
+            <div className="text-center py-12 ilo-fg-faint">
               {search ? "未找到匹配的会话" : "暂无会话历史"}
             </div>
           ) : (

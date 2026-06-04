@@ -16,8 +16,7 @@ export function LoadingState({ message = "加载中...", size = "md" }: LoadingS
     <div className="flex flex-col items-center justify-center gap-3 p-8">
       <Loader2 
         size={sizes[size]} 
-        className="animate-spin" 
-        style={{ color: "var(--accent)" }} 
+        className="animate-spin ilo-fg-accent" 
       />
       <span style={{ color: "var(--fg-faint)", fontSize: 13 }}>{message}</span>
     </div>
@@ -35,12 +34,12 @@ export function EmptyState({ icon, title, description, action }: EmptyStateProps
   return (
     <div className="flex flex-col items-center justify-center gap-4 p-8 text-center">
       {icon && (
-        <div className="p-4 rounded-full" style={{ background: "var(--bg-soft)" }}>
+        <div className="p-4 rounded-full ilo-bg-soft">
           {icon}
         </div>
       )}
       <div>
-        <h3 className="font-medium mb-1" style={{ color: "var(--fg)" }}>{title}</h3>
+        <h3 className="font-medium mb-1 ilo-fg">{title}</h3>
         {description && (
           <p style={{ color: "var(--fg-faint)", fontSize: 13 }}>{description}</p>
         )}
@@ -64,7 +63,7 @@ export function ErrorState({ error, onRetry }: ErrorStateProps) {
         <span className="text-2xl">⚠️</span>
       </div>
       <div>
-        <h3 className="font-medium mb-1" style={{ color: "var(--err)" }}>出错了</h3>
+        <h3 className="font-medium mb-1 ilo-fg-err">出错了</h3>
         <p style={{ color: "var(--fg-dim)", fontSize: 13, maxWidth: 320, wordBreak: "break-word" }}>
           {message}
         </p>

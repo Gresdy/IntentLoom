@@ -42,7 +42,7 @@ const EXAMPLES = [
 
 export function WelcomeView({ onAction }: WelcomeViewProps) {
   return (
-    <div className="h-full overflow-y-auto p-8" style={{ background: "var(--bg)" }}>
+    <div className="h-full overflow-y-auto p-8 ilo-bg-app">
       <div className="max-w-3xl mx-auto">
         {/* Logo 区域 */}
         <div className="text-center mb-12">
@@ -53,14 +53,12 @@ export function WelcomeView({ onAction }: WelcomeViewProps) {
             I
           </div>
           <h1 
-            className="text-3xl font-bold mb-3"
-            style={{ color: "var(--fg)" }}
+            className="text-3xl font-bold mb-3 ilo-fg"
           >
             IntentLoom
           </h1>
           <p 
-            className="text-lg mb-2"
-            style={{ color: "var(--fg-dim)" }}
+            className="text-lg mb-2 ilo-fg-dim"
           >
             你的 AI 编程伙伴
           </p>
@@ -107,7 +105,7 @@ export function WelcomeView({ onAction }: WelcomeViewProps) {
                 >
                   {feature.icon}
                 </div>
-                <h3 className="font-medium mb-1" style={{ color: "var(--fg)" }}>{feature.title}</h3>
+                <h3 className="font-medium mb-1 ilo-fg">{feature.title}</h3>
                 <p style={{ color: "var(--fg-faint)", fontSize: 12 }}>{feature.description}</p>
               </div>
             ))}
@@ -143,7 +141,7 @@ export function WelcomeView({ onAction }: WelcomeViewProps) {
                 onClick={() => onAction?.(example)}
               >
                 <span style={{ fontSize: 14 }}>{example}</span>
-                <ArrowRight size={16} style={{ color: "var(--fg-faint)" }} />
+                <ArrowRight size={16} className="ilo-fg-faint" />
               </button>
             ))}
           </div>
@@ -151,8 +149,7 @@ export function WelcomeView({ onAction }: WelcomeViewProps) {
 
         {/* 底部提示 */}
         <div 
-          className="mt-12 text-center text-xs"
-          style={{ color: "var(--fg-faint)" }}
+          className="mt-12 text-center text-xs ilo-fg-faint"
         >
           按 <kbd className="px-1.5 py-0.5 rounded mx-1" style={{ background: "var(--bg-elev-2)", border: "1px solid var(--border)" }}>Ctrl+K</kbd> 打开命令面板
           · 按 <kbd className="px-1.5 py-0.5 rounded mx-1" style={{ background: "var(--bg-elev-2)", border: "1px solid var(--border)" }}>Tab</kbd> 切换模式

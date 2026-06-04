@@ -112,10 +112,10 @@ function ToolCard({ item }: { item: any }) {
   const [expanded, setExpanded] = useState(false);
   
   const statusIcon: Record<string, React.ReactNode> = {
-    running: <Loader2 size={12} className="spin" style={{ color: "var(--accent)" }} />,
-    success: <span style={{ color: "var(--ok)" }}>✓</span>,
-    error: <span style={{ color: "var(--err)" }}>✗</span>,
-    pending: <span style={{ color: "var(--fg-faint)" }}>○</span>,
+    running: <Loader2 size={12} className="spin ilo-fg-accent" />,
+    success: <span className="ilo-fg-ok">✓</span>,
+    error: <span className="ilo-fg-err">✗</span>,
+    pending: <span className="ilo-fg-faint">○</span>,
   };
 
   return (

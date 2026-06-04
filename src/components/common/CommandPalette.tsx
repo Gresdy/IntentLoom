@@ -112,7 +112,7 @@ export function CommandPalette({ isOpen, onClose, commands }: CommandPaletteProp
           className="flex items-center gap-3 px-4 py-3"
           style={{ borderBottom: "1px solid var(--border-soft)" }}
         >
-          <Search size={18} style={{ color: "var(--fg-faint)" }} />
+          <Search size={18} className="ilo-fg-faint" />
           <input
             type="text"
             className="flex-1 bg-transparent outline-none"
@@ -157,7 +157,7 @@ export function CommandPalette({ isOpen, onClose, commands }: CommandPaletteProp
                     onMouseEnter={() => setSelectedIndex(currentIndex)}
                   >
                     {cmd.icon && (
-                      <span style={{ color: "var(--fg-dim)" }}>{cmd.icon}</span>
+                      <span className="ilo-fg-dim">{cmd.icon}</span>
                     )}
                     <div className="flex-1 min-w-0">
                       <div style={{ color: "var(--fg)", fontSize: 14 }}>{cmd.label}</div>
@@ -180,7 +180,7 @@ export function CommandPalette({ isOpen, onClose, commands }: CommandPaletteProp
           ))}
 
           {filteredCommands.length === 0 && (
-            <div className="px-4 py-8 text-center" style={{ color: "var(--fg-faint)" }}>
+            <div className="px-4 py-8 text-center ilo-fg-faint">
               未找到匹配的命令
             </div>
           )}

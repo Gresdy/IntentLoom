@@ -33,7 +33,7 @@ export function SettingsDrawer({ onClose }: SettingsDrawerProps) {
         </header>
 
         {/* Tab 导航 */}
-        <div className="flex border-b" style={{ borderColor: "var(--border-soft)" }}>
+        <div className="flex border-b ilo-border-soft">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -233,8 +233,7 @@ function AboutSettings() {
     <div>
       <div className="settings-section">
         <div 
-          className="flex flex-col items-center text-center p-6 rounded-lg"
-          style={{ background: "var(--bg-soft)" }}
+          className="flex flex-col items-center text-center p-6 rounded-lg ilo-bg-soft"
         >
           <div 
             className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-bold mb-4"
@@ -251,23 +250,23 @@ function AboutSettings() {
         <div className="settings-section__title">核心特性</div>
         <ul className="space-y-2" style={{ color: "var(--fg-dim)", fontSize: 13 }}>
           <li className="flex items-start gap-2">
-            <span style={{ color: "var(--ok)" }}>✓</span>
+            <span className="ilo-fg-ok">✓</span>
             意图驱动的 AI 编程伙伴
           </li>
           <li className="flex items-start gap-2">
-            <span style={{ color: "var(--ok)" }}>✓</span>
+            <span className="ilo-fg-ok">✓</span>
             支持多 AI 模型 (Claude, GPT, Gemini)
           </li>
           <li className="flex items-start gap-2">
-            <span style={{ color: "var(--ok)" }}>✓</span>
+            <span className="ilo-fg-ok">✓</span>
             项目级上下文理解
           </li>
           <li className="flex items-start gap-2">
-            <span style={{ color: "var(--ok)" }}>✓</span>
+            <span className="ilo-fg-ok">✓</span>
             专家模板系统
           </li>
           <li className="flex items-start gap-2">
-            <span style={{ color: "var(--ok)" }}>✓</span>
+            <span className="ilo-fg-ok">✓</span>
             安全的权限管理
           </li>
         </ul>
@@ -276,25 +275,24 @@ function AboutSettings() {
       <div className="settings-section">
         <div className="settings-section__title">技术栈</div>
         <div 
-          className="p-4 rounded-lg"
-          style={{ background: "var(--bg-soft)" }}
+          className="p-4 rounded-lg ilo-bg-soft"
         >
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
-              <span style={{ color: "var(--fg-faint)" }}>框架</span>
-              <div style={{ color: "var(--fg)" }}>Tauri 2.0</div>
+              <span className="ilo-fg-faint">框架</span>
+              <div className="ilo-fg">Tauri 2.0</div>
             </div>
             <div>
-              <span style={{ color: "var(--fg-faint)" }}>前端</span>
-              <div style={{ color: "var(--fg)" }}>React 19</div>
+              <span className="ilo-fg-faint">前端</span>
+              <div className="ilo-fg">React 19</div>
             </div>
             <div>
-              <span style={{ color: "var(--fg-faint)" }}>状态管理</span>
-              <div style={{ color: "var(--fg)" }}>Zustand</div>
+              <span className="ilo-fg-faint">状态管理</span>
+              <div className="ilo-fg">Zustand</div>
             </div>
             <div>
-              <span style={{ color: "var(--fg-faint)" }}>样式</span>
-              <div style={{ color: "var(--fg)" }}>UnoCSS + CSS Variables</div>
+              <span className="ilo-fg-faint">样式</span>
+              <div className="ilo-fg">UnoCSS + CSS Variables</div>
             </div>
           </div>
         </div>

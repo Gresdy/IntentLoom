@@ -61,8 +61,7 @@ export function Dialog({ isOpen, onClose, title, children, size = "md", showClos
             {showClose && (
               <button
                 onClick={onClose}
-                className="p-1 rounded hover:bg-bg-soft transition-colors"
-                style={{ color: "var(--fg-faint)" }}
+                className="p-1 rounded hover:bg-bg-soft transition-colors ilo-fg-faint"
               >
                 <X size={18} />
               </button>
