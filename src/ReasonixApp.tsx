@@ -1,4 +1,5 @@
 import { useCallback, useState, useEffect, lazy, Suspense } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   SquarePen, History, Settings, Command, Moon, Sun, Bot,
   FolderOpen, Search, Terminal, Code, Server,
@@ -77,6 +78,14 @@ const ALL_AGENTS: { id: AppId; label: string; shortLabel: string }[] = [
   { id: "openclaw", label: "OpenClaw", shortLabel: "OpenClaw" },
 ];
 
+function isNavKey(value: string | null): value is NavKey {
+  if (!value) return false;
+  return [
+    "chat", "projects", "agents", "model", "prompts", "mcp",
+    "usage", "skills", "expert", "sessions", "logs", "hermes", "search", "settings",
+  ].includes(value);
+}
+
 const PANEL_TITLES: Record<NavKey, string> = {
   chat: "聊天",
   projects: "项目管理",
@@ -103,26 +112,35 @@ export const ReasonixApp: React.FC = () => {
 
   const [mode, setMode] = useState<Mode>("normal");
   const [histView, setHistView] = useState<any[] | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
-  const [activeNav, setActiveNav] = useState<NavKey>("chat");
-  const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  // URL is the source of truth for navigation state: deep links,
+  // browser back/forward, and reload all stay in sync.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const panelParam = searchParams.get("panel");
+  const activeNav: NavKey = isNavKey(panelParam) ? panelParam : "chat";
+  const rightPanelOpen = activeNav !== "chat";
+  const settingsOpen = searchParams.get("view") === "settings";
   const { mode: themeMode, setMode: setThemeMode } = useThemeStore();
   const { currentApp, setCurrentApp } = useModelStore();
 
-  // Navigation: chat = close panel, others = open panel
-  const handleNavClick = useCallback((key: NavKey) => {
-    if (key === "chat") {
-      setActiveNav("chat");
-      setRightPanelOpen(false);
-    } else if (key === "settings") {
-      setSettingsOpen(true);
-    } else {
-      setActiveNav(key);
-      setRightPanelOpen(true);
-    }
-  }, []);
+  // Navigation: chat = close panel, others = open panel, settings = open drawer.
+  // Each call writes the URL, so deep links and back/forward stay correct.
+  const handleNavClick = useCallback(
+    (key: NavKey) => {
+      const next = new URLSearchParams(searchParams);
+      if (key === "chat") {
+        next.delete("panel");
+      } else if (key === "settings") {
+        next.set("view", "settings");
+      } else {
+        next.set("panel", key);
+        next.delete("view");
+      }
+      setSearchParams(next, { replace: false });
+    },
+    [searchParams, setSearchParams],
+  );
 
   // Switch agent
   const handleAgentSwitch = useCallback((appId: AppId) => {
@@ -164,21 +182,35 @@ export const ReasonixApp: React.FC = () => {
         e.preventDefault();
         setThemeMode(themeMode === "dark" ? "light" : "dark");
       } else if (e.key === "Escape") {
-        if (cmdPaletteOpen) setCmdPaletteOpen(false);
-        else if (rightPanelOpen) setRightPanelOpen(false);
-        else if (histView !== null) setHistView(null);
-        else if (settingsOpen) setSettingsOpen(false);
+        if (cmdPaletteOpen) {
+          setCmdPaletteOpen(false);
+        } else if (settingsOpen) {
+          const next = new URLSearchParams(searchParams);
+          next.delete("view");
+          setSearchParams(next, { replace: true });
+        } else if (rightPanelOpen) {
+          const next = new URLSearchParams(searchParams);
+          next.delete("panel");
+          setSearchParams(next, { replace: true });
+        } else if (histView !== null) {
+          setHistView(null);
+        }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [newSession, setThemeMode, themeMode, cmdPaletteOpen, rightPanelOpen, histView, settingsOpen]);
+  }, [newSession, setThemeMode, themeMode, cmdPaletteOpen, rightPanelOpen, histView, settingsOpen, searchParams, setSearchParams]);
 
   // Command palette commands
   const commands = useCommandPalette({
     onNewChat: () => { newSession(); setCmdPaletteOpen(false); },
     onOpenFolder: async () => { await pickWorkspace?.(); setCmdPaletteOpen(false); },
-    onSettings: () => { setSettingsOpen(true); setCmdPaletteOpen(false); },
+    onSettings: () => {
+  const next = new URLSearchParams(searchParams);
+  next.set("view", "settings");
+  setSearchParams(next, { replace: true });
+  setCmdPaletteOpen(false);
+},
     onToggleTheme: () => { setThemeMode(themeMode === "dark" ? "light" : "dark"); },
   });
 
@@ -243,7 +275,13 @@ export const ReasonixApp: React.FC = () => {
         return (
           <Suspense fallback={<PanelLoader />}>
             <SessionsPanel
-              onResume={(path) => { setHistView(null); resumeSession(path); setRightPanelOpen(false); }}
+              onResume={(path) => {
+  setHistView(null);
+  resumeSession(path);
+  const next = new URLSearchParams(searchParams);
+  next.delete("panel");
+  setSearchParams(next, { replace: true });
+}}
               onDelete={(path) => deleteSession(path)}
               onRename={(path, title) => renameSession(path, title)}
             />
@@ -413,14 +451,22 @@ export const ReasonixApp: React.FC = () => {
       {/* ── Right Panel (slide-in) ── */}
       {rightPanelOpen && (
         <>
-          <div className="right-panel-backdrop" onClick={() => setRightPanelOpen(false)} />
+          <div className="right-panel-backdrop" onClick={() => {
+  const next = new URLSearchParams(searchParams);
+  next.delete("panel");
+  setSearchParams(next, { replace: true });
+}} />
           <div className="right-panel">
             <div className="right-panel__head">
               <div className="right-panel__title">
                 <Sparkles size={14} style={{ color: "var(--accent)" }} />
                 {PANEL_TITLES[activeNav]}
               </div>
-              <button className="chip chip--icon" onClick={() => setRightPanelOpen(false)}>
+              <button className="chip chip--icon" onClick={() => {
+                const next = new URLSearchParams(searchParams);
+                next.delete("panel");
+                setSearchParams(next, { replace: true });
+              }}>
                 <X size={14} />
               </button>
             </div>
@@ -472,7 +518,11 @@ export const ReasonixApp: React.FC = () => {
       )}
 
       {/* ── Settings Drawer ── */}
-      {settingsOpen && <SettingsDrawer onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsDrawer onClose={() => {
+  const next = new URLSearchParams(searchParams);
+  next.delete("view");
+  setSearchParams(next, { replace: true });
+}} />}
     </div>
   );
 };
