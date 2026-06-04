@@ -214,12 +214,6 @@ export const ReasonixApp: React.FC = () => {
     onToggleTheme: () => { setThemeMode(themeMode === "dark" ? "light" : "dark"); },
   });
 
-  const modeColors: Record<Mode, string> = {
-    normal: "#a3a3ab",
-    plan: "#d97757",
-    yolo: "#e5484d",
-  };
-
   // Right panel content
   const renderRightPanel = () => {
     switch (activeNav) {
@@ -349,7 +343,7 @@ export const ReasonixApp: React.FC = () => {
             className="sidebar__toggle"
             onClick={() => setSidebarExpanded(!sidebarExpanded)}
           >
-            <ChevronRight size={14} className="sidebar__toggle-icon" style={{ transform: sidebarExpanded ? "rotate(180deg)" : undefined }} />
+            <ChevronRight size={14} className={`sidebar__toggle-icon${sidebarExpanded ? " sidebar__toggle-icon--expanded" : ""}`} />
             {sidebarExpanded && <span>收起</span>}
           </button>
         </div>
@@ -381,22 +375,13 @@ export const ReasonixApp: React.FC = () => {
           <span className="topbar__model">{state.meta?.cwd || "IntentLoom"}</span>
 
           {/* Right controls */}
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div className="topbar__right">
             {/* Mode toggle */}
             <button
-              className="mode-badge"
-              style={{
-                background: "var(--bg-soft)",
-                color: modeColors[mode],
-                border: mode === "yolo" ? "1px solid #e5484d" : "1px solid var(--border)",
-                fontSize: 11,
-                padding: "3px 8px",
-                borderRadius: 6,
-                cursor: "pointer",
-              }}
+              className={`mode-badge mode-badge--${mode}`}
               onClick={cycleMode}
             >
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: modeColors[mode], display: "inline-block" }} />
+              <span className="mode-badge__dot" />
               {mode === "normal" ? "NORMAL" : mode === "plan" ? "PLAN" : "YOLO"}
             </button>
 
@@ -459,7 +444,7 @@ export const ReasonixApp: React.FC = () => {
           <div className="right-panel">
             <div className="right-panel__head">
               <div className="right-panel__title">
-                <Sparkles size={14} style={{ color: "var(--accent)" }} />
+                <Sparkles size={14} className="ilo-fg-accent" />
                 {PANEL_TITLES[activeNav]}
               </div>
               <button className="chip chip--icon" onClick={() => {
@@ -494,7 +479,7 @@ export const ReasonixApp: React.FC = () => {
             <div className="modal__head">
               <div className="modal__title">⚠️ 权限请求</div>
             </div>
-            <div className="approval" style={{ padding: "16px" }}>
+            <div className="approval">
               <div className="approval__tool">{state.approval.tool}</div>
               <div className="approval__args">{state.approval.args}</div>
               <div className="approval__actions">
@@ -531,8 +516,8 @@ export const ReasonixApp: React.FC = () => {
 
 function PanelLoader() {
   return (
-    <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
-      <div style={{ width: 24, height: 24, border: "2px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+    <div className="panel-loader">
+      <div className="panel-loader__spinner" />
     </div>
   );
 }
@@ -551,28 +536,19 @@ function SessionsPanel({ onResume, onDelete, onRename: _onRename }: {
 
   if (loading) return <PanelLoader />;
   if (!sessions.length) return (
-    <div style={{ padding: 40, textAlign: "center", color: "var(--fg-dim)", fontSize: 13 }}>
-      暂无会话记录
-    </div>
+    <div className="panel-empty">暂无会话记录</div>
   );
 
   return (
-    <div style={{ padding: 12 }}>
+    <div className="session-list">
       {sessions.map((s) => (
-        <div key={s.id || s.path} style={{
-          display: "flex", alignItems: "center", gap: 10,
-          padding: "10px 12px", borderRadius: 8, background: "var(--bg)",
-          marginBottom: 6, cursor: "pointer",
-          border: "1px solid var(--border-soft)",
-        }}
-          onClick={() => onResume(s.path)}
-        >
-          <MessageSquare size={14} style={{ color: "var(--fg-dim)", flexShrink: 0 }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, color: "var(--fg)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title || "无标题会话"}</div>
-            {s.preview && <div style={{ fontSize: 11, color: "var(--fg-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.preview}</div>}
+        <div key={s.id || s.path} className="session-row" onClick={() => onResume(s.path)}>
+          <MessageSquare size={14} className="ilo-fg-dim session-row__icon" />
+          <div className="session-row__body">
+            <div className="session-row__title">{s.title || "无标题会话"}</div>
+            {s.preview && <div className="session-row__preview">{s.preview}</div>}
           </div>
-          <button className="chip chip--icon" style={{ flexShrink: 0 }} onClick={(e) => { e.stopPropagation(); onDelete(s.path); }}>
+          <button className="chip chip--icon session-row__delete" onClick={(e) => { e.stopPropagation(); onDelete(s.path); }}>
             <X size={12} />
           </button>
         </div>
@@ -586,16 +562,13 @@ function ModelPanel() {
   const providerList = Object.values(providers);
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ marginBottom: 16 }}>
-        <h3 style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", marginBottom: 8 }}>当前模型</h3>
+    <div className="model-panel">
+      <div className="model-panel__section">
+        <h3 className="model-panel__heading">当前模型</h3>
         <select
+          className="model-panel__select"
           value={currentProviderId}
           onChange={(e) => switchProvider(e.target.value)}
-          style={{
-            width: "100%", padding: "8px 12px", background: "var(--bg)", color: "var(--fg)",
-            border: "1px solid var(--border)", borderRadius: 8, fontSize: 13,
-          }}
         >
           {providerList.map((p) => (
             <option key={p.id} value={p.id}>{p.name} {p.settingsConfig?.ANTHROPIC_MODEL ? "(" + p.settingsConfig.ANTHROPIC_MODEL + ")" : ""}</option>
@@ -603,18 +576,15 @@ function ModelPanel() {
         </select>
       </div>
       <div>
-        <h3 style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", marginBottom: 8 }}>可用模型</h3>
+        <h3 className="model-panel__heading">可用模型</h3>
         {providerList.map((p) => (
-          <div key={p.id} style={{
-            padding: "10px 12px", borderRadius: 8, marginBottom: 6,
-            background: currentProviderId === p.id ? "var(--accent-soft)" : "var(--bg)",
-            border: `1px solid ${currentProviderId === p.id ? "var(--accent)" : "var(--border-soft)"}`,
-            cursor: "pointer",
-          }}
+          <div
+            key={p.id}
+            className={`model-card${currentProviderId === p.id ? " model-card--active" : ""}`}
             onClick={() => switchProvider(p.id)}
           >
-            <div style={{ fontSize: 13, fontWeight: 500, color: currentProviderId === p.id ? "var(--accent)" : "var(--fg)" }}>{p.name}</div>
-            <div style={{ fontSize: 11, color: "var(--fg-faint)", fontFamily: "var(--mono)" }}>{p.settingsConfig?.ANTHROPIC_MODEL || p.name}</div>
+            <div className="model-card__name">{p.name}</div>
+            <div className="model-card__model">{p.settingsConfig?.ANTHROPIC_MODEL || p.name}</div>
           </div>
         ))}
       </div>
@@ -641,32 +611,27 @@ function SearchPanel() {
   }, [query]);
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+    <div className="search-panel">
+      <div className="search-panel__bar">
         <input
+          className="search-panel__input"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSearch()}
           placeholder="搜索代码..."
-          style={{
-            flex: 1, padding: "8px 12px", background: "var(--bg)", color: "var(--fg)",
-            border: "1px solid var(--border)", borderRadius: 8, fontSize: 13,
-          }}
         />
         <button onClick={handleSearch} disabled={searching} className="chip chip--on">
           <Search size={13} />
         </button>
       </div>
       {results.map((r, i) => (
-        <div key={i} style={{ padding: "10px", borderBottom: "1px solid var(--border-soft)" }}>
-          <div style={{ fontSize: 12, fontFamily: "var(--mono)", color: "var(--accent)" }}>{r.file}</div>
-          <div style={{ fontSize: 12, color: "var(--fg)", marginTop: 4 }}>{r.line}</div>
+        <div key={i} className="search-panel__row">
+          <div className="search-panel__file">{r.file}</div>
+          <div className="search-panel__line">{r.line}</div>
         </div>
       ))}
       {!results.length && query && !searching && (
-        <div style={{ color: "var(--fg-faint)", fontSize: 13, textAlign: "center", padding: 20 }}>
-          无结果
-        </div>
+        <div className="search-panel__empty">无结果</div>
       )}
     </div>
   );
@@ -676,29 +641,24 @@ function HermesPanel() {
   const switchHermesMode = (window as any).__hermesStore?.switchHermesMode;
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ padding: 16, borderRadius: 8, background: "var(--bg)", border: "1px solid var(--border-soft)", marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <Bot size={18} style={{ color: "var(--accent)" }} />
-          <span style={{ fontWeight: 600, fontSize: 14 }}>Hermes Agent</span>
-          <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: "var(--ok)", color: "var(--accent-fg)" }}>已激活</span>
+    <div className="hermes-panel">
+      <div className="hermes-panel__card">
+        <div className="hermes-panel__title-row">
+          <Bot size={18} className="ilo-fg-accent" />
+          <span className="hermes-panel__title">Hermes Agent</span>
+          <span className="hermes-panel__badge">已激活</span>
         </div>
-        <p style={{ fontSize: 12, color: "var(--fg-dim)" }}>
+        <p className="hermes-panel__desc">
           Hermes 是 IntentLoom 的本地 AI 助手，运行在您的设备上，保护隐私。
         </p>
       </div>
       <div>
-        <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>模式</h3>
+        <h3 className="hermes-panel__heading">模式</h3>
         {["normal", "plan", "yolo"].map((m) => (
           <button
             key={m}
+            className="hermes-panel__mode-btn"
             onClick={() => switchHermesMode?.(m)}
-            style={{
-              display: "block", width: "100%", padding: "8px 12px", marginBottom: 4,
-              borderRadius: 8, border: "1px solid var(--border-soft)",
-              background: "var(--bg)", color: "var(--fg-dim)",
-              fontSize: 13, textAlign: "left", cursor: "pointer",
-            }}
           >
             {m.toUpperCase()}
           </button>

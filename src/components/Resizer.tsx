@@ -53,7 +53,7 @@ export const Resizer: React.FC<ResizerProps> = ({ direction, onResize, className
       className={`
         ${className}
         ${direction === "horizontal" ? "w-1 cursor-col-resize" : "h-1 cursor-row-resize"}
-        bg-gray-300 hover:bg-gray-400 transition-colors
+        ilo-bg-elev-2 hover:bg-gray-400 transition-colors
         select-none
       `}
       onMouseDown={handleMouseDown}

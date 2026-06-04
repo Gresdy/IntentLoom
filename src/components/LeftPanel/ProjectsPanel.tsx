@@ -50,19 +50,19 @@ const TreeNode: React.FC<TreeNodeProps> = ({ node, depth, onFileSelect, selected
   return (
     <div>
       <div
-        className={`flex items-center gap-1 py-1 px-2 cursor-pointer hover:bg-gray-100 rounded ${
+        className={`flex items-center gap-1 py-1 px-2 cursor-pointer hover:ilo-bg-soft rounded ${
           isSelected ? "bg-indigo-100" : ""
         }`}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={handleClick}
       >
-        <span className="text-gray-500 w-4">
+        <span className="ilo-fg-dim w-4">
           {node.file_type === "directory" ? (expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : null}
         </span>
-        <span className={`text-sm ${node.file_type === "directory" ? "font-medium" : "text-gray-600"}`}>
+        <span className={`text-sm ${node.file_type === "directory" ? "font-medium" : "ilo-fg-faint"}`}>
           {node.name}
         </span>
-        {loading && <span className="ml-2 text-xs text-gray-400">加载中...</span>}
+        {loading && <span className="ml-2 text-xs ilo-fg-dim">加载中...</span>}
       </div>
       {expanded && children.map((child) => (
         <TreeNode key={child.path} node={child} depth={depth + 1} onFileSelect={onFileSelect} selectedFile={selectedFile} />
@@ -167,17 +167,17 @@ export const ProjectsPanel: React.FC = () => {
   };
 
   return (
-    <div className="h-full flex bg-white">
+    <div className="h-full flex ilo-bg-elev">
       {/* Left: Project Tree */}
       <div className="flex flex-col" style={{ width: showPreview ? "40%" : "100%" }}>
         {/* Header with Dropdown */}
-        <div className="p-4 border-b border-gray-200">
+        <div className="p-4 border-b ilo-border-soft">
           <div className="flex items-center gap-3">
             <select
               value={selectedProjectId}
               onChange={(e) => setSelectedProjectId(e.target.value)}
               disabled={projectsLoading}
-              className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="flex-1 px-3 py-2 border ilo-border-soft rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               <option value="">{projectsLoading ? "加载项目中..." : "选择项目..."}</option>
               {projects.map((project) => (
@@ -189,7 +189,7 @@ export const ProjectsPanel: React.FC = () => {
             <button
               onClick={handleAddProject}
               disabled={loading || projectsLoading}
-              className="flex items-center gap-1 px-3 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              className="flex items-center gap-1 px-3 py-2 text-sm bg-indigo-600 ilo-fg-onaccent rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
             >
               <Plus size={16} />
               添加
@@ -197,7 +197,7 @@ export const ProjectsPanel: React.FC = () => {
             {selectedFile && (
               <button
                 onClick={handlePreviewToggle}
-                className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg"
+                className="p-2 ilo-fg-dim hover:ilo-bg-soft rounded-lg"
                 title={showPreview ? "隐藏预览" : "显示预览"}
               >
                 {showPreview ? <SkipForward size={20} /> : <ChevronLeft size={20} />}
@@ -205,23 +205,23 @@ export const ProjectsPanel: React.FC = () => {
             )}
           </div>
           {selectedProject && (
-            <p className="text-xs text-gray-500 mt-2 truncate">{selectedProject.path}</p>
+            <p className="text-xs ilo-fg-dim mt-2 truncate">{selectedProject.path}</p>
           )}
         </div>
 
         {/* File Tree */}
         <div className="flex-1 overflow-y-auto">
           {!selectedProjectId ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400">
+            <div className="flex flex-col items-center justify-center h-full ilo-fg-dim">
               <FolderOpen size={48} />
               <p className="mt-3 text-sm">请选择一个项目</p>
             </div>
           ) : loading ? (
-            <div className="flex items-center justify-center h-full text-gray-400">
+            <div className="flex items-center justify-center h-full ilo-fg-dim">
               <p className="text-sm">加载中...</p>
             </div>
           ) : fileTree.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400">
+            <div className="flex flex-col items-center justify-center h-full ilo-fg-dim">
               <FolderOpen size={48} />
               <p className="mt-3 text-sm">项目目录为空</p>
             </div>
@@ -237,19 +237,19 @@ export const ProjectsPanel: React.FC = () => {
 
       {/* Right: File Preview */}
       {showPreview && selectedFile && (
-        <div className="flex-1 border-l border-gray-200 flex flex-col bg-gray-50">
+        <div className="flex-1 border-l ilo-border-soft flex flex-col ilo-bg-soft">
           {/* File Header */}
-          <div className="p-3 border-b border-gray-200 bg-white flex items-center justify-between">
+          <div className="p-3 border-b ilo-border-soft ilo-bg-elev flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <FileText size={18} className="text-gray-500" />
-              <span className="font-medium text-gray-800">{fileName}</span>
+              <FileText size={18} className="ilo-fg-dim" />
+              <span className="font-medium ilo-fg-faint">{fileName}</span>
             </div>
             <button
               onClick={() => {
                 setShowPreview(false);
                 setSelectedFile("");
               }}
-              className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
+              className="p-1 ilo-fg-dim hover:ilo-fg-faint hover:ilo-bg-soft rounded"
             >
               ✕
             </button>
@@ -258,11 +258,11 @@ export const ProjectsPanel: React.FC = () => {
           {/* File Content */}
           <div className="flex-1 overflow-auto p-4">
             {contentLoading ? (
-              <div className="flex items-center justify-center h-full text-gray-400">
+              <div className="flex items-center justify-center h-full ilo-fg-dim">
                 <p className="text-sm">加载文件中...</p>
               </div>
             ) : (
-              <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono">
+              <pre className="text-sm ilo-fg-faint whitespace-pre-wrap font-mono">
                 {fileContent}
               </pre>
             )}

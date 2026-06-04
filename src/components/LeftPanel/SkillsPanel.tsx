@@ -239,16 +239,16 @@ export const SkillsPanel: React.FC = () => {
   };
 
   return (
-    <div className="h-full flex flex-col bg-white">
+    <div className="h-full flex flex-col ilo-bg-elev">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200">
+      <div className="flex items-center justify-between px-4 py-2 border-b ilo-border-soft">
         <div className="flex space-x-0">
           {(["local", "market", "ide", "project", "settings"] as TabKey[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={`px-4 py-2 font-medium transition-all duration-200 ${
-                tab === t ? "bg-black text-white" : "text-gray-600 hover:bg-gray-100"
+                tab === t ? "bg-black ilo-fg-onaccent" : "ilo-fg-faint hover:ilo-bg-soft"
               }`}
             >
               {t === "local" ? "Local Skills" : t === "market" ? "Market" : t === "ide" ? "IDE Browser" : t === "project" ? "Projects" : "Settings"}
@@ -310,10 +310,10 @@ export const SkillsPanel: React.FC = () => {
         {tab === "local" && (
           <div className="space-y-4">
             <div>
-              <h2 className="text-lg font-semibold text-gray-800">Local Skills</h2>
-              <p className="text-sm text-gray-500 mt-1">To import local skills, select the folder containing SKILL.md.</p>
+              <h2 className="text-lg font-semibold ilo-fg-faint">Local Skills</h2>
+              <p className="text-sm ilo-fg-dim mt-1">To import local skills, select the folder containing SKILL.md.</p>
               <div className="flex items-center justify-between mt-2">
-                <div className="text-sm font-medium text-gray-600">
+                <div className="text-sm font-medium ilo-fg-faint">
                   Total {installed.length}
                 </div>
                 <div className="flex items-center">
@@ -328,7 +328,7 @@ export const SkillsPanel: React.FC = () => {
                     }}
                     className="mr-2"
                   />
-                  <span className="text-sm text-gray-600">Select all</span>
+                  <span className="text-sm ilo-fg-faint">Select all</span>
                 </div>
               </div>
             </div>
@@ -341,7 +341,7 @@ export const SkillsPanel: React.FC = () => {
                 onChange={(e) => setQuery(e.target.value)}
                 style={{ ...inputStyle, maxWidth: 480 }}
               />
-              <div className="text-sm text-gray-500 ml-4">
+              <div className="text-sm ilo-fg-dim ml-4">
                 Showing {installed.length} / {installed.length}
               </div>
             </div>
@@ -363,7 +363,7 @@ export const SkillsPanel: React.FC = () => {
                 {installed.map((skill, index) => (
                   <div
                     key={skill.id}
-                    className="border border-gray-200 rounded-lg p-3 hover:border-gray-300 transition-all duration-200"
+                    className="border ilo-border-soft rounded-lg p-3 hover:ilo-border transition-all duration-200"
                   >
                     <div className="flex items-start gap-3">
                       <input
@@ -374,17 +374,17 @@ export const SkillsPanel: React.FC = () => {
                       />
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <h3 className="font-medium text-gray-900">{index + 1}. {skill.name}</h3>
+                          <h3 className="font-medium ilo-fg-faint">{index + 1}. {skill.name}</h3>
                         </div>
                         {Object.keys(skill.symlinks).length > 0 ? (
-                          <p className="text-sm text-gray-600 mt-1">Linked to {Object.keys(skill.symlinks).join(' / ')}</p>
+                          <p className="text-sm ilo-fg-faint mt-1">Linked to {Object.keys(skill.symlinks).join(' / ')}</p>
                         ) : (
-                          <p className="text-sm text-gray-500 mt-1">Not linked</p>
+                          <p className="text-sm ilo-fg-dim mt-1">Not linked</p>
                         )}
                         {skill.description && (
-                          <p className="text-sm text-gray-600 mt-1">{skill.description}</p>
+                          <p className="text-sm ilo-fg-faint mt-1">{skill.description}</p>
                         )}
-                        <p className="text-xs text-gray-500 mt-1">{skill.local_path}</p>
+                        <p className="text-xs ilo-fg-dim mt-1">{skill.local_path}</p>
 
                         <div className="flex flex-wrap gap-1 mt-2">
                           {IDE_OPTIONS.map((ide) => (
@@ -408,7 +408,7 @@ export const SkillsPanel: React.FC = () => {
                 ))}
               </div>
             ) : (
-              <div className="border border-gray-200 rounded-lg p-8 text-center">
+              <div className="border ilo-border-soft rounded-lg p-8 text-center">
                 <div style={{ padding: 40, textAlign: "center", color: "var(--fg-faint)", fontSize: 13 }}>暂未安装任何 Skill</div>
               </div>
             )}
@@ -417,7 +417,7 @@ export const SkillsPanel: React.FC = () => {
 
         {tab === "market" && (
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-gray-800">Marketplace Search</h2>
+            <h2 className="text-lg font-semibold ilo-fg-faint">Marketplace Search</h2>
 
             <div className="flex gap-3">
               <input
@@ -441,23 +441,23 @@ export const SkillsPanel: React.FC = () => {
                 {skills.map((skill) => (
                   <div
                     key={skill.id}
-                    className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-all duration-200"
+                    className="border ilo-border-soft rounded-lg p-4 hover:ilo-border transition-all duration-200"
                   >
-                    <h3 className="font-medium text-gray-900 text-lg mb-2">{skill.name}</h3>
-                    <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
+                    <h3 className="font-medium ilo-fg-faint text-lg mb-2">{skill.name}</h3>
+                    <div className="flex items-center gap-2 text-sm ilo-fg-faint mb-2">
                       <span>作者 {skill.author}</span>
                       {skill.version && <span>• v{skill.version}</span>}
                     </div>
-                    <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
+                    <div className="flex items-center gap-2 text-sm ilo-fg-dim mb-3">
                       <span>⭐ {Math.floor(Math.random() * 10000)}</span>
                       <span>↓ {Math.floor(Math.random() * 5000)}</span>
                     </div>
-                    <p className="text-sm text-gray-600 mb-3">{skill.description}</p>
-                    <div className="text-xs text-gray-500 mb-3">
+                    <p className="text-sm ilo-fg-faint mb-3">{skill.description}</p>
+                    <div className="text-xs ilo-fg-dim mb-3">
                       Source: {skill.source}
                     </div>
                     {skill.repo_url && (
-                      <div className="text-xs text-gray-500 mb-3 break-all">
+                      <div className="text-xs ilo-fg-dim mb-3 break-all">
                         {skill.repo_url}
                       </div>
                     )}
@@ -473,7 +473,7 @@ export const SkillsPanel: React.FC = () => {
                 ))}
               </div>
             ) : (
-              <div className="border border-gray-200 rounded-lg p-8 text-center">
+              <div className="border ilo-border-soft rounded-lg p-8 text-center">
                 <div style={{ padding: 40, textAlign: "center", color: "var(--fg-faint)", fontSize: 13 }}>搜索 Skills 后在此显示</div>
               </div>
             )}
@@ -483,8 +483,8 @@ export const SkillsPanel: React.FC = () => {
         {tab === "ide" && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-800">IDE Browser</h2>
-              <div className="text-sm text-gray-600">
+              <h2 className="text-lg font-semibold ilo-fg-faint">IDE Browser</h2>
+              <div className="text-sm ilo-fg-faint">
                 {ideSkills.length} skills
               </div>
             </div>
@@ -515,15 +515,15 @@ export const SkillsPanel: React.FC = () => {
                 {ideSkills.map((skill, index) => (
                   <div
                     key={skill.id}
-                    className="border border-gray-200 rounded-lg p-3 hover:border-gray-300 transition-all duration-200"
+                    className="border ilo-border-soft rounded-lg p-3 hover:ilo-border transition-all duration-200"
                   >
                     <div className="flex items-start gap-3">
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <h3 className="font-medium text-gray-900">{index + 1}. {skill.name}</h3>
+                          <h3 className="font-medium ilo-fg-faint">{index + 1}. {skill.name}</h3>
                           <span className="text-xs font-medium text-green-600">{platform} - Linked</span>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1">{skill.symlinks[platform]}</p>
+                        <p className="text-xs ilo-fg-dim mt-1">{skill.symlinks[platform]}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <button style={btnStyle} onClick={() => handleOpenFolder(skill)}>Open Folder</button>
@@ -534,7 +534,7 @@ export const SkillsPanel: React.FC = () => {
                 ))}
               </div>
             ) : (
-              <div className="border border-gray-200 rounded-lg p-8 text-center">
+              <div className="border ilo-border-soft rounded-lg p-8 text-center">
                 <div style={{ padding: 40, textAlign: "center", color: "var(--fg-faint)", fontSize: 13 }}>当前 IDE ({platform}) 暂无已安装的技能</div>
               </div>
             )}
@@ -544,18 +544,18 @@ export const SkillsPanel: React.FC = () => {
         {tab === "project" && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-800">Projects</h2>
+              <h2 className="text-lg font-semibold ilo-fg-faint">Projects</h2>
               <button style={btnPrimaryStyle}>Add Project</button>
             </div>
-            <p className="text-sm text-gray-600">Configure separate Skills environments for different projects.</p>
+            <p className="text-sm ilo-fg-faint">Configure separate Skills environments for different projects.</p>
 
-            <div className="border border-gray-200 rounded-lg p-4">
-              <div className="border border-gray-200 rounded-lg p-3 mb-2">
+            <div className="border ilo-border-soft rounded-lg p-4">
+              <div className="border ilo-border-soft rounded-lg p-3 mb-2">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h3 className="font-medium text-gray-900">demo</h3>
-                    <p className="text-xs text-gray-500">/Users/wrt/IdeaProjects/demo</p>
-                    <p className="text-xs text-gray-600 mt-1">IDE Targets: 3</p>
+                    <h3 className="font-medium ilo-fg-faint">demo</h3>
+                    <p className="text-xs ilo-fg-dim">/Users/wrt/IdeaProjects/demo</p>
+                    <p className="text-xs ilo-fg-faint mt-1">IDE Targets: 3</p>
                     <div className="flex flex-wrap gap-1 mt-2">
                       <span className="badge" style={{ color: "var(--ok)", borderColor: "var(--ok)" }}>Cursor</span>
                       <span className="badge" style={{ color: "var(--ok)", borderColor: "var(--ok)" }}>Claude Code</span>
@@ -577,9 +577,9 @@ export const SkillsPanel: React.FC = () => {
 
         {tab === "settings" && (
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-gray-800">Settings</h2>
-            <div className="border border-gray-200 rounded-lg p-6">
-              <p className="text-sm text-gray-600">Skills Manager settings will be available here.</p>
+            <h2 className="text-lg font-semibold ilo-fg-faint">Settings</h2>
+            <div className="border ilo-border-soft rounded-lg p-6">
+              <p className="text-sm ilo-fg-faint">Skills Manager settings will be available here.</p>
             </div>
           </div>
         )}

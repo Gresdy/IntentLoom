@@ -284,7 +284,7 @@ export function ExpertPanel(_props: Props) {
 
   // 渲染主内容
   return (
-    <div className="h-full flex flex-col bg-gray-50">
+    <div className="h-full flex flex-col ilo-bg-soft">
       {/* Toast */}
       {toast && (
         <div style={{
@@ -298,9 +298,9 @@ export function ExpertPanel(_props: Props) {
         </div>
       )}
       {/* 头部 */}
-      <div className="px-4 py-3 bg-white border-b border-gray-200 flex items-center justify-between">
+      <div className="px-4 py-3 ilo-bg-elev border-b ilo-border-soft flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h2 className="font-semibold text-gray-800">专家中心</h2>
+          <h2 className="font-semibold ilo-fg-faint">专家中心</h2>
           <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs rounded-full">
             {viewMode === "my-experts" ? `${experts.length} 个` : `${agencyExperts.length} 个`}
           </span>
@@ -309,7 +309,7 @@ export function ExpertPanel(_props: Props) {
           {viewMode === "my-experts" && (
             <button
               onClick={openCreate}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 ilo-fg-onaccent text-xs font-medium rounded-lg hover:bg-indigo-700 transition-colors"
             >
               <Plus size={14} />
               新建
@@ -318,7 +318,7 @@ export function ExpertPanel(_props: Props) {
           {viewMode === "agency-library" && (
             <button
               onClick={handleImportDir}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white text-xs font-medium rounded-lg hover:bg-emerald-700 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 ilo-fg-onaccent text-xs font-medium rounded-lg hover:bg-emerald-700 transition-colors"
             >
               <Download size={14} />
               导入目录
@@ -328,13 +328,13 @@ export function ExpertPanel(_props: Props) {
       </div>
 
       {/* 视图切换 */}
-      <div className="px-4 py-2 bg-white border-b border-gray-100 flex items-center gap-2">
+      <div className="px-4 py-2 ilo-bg-elev border-b ilo-border-soft flex items-center gap-2">
         <button
           onClick={() => setViewMode("my-experts")}
           className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
             viewMode === "my-experts"
               ? "bg-indigo-100 text-indigo-700"
-              : "text-gray-500 hover:bg-gray-100"
+              : "ilo-fg-dim hover:ilo-bg-soft"
           }`}
         >
           <User size={14} />
@@ -350,7 +350,7 @@ export function ExpertPanel(_props: Props) {
           className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
             viewMode === "agency-library"
               ? "bg-indigo-100 text-indigo-700"
-              : "text-gray-500 hover:bg-gray-100"
+              : "ilo-fg-dim hover:ilo-bg-soft"
           }`}
         >
           <Star size={14} />
@@ -369,7 +369,7 @@ export function ExpertPanel(_props: Props) {
       {viewMode === "my-experts" && (
         <div className="flex-1 overflow-y-auto p-4">
           {loading && (
-            <div className="flex items-center justify-center h-32 text-gray-400">
+            <div className="flex items-center justify-center h-32 ilo-fg-dim">
               <div className="text-sm">加载中...</div>
             </div>
           )}
@@ -381,9 +381,9 @@ export function ExpertPanel(_props: Props) {
 
           {!loading && !error && experts.length === 0 && (
             <div className="flex flex-col items-center justify-center h-48 text-center">
-              <User size={48} className="text-gray-300 mb-3" />
-              <p className="text-sm text-gray-500 mb-1">暂无专家</p>
-              <p className="text-xs text-gray-400 mb-4">
+              <User size={48} className="ilo-fg mb-3" />
+              <p className="text-sm ilo-fg-dim mb-1">暂无专家</p>
+              <p className="text-xs ilo-fg-dim mb-4">
                 从专家库导入或手动创建专家
               </p>
               <button
@@ -401,7 +401,7 @@ export function ExpertPanel(_props: Props) {
               {experts.map((expert) => (
                 <div
                   key={expert.id}
-                  className={`bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow ${
+                  className={`ilo-bg-elev rounded-xl border ilo-border-soft p-4 hover:shadow-md transition-shadow ${
                     expert.isActive ? "" : "opacity-50"
                   }`}
                 >
@@ -418,7 +418,7 @@ export function ExpertPanel(_props: Props) {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <h3 className="font-semibold text-gray-800 truncate">
+                        <h3 className="font-semibold ilo-fg-faint truncate">
                           {expert.name}
                         </h3>
                         {expert.isActive ? (
@@ -426,13 +426,13 @@ export function ExpertPanel(_props: Props) {
                             已启用
                           </span>
                         ) : (
-                          <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 text-[10px] rounded">
+                          <span className="px-1.5 py-0.5 ilo-bg-soft ilo-fg-dim text-[10px] rounded">
                             已停用
                           </span>
                         )}
                       </div>
                       {expert.description && (
-                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                        <p className="text-xs ilo-fg-dim mt-1 line-clamp-2">
                           {expert.description}
                         </p>
                       )}
@@ -440,13 +440,13 @@ export function ExpertPanel(_props: Props) {
                         {(expert.skills ?? []).slice(0, 3).map((skill) => (
                           <span
                             key={skill}
-                            className="px-2 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded"
+                            className="px-2 py-0.5 ilo-bg-soft ilo-fg-faint text-[10px] rounded"
                           >
                             {skill}
                           </span>
                         ))}
                         {(expert.skills ?? []).length > 3 && (
-                          <span className="px-2 py-0.5 text-gray-400 text-[10px]">
+                          <span className="px-2 py-0.5 ilo-fg-dim text-[10px]">
                             +{(expert.skills ?? []).length - 3}
                           </span>
                         )}
@@ -455,7 +455,7 @@ export function ExpertPanel(_props: Props) {
                     <div className="flex flex-col gap-1 shrink-0">
                       <button
                         onClick={() => openEdit(expert)}
-                        className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                        className="p-1.5 ilo-fg-dim hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
                         title="编辑"
                       >
                         <Pencil size={14} />
@@ -465,7 +465,7 @@ export function ExpertPanel(_props: Props) {
                         className={`p-1.5 rounded transition-colors ${
                           expert.isActive
                             ? "text-green-500 hover:text-green-600 hover:bg-green-50"
-                            : "text-gray-400 hover:text-gray-500 hover:bg-gray-50"
+                            : "ilo-fg-dim hover:ilo-fg-dim hover:ilo-bg-soft"
                         }`}
                         title={expert.isActive ? "停用" : "启用"}
                       >
@@ -473,7 +473,7 @@ export function ExpertPanel(_props: Props) {
                       </button>
                       <button
                         onClick={() => setDeleting(expert.id)}
-                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                        className="p-1.5 ilo-fg-dim hover:text-red-600 hover:bg-red-50 rounded transition-colors"
                         title="删除"
                       >
                         <Trash2 size={14} />
@@ -493,9 +493,9 @@ export function ExpertPanel(_props: Props) {
       {viewMode === "agency-library" && (
         <>
           {/* 搜索栏 */}
-          <div className="px-4 py-2 bg-white border-b border-gray-100">
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-200">
-              <Search size={14} className="text-gray-400 shrink-0" />
+          <div className="px-4 py-2 ilo-bg-elev border-b ilo-border-soft">
+            <div className="flex items-center gap-2 px-3 py-1.5 ilo-bg-soft rounded-lg border ilo-border-soft">
+              <Search size={14} className="ilo-fg-dim shrink-0" />
               <input
                 value={searchQuery}
                 onChange={(e) => searchExperts(e.target.value)}
@@ -505,7 +505,7 @@ export function ExpertPanel(_props: Props) {
               {searchQuery && (
                 <button
                   onClick={() => searchExperts("")}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="ilo-fg-dim hover:ilo-fg-faint"
                 >
                   ✕
                 </button>
@@ -514,13 +514,13 @@ export function ExpertPanel(_props: Props) {
           </div>
 
           {/* 部门筛选 */}
-          <div className="px-4 py-2 bg-white border-b border-gray-100 flex items-center gap-1 overflow-x-auto">
+          <div className="px-4 py-2 ilo-bg-elev border-b ilo-border-soft flex items-center gap-1 overflow-x-auto">
             <button
               onClick={() => filterByDepartment("all")}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
                 activeDepartment === "all"
                   ? "bg-indigo-100 text-indigo-700"
-                  : "text-gray-600 hover:bg-gray-100"
+                  : "ilo-fg-faint hover:ilo-bg-soft"
               }`}
             >
               全部
@@ -528,7 +528,7 @@ export function ExpertPanel(_props: Props) {
                 className={`px-1.5 py-0.5 rounded text-[10px] ${
                   activeDepartment === "all"
                     ? "bg-indigo-200 text-indigo-800"
-                    : "bg-gray-200 text-gray-500"
+                    : "ilo-bg-elev-2 ilo-fg-dim"
                 }`}
               >
                 {deptCounts.all || 0}
@@ -543,7 +543,7 @@ export function ExpertPanel(_props: Props) {
                   className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
                     activeDepartment === dept
                       ? "bg-indigo-100 text-indigo-700"
-                      : "text-gray-600 hover:bg-gray-100"
+                      : "ilo-fg-faint hover:ilo-bg-soft"
                   }`}
                 >
                   {getDeptIcon(dept)}
@@ -552,7 +552,7 @@ export function ExpertPanel(_props: Props) {
                     className={`px-1.5 py-0.5 rounded text-[10px] ${
                       activeDepartment === dept
                         ? "bg-indigo-200 text-indigo-800"
-                        : "bg-gray-200 text-gray-500"
+                        : "ilo-bg-elev-2 ilo-fg-dim"
                     }`}
                   >
                     {deptCounts[dept] || 0}
@@ -563,14 +563,14 @@ export function ExpertPanel(_props: Props) {
 
           {/* 批量操作栏 */}
           {agencyExperts.length > 0 && (
-            <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+            <div className="px-4 py-2 ilo-bg-soft border-b ilo-border-soft flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <button
                   onClick={toggleSelectAll}
                   className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-md transition-colors ${
                     selectedIds.size === filteredAgency.length && filteredAgency.length > 0
                       ? "bg-indigo-100 text-indigo-700"
-                      : "text-gray-500 hover:bg-gray-200"
+                      : "ilo-fg-dim hover:ilo-bg-elev-2"
                   }`}
                 >
                   <Check size={14} />
@@ -579,7 +579,7 @@ export function ExpertPanel(_props: Props) {
                     : "全选"}
                 </button>
                 {selectedIds.size > 0 && (
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs ilo-fg-dim">
                     已选 {selectedIds.size} 个
                   </span>
                 )}
@@ -598,7 +598,7 @@ export function ExpertPanel(_props: Props) {
                   <button
                     onClick={handleBatchImport}
                     disabled={importingIds.size > 0}
-                    className="flex items-center gap-1 px-3 py-1 text-xs font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                    className="flex items-center gap-1 px-3 py-1 text-xs font-medium ilo-fg-onaccent bg-indigo-600 rounded-md hover:bg-indigo-700 transition-colors disabled:opacity-50"
                   >
                     <Download size={12} />
                     导入选中 ({selectedIds.size})
@@ -637,7 +637,7 @@ export function ExpertPanel(_props: Props) {
           {/* 专家列表 - 按部门分组 */}
           <div className="flex-1 overflow-y-auto p-4">
             {agencyLoading && (
-              <div className="flex items-center justify-center h-32 text-gray-400">
+              <div className="flex items-center justify-center h-32 ilo-fg-dim">
                 <div className="text-sm">加载专家库中...</div>
               </div>
             )}
@@ -649,14 +649,14 @@ export function ExpertPanel(_props: Props) {
 
             {!agencyLoading && !agencyError && agencyExperts.length === 0 && (
               <div className="flex flex-col items-center justify-center h-48 text-center">
-                <Star size={48} className="text-gray-300 mb-3" />
-                <p className="text-sm text-gray-500 mb-1">专家库为空</p>
-                <p className="text-xs text-gray-400 mb-4">
+                <Star size={48} className="ilo-fg mb-3" />
+                <p className="text-sm ilo-fg-dim mb-1">专家库为空</p>
+                <p className="text-xs ilo-fg-dim mb-4">
                   导入 agency-agents-zh 目录获取 211 个 AI 专家角色
                 </p>
                 <button
                   onClick={handleImportDir}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white text-xs font-medium rounded-lg hover:bg-emerald-700 transition-colors"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 ilo-fg-onaccent text-xs font-medium rounded-lg hover:bg-emerald-700 transition-colors"
                 >
                   <FolderOpen size={14} />
                   选择 agency-agents-zh 目录
@@ -665,7 +665,7 @@ export function ExpertPanel(_props: Props) {
             )}
 
             {!agencyLoading && !agencyError && filteredAgency.length === 0 && agencyExperts.length > 0 && (
-              <div className="text-center py-8 text-gray-400 text-sm">
+              <div className="text-center py-8 ilo-fg-dim text-sm">
                 没有匹配的专家
               </div>
             )}
@@ -685,14 +685,14 @@ export function ExpertPanel(_props: Props) {
                           className="flex items-center gap-2 mb-2 w-full text-left group"
                         >
                           {collapsed ? (
-                            <ChevronRight size={14} className="text-gray-400 group-hover:text-gray-600 transition-colors" />
+                            <ChevronRight size={14} className="ilo-fg-dim group-hover:ilo-fg-faint transition-colors" />
                           ) : (
-                            <ChevronDown size={14} className="text-gray-400 group-hover:text-gray-600 transition-colors" />
+                            <ChevronDown size={14} className="ilo-fg-dim group-hover:ilo-fg-faint transition-colors" />
                           )}
-                          <span className="text-xs font-semibold text-gray-600 group-hover:text-gray-800 transition-colors">
+                          <span className="text-xs font-semibold ilo-fg-faint group-hover:ilo-fg-faint transition-colors">
                             {deptName}
                           </span>
-                          <span className="px-1.5 py-0.5 bg-gray-200 text-gray-500 text-[10px] rounded">
+                          <span className="px-1.5 py-0.5 ilo-bg-elev-2 ilo-fg-dim text-[10px] rounded">
                             {deptExperts.length}
                           </span>
                         </button>
@@ -764,15 +764,15 @@ export function ExpertPanel(_props: Props) {
       {/* 删除确认 */}
       {deleting && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl w-[360px] p-6">
-            <h3 className="font-semibold text-gray-800 text-lg mb-2">确认删除</h3>
-            <p className="text-sm text-gray-500 mb-6">
+          <div className="ilo-bg-elev rounded-xl w-[360px] p-6">
+            <h3 className="font-semibold ilo-fg-faint text-lg mb-2">确认删除</h3>
+            <p className="text-sm ilo-fg-dim mb-6">
               确定要删除这个专家吗？此操作无法撤销。
             </p>
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setDeleting(null)}
-                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                className="px-4 py-2 text-sm ilo-fg-faint hover:ilo-bg-soft rounded-lg transition-colors"
               >
                 取消
               </button>
@@ -781,7 +781,7 @@ export function ExpertPanel(_props: Props) {
                   await deleteExpert(deleting);
                   setDeleting(null);
                 }}
-                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                className="px-4 py-2 text-sm bg-red-600 ilo-fg-onaccent rounded-lg hover:bg-red-700 transition-colors"
               >
                 删除
               </button>
@@ -833,12 +833,12 @@ function AgencyExpertCard({
 
   return (
     <div
-      className={`bg-white rounded-lg border p-2.5 hover:shadow-sm transition-all cursor-pointer group ${
+      className={`ilo-bg-elev rounded-lg border p-2.5 hover:shadow-sm transition-all cursor-pointer group ${
         imported
-          ? "border-gray-100 opacity-60"
+          ? "ilo-border-soft opacity-60"
           : selected
           ? "border-indigo-300 bg-indigo-50/50"
-          : "border-gray-200 hover:border-gray-300"
+          : "ilo-border-soft hover:ilo-border"
       }`}
       onClick={imported ? onView : onSelect}
     >
@@ -849,10 +849,10 @@ function AgencyExpertCard({
             className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
               selected
                 ? "bg-indigo-600 border-indigo-600"
-                : "border-gray-300 group-hover:border-indigo-400"
+                : "ilo-border group-hover:border-indigo-400"
             }`}
           >
-            {selected && <Check size={10} className="text-white" />}
+            {selected && <Check size={10} className="ilo-fg-onaccent" />}
           </div>
         )}
 
@@ -864,18 +864,18 @@ function AgencyExpertCard({
           <User size={16} style={{ color: hex }} />
           {isPriority && (
             <div className="absolute -top-1 -right-1 w-3 h-3 bg-amber-400 rounded-full flex items-center justify-center">
-              <Star size={7} className="text-white" />
+              <Star size={7} className="ilo-fg-onaccent" />
             </div>
           )}
         </div>
 
         {/* 内容 */}
         <div className="flex-1 min-w-0">
-          <h4 className="text-xs font-medium text-gray-800 truncate leading-tight">
+          <h4 className="text-xs font-medium ilo-fg-faint truncate leading-tight">
             {expert.metadata.name}
           </h4>
           {expert.metadata.description && (
-            <p className="text-[10px] text-gray-400 mt-0.5 line-clamp-2 leading-relaxed">
+            <p className="text-[10px] ilo-fg-dim mt-0.5 line-clamp-2 leading-relaxed">
               {expert.metadata.description}
             </p>
           )}
@@ -893,7 +893,7 @@ function AgencyExpertCard({
               e.stopPropagation();
               onView();
             }}
-            className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-all shrink-0"
+            className="opacity-0 group-hover:opacity-100 p-1 ilo-fg-dim hover:text-indigo-600 hover:bg-indigo-50 rounded transition-all shrink-0"
             title="查看详情"
           >
             <ExternalLink size={12} />
@@ -970,7 +970,7 @@ function AgencyExpertDetail({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl w-[720px] max-h-[85vh] overflow-hidden flex flex-col">
+      <div className="ilo-bg-elev rounded-xl w-[720px] max-h-[85vh] overflow-hidden flex flex-col">
         {/* 头部 */}
         <div className="px-6 py-4 border-b flex items-center justify-between shrink-0" style={{ borderColor: `${hex}40` }}>
           <div className="flex items-center gap-4">
@@ -981,15 +981,15 @@ function AgencyExpertDetail({
               <User size={28} style={{ color: hex }} />
               {isPriority && (
                 <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-amber-400 rounded-full flex items-center justify-center shadow-sm">
-                  <Star size={10} className="text-white" />
+                  <Star size={10} className="ilo-fg-onaccent" />
                 </div>
               )}
             </div>
             <div>
-              <h2 className="text-lg font-bold text-gray-800">{expert.metadata.name}</h2>
+              <h2 className="text-lg font-bold ilo-fg-faint">{expert.metadata.name}</h2>
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                <span className="text-xs text-gray-500">{expert.metadata.description}</span>
-                <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 text-[10px] rounded">
+                <span className="text-xs ilo-fg-dim">{expert.metadata.description}</span>
+                <span className="px-1.5 py-0.5 ilo-bg-soft ilo-fg-dim text-[10px] rounded">
                   {DEPARTMENTS[expert.department]?.name ?? "其他"}
                 </span>
                 {imported && (
@@ -1002,7 +1002,7 @@ function AgencyExpertDetail({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+            className="p-1.5 ilo-fg-dim hover:ilo-fg-faint rounded-lg hover:ilo-bg-soft transition-colors"
           >
             ✕
           </button>
@@ -1010,7 +1010,7 @@ function AgencyExpertDetail({
 
         {/* Tab 切换 */}
         {hasContent && (
-          <div className="px-6 py-2 border-b border-gray-100 flex items-center gap-1 shrink-0">
+          <div className="px-6 py-2 border-b ilo-border-soft flex items-center gap-1 shrink-0">
             {(["overview", "rules", "workflow", "raw"] as const).map((tab) => (
               <button
                 key={tab}
@@ -1018,7 +1018,7 @@ function AgencyExpertDetail({
                 className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
                   activeTab === tab
                     ? "bg-indigo-100 text-indigo-700"
-                    : "text-gray-500 hover:bg-gray-100"
+                    : "ilo-fg-dim hover:ilo-bg-soft"
                 }`}
               >
                 {tab === "overview" ? "概览" : tab === "rules" ? "规则与交付" : tab === "workflow" ? "流程与沟通" : "原始内容"}
@@ -1030,7 +1030,7 @@ function AgencyExpertDetail({
         {/* 内容 */}
         <div className="flex-1 overflow-y-auto p-6">
           {!hasContent ? (
-            <div className="text-center py-8 text-gray-400 text-sm">
+            <div className="text-center py-8 ilo-fg-dim text-sm">
               该专家暂无详细内容
             </div>
           ) : activeTab === "overview" ? (
@@ -1057,8 +1057,8 @@ function AgencyExpertDetail({
             </div>
           ) : (
             /* raw - 原始内容 */
-            <div className="rounded-lg border border-gray-200 overflow-hidden">
-              <div className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-50 flex items-center justify-between">
+            <div className="rounded-lg border ilo-border-soft overflow-hidden">
+              <div className="px-4 py-2 text-xs font-semibold ilo-fg-faint ilo-bg-soft flex items-center justify-between">
                 <span>完整 System Prompt</span>
                 <button
                   onClick={() => {
@@ -1069,7 +1069,7 @@ function AgencyExpertDetail({
                   复制
                 </button>
               </div>
-              <pre className="px-4 py-3 text-xs text-gray-600 leading-relaxed whitespace-pre-wrap max-h-[500px] overflow-y-auto bg-white">
+              <pre className="px-4 py-3 text-xs ilo-fg-faint leading-relaxed whitespace-pre-wrap max-h-[500px] overflow-y-auto ilo-bg-elev">
                 {rawPrompt}
               </pre>
             </div>
@@ -1077,12 +1077,12 @@ function AgencyExpertDetail({
         </div>
 
         {/* 底部 */}
-        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between shrink-0">
-          <span className="text-xs text-gray-400">{expert.id}</span>
+        <div className="px-6 py-4 border-t ilo-border-soft flex items-center justify-between shrink-0">
+          <span className="text-xs ilo-fg-dim">{expert.id}</span>
           <div className="flex gap-2">
             <button
               onClick={onClose}
-              className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              className="px-4 py-2 text-sm ilo-fg-faint hover:ilo-bg-soft rounded-lg transition-colors"
             >
               关闭
             </button>
@@ -1090,7 +1090,7 @@ function AgencyExpertDetail({
               <button
                 onClick={handleImport}
                 disabled={importing}
-                className="px-4 py-2 text-sm text-white rounded-lg hover:opacity-90 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                className="px-4 py-2 text-sm ilo-fg-onaccent rounded-lg hover:opacity-90 transition-colors disabled:opacity-50 flex items-center gap-1.5"
                 style={{ backgroundColor: hex }}
               >
                 {importing ? (
@@ -1128,12 +1128,12 @@ function SectionBlock({
 }) {
   if (!content.trim()) return null;
   return (
-    <div className="rounded-lg border border-gray-100 overflow-hidden">
-      <div className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-50 flex items-center gap-2">
+    <div className="rounded-lg border ilo-border-soft overflow-hidden">
+      <div className="px-4 py-2 text-xs font-semibold ilo-fg-faint ilo-bg-soft flex items-center gap-2">
         <div className="w-1.5 h-4 rounded-full" style={{ backgroundColor: color }} />
         {title}
       </div>
-      <div className="px-4 py-3 text-xs text-gray-600 leading-relaxed whitespace-pre-wrap max-h-[300px] overflow-y-auto">
+      <div className="px-4 py-3 text-xs ilo-fg-faint leading-relaxed whitespace-pre-wrap max-h-[300px] overflow-y-auto">
         {content}
       </div>
     </div>
@@ -1179,14 +1179,14 @@ function ExpertFormModal({
 }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl w-[480px] max-h-[80vh] overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="font-semibold text-gray-800">
+      <div className="ilo-bg-elev rounded-xl w-[480px] max-h-[80vh] overflow-hidden">
+        <div className="px-5 py-4 border-b ilo-border-soft flex items-center justify-between">
+          <h3 className="font-semibold ilo-fg-faint">
             {editing ? "编辑专家" : "新建专家"}
           </h3>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="ilo-fg-dim hover:ilo-fg-faint"
           >
             ✕
           </button>
@@ -1194,31 +1194,31 @@ function ExpertFormModal({
 
         <div className="p-5 space-y-4 overflow-y-auto max-h-[60vh]">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label className="block text-sm font-medium ilo-fg-faint mb-1.5">
               名称 <span className="text-red-500">*</span>
             </label>
             <input
               value={name}
               onChange={(e) => onNameChange(e.target.value)}
               placeholder="专家名称，如：前端专家"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="w-full px-3 py-2 border ilo-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label className="block text-sm font-medium ilo-fg-faint mb-1.5">
               描述
             </label>
             <input
               value={description}
               onChange={(e) => onDescriptionChange(e.target.value)}
               placeholder="简短描述专家的职责范围"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="w-full px-3 py-2 border ilo-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label className="block text-sm font-medium ilo-fg-faint mb-1.5">
               System Prompt <span className="text-red-500">*</span>
             </label>
             <textarea
@@ -1226,12 +1226,12 @@ function ExpertFormModal({
               onChange={(e) => onSystemPromptChange(e.target.value)}
               placeholder="定义专家角色的核心指令..."
               rows={4}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+              className="w-full px-3 py-2 border ilo-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label className="block text-sm font-medium ilo-fg-faint mb-1.5">
               颜色标识
             </label>
             <div className="flex gap-2">
@@ -1249,41 +1249,41 @@ function ExpertFormModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label className="block text-sm font-medium ilo-fg-faint mb-1.5">
               Skills（逗号分隔）
             </label>
             <input
               value={skills}
               onChange={(e) => onSkillsChange(e.target.value)}
               placeholder="python, rust, react"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="w-full px-3 py-2 border ilo-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label className="block text-sm font-medium ilo-fg-faint mb-1.5">
               MCP Servers（逗号分隔）
             </label>
             <input
               value={mcpServers}
               onChange={(e) => onMcpServersChange(e.target.value)}
               placeholder="mcp-server-1, mcp-server-2"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="w-full px-3 py-2 border ilo-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
             />
           </div>
         </div>
 
-        <div className="px-5 py-4 border-t border-gray-200 flex justify-end gap-2">
+        <div className="px-5 py-4 border-t ilo-border-soft flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            className="px-4 py-2 text-sm ilo-fg-faint hover:ilo-bg-soft rounded-lg transition-colors"
           >
             取消
           </button>
           <button
             onClick={onSubmit}
             disabled={!canSubmit}
-            className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 text-sm bg-indigo-600 ilo-fg-onaccent rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {editing ? "保存" : "创建"}
           </button>

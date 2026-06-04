@@ -125,8 +125,8 @@ export const AgentsPanel: React.FC = () => {
               onClick={() => setFilter(f)}
               className={`px-3 py-1.5 text-xs rounded-full transition-colors ${
                 filter === f
-                  ? "bg-[#7C3AED] text-white"
-                  : "bg-white text-[#6B7280] hover:bg-[#EDE9FE] border border-[#DDD6FE]"
+                  ? "bg-[#7C3AED] ilo-fg-onaccent"
+                  : "ilo-bg-elev text-[#6B7280] hover:bg-[#EDE9FE] border border-[#DDD6FE]"
               }`}
             >
               {f === "all" ? "全部" : f === "available" ? "已安装" : "未安装"}
@@ -153,7 +153,7 @@ export const AgentsPanel: React.FC = () => {
                 key={agent.id}
                 className={`p-4 rounded-xl border transition-all ${
                   agent.available
-                    ? "bg-white border-[#DDD6FE] hover:border-[#7C3AED]"
+                    ? "ilo-bg-elev border-[#DDD6FE] hover:border-[#7C3AED]"
                     : "bg-[#FAF5FF] border-[#E9E3F9] hover:border-[#A78BFA]"
                 }`}
               >
@@ -211,7 +211,7 @@ export const AgentsPanel: React.FC = () => {
                             <span className="font-mono truncate flex-1">{agent.path}</span>
                             <button
                               onClick={() => navigator.clipboard.writeText(agent.path || "")}
-                              className="p-1 hover:bg-gray-100 rounded"
+                              className="p-1 hover:ilo-bg-soft rounded"
                               title="复制路径"
                             >
                               <Link size={12} />
@@ -224,7 +224,7 @@ export const AgentsPanel: React.FC = () => {
                         {agent.install_url && (
                           <button
                             onClick={() => handleInstall(agent)}
-                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-[#7C3AED] text-white hover:bg-[#6D28D9] transition-colors"
+                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-[#7C3AED] ilo-fg-onaccent hover:bg-[#6D28D9] transition-colors"
                           >
                             <Download size={12} />
                             安装指南

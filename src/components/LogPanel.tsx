@@ -19,30 +19,30 @@ const levelLabels: Record<LogLevel, string> = {
 const LogItem: React.FC<{ log: LogEntry; onClick: () => void }> = ({ log, onClick }) => {
   return (
     <div
-      className="p-2 border-b border-gray-100 hover:bg-gray-50 cursor-pointer text-xs font-mono"
+      className="p-2 border-b ilo-border-soft hover:ilo-bg-soft cursor-pointer text-xs font-mono"
       onClick={onClick}
     >
       <div className="flex items-center gap-2">
-        <span className="text-gray-400">{log.timestamp}</span>
+        <span className="ilo-fg-dim">{log.timestamp}</span>
         <span className="badge" style={{ color: levelColors[log.level] === "red" ? "var(--err)" : levelColors[log.level] === "orange" ? "var(--warn)" : levelColors[log.level] === "blue" ? "var(--accent)" : "var(--fg-faint)", borderColor: levelColors[log.level] === "red" ? "var(--err)" : levelColors[log.level] === "orange" ? "var(--warn)" : levelColors[log.level] === "blue" ? "var(--accent)" : "var(--border)" }}>
           {levelLabels[log.level]}
         </span>
-        <span className="text-gray-600 bg-gray-100 px-1 rounded">
+        <span className="ilo-fg-faint ilo-bg-soft px-1 rounded">
           {log.category}
         </span>
         {log.model && (
-          <span className="text-gray-500">{log.model}</span>
+          <span className="ilo-fg-dim">{log.model}</span>
         )}
         {log.latencyMs && (
-          <span className="text-gray-400">{log.latencyMs}ms</span>
+          <span className="ilo-fg-dim">{log.latencyMs}ms</span>
         )}
         {log.tokensUsed && (
-          <span className="text-gray-400">{log.tokensUsed} tokens</span>
+          <span className="ilo-fg-dim">{log.tokensUsed} tokens</span>
         )}
       </div>
-      <div className="mt-1 text-gray-800 truncate">{log.message}</div>
+      <div className="mt-1 ilo-fg-faint truncate">{log.message}</div>
       {log.details && (
-        <div className="mt-1 text-gray-500 text-xs truncate">
+        <div className="mt-1 ilo-fg-dim text-xs truncate">
           {log.details}
         </div>
       )}
@@ -147,11 +147,11 @@ export const LogPanel: React.FC = () => {
   const categories = Array.from(new Set(logs.map((log) => log.category)));
 
   return (
-    <div className={`border-t border-gray-200 bg-white transition-all ${isExpanded ? "h-80" : "h-10"}`}>
-      <div className="h-10 px-3 flex items-center justify-between border-b border-gray-100">
+    <div className={`border-t ilo-border-soft ilo-bg-elev transition-all ${isExpanded ? "h-80" : "h-10"}`}>
+      <div className="h-10 px-3 flex items-center justify-between border-b ilo-border-soft">
         <div className="flex items-center gap-3">
           <span className="font-medium text-sm">日志</span>
-          <span className="text-xs text-gray-500">{logs.length} 条记录</span>
+          <span className="text-xs ilo-fg-dim">{logs.length} 条记录</span>
         </div>
         <div className="flex items-center gap-2">
           <select
@@ -198,7 +198,7 @@ export const LogPanel: React.FC = () => {
         <>
           <div className="h-48 overflow-auto">
             {logs.length === 0 ? (
-              <div className="p-4 text-center text-gray-500 text-sm">
+              <div className="p-4 text-center ilo-fg-dim text-sm">
                 {isLoading ? "加载中..." : "暂无日志"}
               </div>
             ) : (

@@ -159,7 +159,7 @@ const FilterButton: React.FC<FilterButtonProps> = ({ label, isActive, onClick, c
     <button
       onClick={onClick}
       className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
-        isActive ? "text-white" : "text-[#6B7280] bg-[#EDE9FE] hover:bg-[#ebe4d8]"
+        isActive ? "ilo-fg-onaccent" : "text-[#6B7280] bg-[#EDE9FE] hover:bg-[#ebe4d8]"
       }`}
       style={isActive && color ? { backgroundColor: color, border: `1px solid ${color}` } : { border: "1px solid #DDD6FE" }}
     >
@@ -179,8 +179,8 @@ const ActionButton: React.FC<ActionButtonProps> = ({ icon, label, onClick, varia
   const baseStyle = "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 border";
   const variantStyles = {
     default: "text-[#6B7280] bg-[#F5F3FF] border-[#DDD6FE] hover:bg-[#EDE9FE] hover:border-[#7C3AED]",
-    primary: "text-white bg-[#7C3AED] border-[#7C3AED] hover:bg-[#6D28D9]",
-    danger: "text-white bg-[#d4564a] border-[#d4564a] hover:bg-[#c0453a]",
+    primary: "ilo-fg-onaccent bg-[#7C3AED] border-[#7C3AED] hover:bg-[#6D28D9]",
+    danger: "ilo-fg-onaccent bg-[#d4564a] border-[#d4564a] hover:bg-[#c0453a]",
   };
 
   return (
@@ -273,7 +273,7 @@ export const LogsPanel: React.FC = () => {
                 placeholder="搜索日志..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-4 py-2 text-sm bg-white border border-[#DDD6FE] rounded-lg focus:outline-none focus:border-[#7C3AED] transition-colors text-[#1E1B4B] placeholder-[#a09080]"
+                className="w-full px-4 py-2 text-sm ilo-bg-elev border border-[#DDD6FE] rounded-lg focus:outline-none focus:border-[#7C3AED] transition-colors text-[#1E1B4B] placeholder-[#a09080]"
               />
             </div>
 
