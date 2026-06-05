@@ -57,6 +57,16 @@ export function Composer({
     }
   }, [text]);
 
+  // Mount: rows={3} only fires once. Kick the resize effect with
+  // the initial (empty) text so the box starts at the right height
+  // before the user types anything.
+  useEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 160) + "px";
+  }, []);
+
   const handleSubmit = useCallback(() => {
     const trimmed = text.trim();
     if (trimmed) {

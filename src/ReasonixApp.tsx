@@ -495,7 +495,10 @@ export const ReasonixApp: React.FC = () => {
           <div className="topbar__spacer" />
 
           {/* Model path */}
-          <span className="topbar__model">{state.meta?.cwd || "IntentLoom"}</span>
+          <span className="topbar__model" title={state.meta?.cwd ?? "未选择工作目录"}>
+            <FolderOpen size={11} />
+            {state.meta?.cwd ? state.meta.cwd : "未选择工作目录"}
+          </span>
 
           {/* Right controls */}
           <div className="topbar__right" data-tour="tools">

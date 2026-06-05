@@ -343,6 +343,289 @@ body {
   color: var(--fg-faint);
 }
 
+/* ── Main (chat column) ── */
+/* The middle <main className="main"> needs flex:1 + min-height:0
+   so it actually fills the column between the topbar and the
+   footer; without it the column collapses around the transcript
+   content and the composer drifts up into the middle of the page. */
+.main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Composer (ReasonixComposer.tsx) ── */
+/* Replaces the older .chat-input / .chat-input-wrap markup. Mirrors
+   the dark-theme look but matches the new BEM-ish naming so the
+   input blends with the chat column, fills the available width,
+   and supports the auto-resize the component drives from JS. */
+.composer {
+  padding: 8px 0 0;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
+.composer__wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.composer__wrap:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-soft);
+}
+
+.composer__input {
+  width: 100%;
+  min-height: 64px;
+  max-height: 160px;
+  padding: 10px 12px 4px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 14px;
+  line-height: 1.5;
+  font-family: inherit;
+  resize: none;
+  box-sizing: border-box;
+}
+
+/* macOS Webkit paints <textarea> on top of a system white surface
+   unless we explicitly opt out. Without these the wrap shows through
+   but the caret row stays bright. */
+.composer__input,
+.composer__input:focus { -webkit-appearance: none; appearance: none; background-color: transparent; }
+
+.composer__input::placeholder { color: var(--fg-faint); }
+.composer__input:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.composer__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px 6px 10px;
+}
+
+.composer__send,
+.composer__cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #fff;
+  background: var(--accent);
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.composer__send:hover { background: var(--accent-hover, var(--accent)); }
+.composer__send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.composer__cancel { background: #e5484d; }
+.composer__cancel:hover { background: #d23a3f; }
+
+/* ── Slash command menu (floats above the textarea) ── */
+.slashmenu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.32);
+  padding: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.slashmenu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--fg-dim);
+}
+
+.slashmenu__item--active,
+.slashmenu__item:hover {
+  background: var(--bg-soft);
+  color: var(--fg);
+}
+
+/* ── Sidebar header (logo + brand title, collapsed + expanded) ── */
+/* Replaces the legacy .sidebar__brand (centered logo only). The
+   header keeps the logo on the left and reveals the title when the
+   sidebar is expanded. */
+.sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--topbar-h);
+  border-bottom: 1px solid var(--border);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--fg);
+  user-select: none;
+  gap: 8px;
+  padding: 0 10px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.sidebar__logo {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.sidebar__title {
+  opacity: 0;
+  width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 0.2s, width 0.2s;
+}
+
+.sidebar.sidebar--expanded .sidebar__title {
+  opacity: 1;
+  width: auto;
+}
+
+/* ── Topbar model label (working directory / brand fallback) ── */
+/* Lives between the agent tabs and the right-side controls. */
+.topbar__model {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-elev);
+  color: var(--fg-dim);
+  font-size: 12px;
+  font-weight: 500;
+  max-width: 320px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid var(--border-soft);
+}
+
+/* ── Footer (wraps Composer + StatusBar at the bottom of main) ── */
+/* No styling was attached before, so the <footer> fell back to
+   browser defaults: white background, no top border, body color
+   text. That made the bottom strip look bright against the dark
+   theme. The border-top on .composer provides the divider; .footer
+   just sets the chrome. */
+.footer {
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+/* ── StatusBar (ReasonixStatusBar.tsx) ── */
+/* Without a rule here the row of model trigger / spinner / cwd +
+   folder button rendered as default text on a default block, so
+   the "Claude Code / 选择目录" text was floating on white at the
+   bottom of the dark theme. Lock it to a single 30-px row that
+   matches the rest of the chrome. */
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0 12px;
+  background: var(--bg);
+  border-top: 1px solid var(--border-soft);
+  color: var(--fg-faint);
+  font-size: 11px;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.statusbar > div { display: flex; align-items: center; gap: 6px; }
+.statusbar .modelsw__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: var(--bg-elev);
+  color: var(--fg-dim);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.statusbar .modelsw__trigger:hover { color: var(--fg); border-color: var(--border); }
+
+.statusbar__cwd {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--fg-faint);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.statusbar__cwd:hover { color: var(--fg); background: var(--bg-soft); border-color: var(--border-soft); }
+
+.modelsw__backdrop { position: fixed; inset: 0; z-index: 19; }
+.modelsw__menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  min-width: 180px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.32);
+}
+.modelsw__item {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none; background: transparent;
+  color: var(--fg-dim); font-size: 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer; text-align: left;
+}
+.modelsw__item--current { color: var(--accent); }
+.modelsw__item:hover { background: var(--bg-soft); color: var(--fg); }
+
 /* ── Message Bubbles ── */
 .msg { margin-bottom: 16px; }
 .msg--user {
