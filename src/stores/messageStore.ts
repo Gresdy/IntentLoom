@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Message, ToolCall, ToolResponse, PermissionRequest, PlanState, TokenUsage } from '@/types/message';
 import type { ThinkingProcess } from '@/shared/thinking';
+import type { ArtifactTally } from '@/lib/artifactTally';
 
 interface MessageState {
   messages: Message[];
@@ -14,7 +15,12 @@ interface MessageState {
   currentPermission: PermissionRequest | null;
   currentPlan: PlanState | null;
   currentUsage: TokenUsage | null;
-  
+
+  // End-of-conversation artifact summary, keyed by conversation id.
+  // Written by the streaming controller on `ai-stream-end`; read by
+  // the transcript to render a one-time ConversationSummary card.
+  summaryByConversation: Record<string, ArtifactTally>;
+
   // Actions
   addMessage: (message: Message) => void;
   updateMessage: (id: string, updates: Partial<Message>) => void;
@@ -43,7 +49,10 @@ interface MessageState {
   
   // Usage actions
   setUsage: (usage: TokenUsage | null) => void;
-  
+
+  // Summary actions
+  setSummary: (conversationId: string, tally: ArtifactTally) => void;
+
   // Stream reset
   resetCurrentStream: () => void;
   appendContent: (content: string) => void;
@@ -60,7 +69,8 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   currentPermission: null,
   currentPlan: null,
   currentUsage: null,
-  
+  summaryByConversation: {},
+
   addMessage: (message) => {
     set((state) => ({
       messages: [...state.messages, message],
@@ -174,7 +184,13 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   setUsage: (usage) => {
     set({ currentUsage: usage });
   },
-  
+
+  setSummary: (conversationId, tally) => {
+    set((state) => ({
+      summaryByConversation: { ...state.summaryByConversation, [conversationId]: tally },
+    }));
+  },
+
   resetCurrentStream: () => {
     set({
       currentThinking: '',

@@ -139,14 +139,6 @@ export const useStreamingAI = () => {
     unlistenRef.current = [];
   }, [setStreaming, setThinking]);
   
-  const cancelStreaming = useCallback(() => {
-    setStreaming(false);
-    setThinking('');
-    messageIdRef.current = null;
-    unlistenRef.current.forEach(fn => fn());
-    unlistenRef.current = [];
-  }, [setStreaming, setThinking]);
-  
   useEffect(() => {
     const setupListeners = async () => {
       // 监听流式文本输出
@@ -294,7 +286,6 @@ export const useStreamingAI = () => {
     currentPlan: currentPlanRef.current,
     startStreaming,
     stopStreaming,
-    cancelStreaming,
     approvePermission,
     denyPermission,
     startPlanExecution,

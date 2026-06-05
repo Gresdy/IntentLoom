@@ -4,15 +4,20 @@ import { invoke } from "./tauri";
 import { useConversationStore } from "@/stores/conversationStore";
 import { useMessageStore } from "@/stores/messageStore";
 import { useModelStore } from "@/stores/useModelStore";
+import { buildArtifactSummary, hasAnyArtifact } from "@/lib/artifactTally";
+import type { ArtifactTally } from "@/lib/artifactTally";
+import { parseStreamChunk } from "@/lib/streamChunkParser";
+import type { ToolCall } from "@/types/message";
 
 export type Mode = "normal" | "plan" | "yolo";
 
 export type ReasonixItem =
   | { kind: "user"; id: string; text: string }
   | { kind: "assistant"; id: string; text: string; streaming?: boolean; reasoning?: string }
-  | { kind: "tool"; id: string; name: string; args: any; status: string; result?: any }
+  | { kind: "tool"; id: string; name: string; args: any; status: string; result?: any; diff?: any[]; kind2?: string }
   | { kind: "phase"; id: string; text: string }
-  | { kind: "notice"; id: string; level: string; text: string };
+  | { kind: "notice"; id: string; level: string; text: string }
+  | { kind: "summary"; id: string; tally: ArtifactTally };
 
 export interface ReasonixMeta {
   label: string;
@@ -38,6 +43,22 @@ function generateId(): string {
   return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 }
 
+// Convert a ToolCall from messageStore into the wire shape used by
+// the `tool` ReasonixItem. Kept tiny because the Transcript side
+// already has its own `tool.diff` / `tool.kind` accessors.
+function toolCallToItem(tc: ToolCall, idSuffix: string): ReasonixItem {
+  return {
+    kind: "tool",
+    id: idSuffix,
+    name: tc.name,
+    args: tc.arguments,
+    status: tc.status,
+    result: tc.result,
+    diff: tc.diff,
+    kind2: tc.kind,
+  };
+}
+
 export function useReasonixController() {
   const {
     conversations,
@@ -53,7 +74,22 @@ export function useReasonixController() {
   const { currentProviderId, providers } = useModelStore();
   const currentProvider = currentProviderId ? providers[currentProviderId] : null;
 
-  const { isStreaming, currentThinking, setStreaming } = useMessageStore();
+  const {
+    isStreaming,
+    currentThinking,
+    currentToolCalls,
+    setStreaming,
+    summaryByConversation,
+    addToolCall,
+    addToolResponse,
+    updateToolCall,
+    setPlan,
+    setPermission,
+    appendContent,
+    appendThinking,
+    setSummary,
+    resetCurrentStream,
+  } = useMessageStore();
 
   const currentConversation = useMemo(() => {
     return conversations.find((c) => c.id === currentConversationId);
@@ -75,6 +111,16 @@ export function useReasonixController() {
           streaming: false,
           reasoning: msg.thinking,
         });
+        // Persisted tool calls on the assistant message become ToolCards
+        // in the transcript. W3 of the-loom-as-product.md: this is what
+        // makes "文件改动内联展示" work after the stream ends — the
+        // live stream lights up LoomPanel, the persisted mirror shows
+        // the same content inline in chat history.
+        if (msg.toolCalls && msg.toolCalls.length > 0) {
+          for (const tc of msg.toolCalls) {
+            result.push(toolCallToItem(tc, `${msg.id}-tc-${tc.id}`));
+          }
+        }
       }
     }
 
@@ -88,11 +134,37 @@ export function useReasonixController() {
           streaming: true,
           reasoning: currentThinking,
         });
+        // Live tool cards: the in-flight tool calls from messageStore.
+        // After stream-end these get persisted onto the assistant
+        // message (see ai-stream-end handler) and the live snapshot
+        // resets, so we don't double-render.
+        for (const tc of currentToolCalls) {
+          result.push(toolCallToItem(tc, `live-tc-${tc.id}`));
+        }
+      }
+    }
+
+    if (currentConversationId) {
+      const tally = summaryByConversation[currentConversationId];
+      if (tally && hasAnyArtifact(tally)) {
+        result.push({
+          kind: "summary",
+          id: `summary-${currentConversationId}`,
+          tally,
+        });
       }
     }
 
     return result;
-  }, [conversationMessages, isStreaming, currentThinking, currentConversation]);
+  }, [
+    conversationMessages,
+    isStreaming,
+    currentThinking,
+    currentToolCalls,
+    currentConversation,
+    currentConversationId,
+    summaryByConversation,
+  ]);
 
   const meta: ReasonixMeta | null = useMemo(() => {
     return currentProvider ? { label: currentProvider.name } : { label: "Claude" };
@@ -121,16 +193,93 @@ export function useReasonixController() {
 
     const setupListeners = async () => {
       unlistenChunk = await listen<string>("ai-stream-chunk", (event) => {
-        const chunk = event.payload;
-        const conv = getCurrentConversation();
-        if (conv && conv.messages.length > 0) {
-          const lastMsg = conv.messages[conv.messages.length - 1];
-          updateLastMessage({ content: (lastMsg.content || "") + chunk });
+        const raw = event.payload;
+        const parsed = parseStreamChunk(raw);
+
+        // Fallback: not JSON or unrecognized shape. The historical
+        // behavior was to treat the whole line as text. Keep that
+        // contract so adapters that haven't migrated to the new
+        // event contract still render something visible.
+        if (!parsed) {
+          appendContent(raw);
+          return;
+        }
+
+        switch (parsed.kind) {
+          case "text":
+            appendContent(parsed.text);
+            break;
+          case "thinking":
+            appendThinking(parsed.text);
+            break;
+          case "tool_call":
+            addToolCall(parsed.tool);
+            break;
+          case "tool_response":
+            addToolResponse({
+              toolCallId: parsed.id,
+              status: "success",
+              result: parsed.result,
+            });
+            if (parsed.id) {
+              updateToolCall(parsed.id, { status: "completed" });
+            }
+            break;
+          case "plan":
+            setPlan(parsed.plan);
+            break;
+          case "permission":
+            setPermission({
+              id: parsed.id,
+              toolName: parsed.tool,
+              args: parsed.args,
+              status: "pending",
+            });
+            break;
+          case "control":
+            // message_start/stop/delta and content_block_stop are
+            // protocol scaffolding; the end event itself is handled
+            // in the dedicated `ai-stream-end` listener.
+            break;
         }
       });
 
       unlistenEnd = await listen("ai-stream-end", () => {
+        // Snapshot the live per-turn state before we reset it, so
+        // both the persisted message and the summary card reflect
+        // what actually happened this turn.
+        const conv = getCurrentConversation();
+        const tcs = useMessageStore.getState().currentToolCalls;
+        const plan = useMessageStore.getState().currentPlan;
+
+        // Persist the live tool calls / plan onto the assistant
+        // message so the transcript can render them as ToolCards /
+        // plan markers on reload. Without this, the live LoomPanel
+        // would show activity but the transcript would stay empty
+        // after the user navigates away.
+        if (conv && conv.messages.length > 0) {
+          const lastMsg = conv.messages[conv.messages.length - 1];
+          if (lastMsg.role === "assistant") {
+            updateLastMessage({
+              toolCalls: tcs.length > 0 ? tcs : lastMsg.toolCalls,
+              plan: plan ?? lastMsg.plan,
+            });
+          }
+        }
+
+        if (conv) {
+          const tally = buildArtifactSummary(tcs);
+          if (hasAnyArtifact(tally)) {
+            setSummary(conv.id, tally);
+          }
+        }
+
         setStreaming(false);
+        // Clear the per-turn state so the next `send()` starts clean
+        // and the live LoomPanel collapses back to "no current
+        // activity" (the transcript still shows what happened via
+        // the persisted tool calls / plan above).
+        resetCurrentStream();
       });
     };
 
@@ -139,7 +288,20 @@ export function useReasonixController() {
       unlistenChunk?.();
       unlistenEnd?.();
     };
-  }, [getCurrentConversation, updateLastMessage, setStreaming]);
+  }, [
+    getCurrentConversation,
+    updateLastMessage,
+    setStreaming,
+    appendContent,
+    appendThinking,
+    addToolCall,
+    addToolResponse,
+    updateToolCall,
+    setPlan,
+    setPermission,
+    setSummary,
+    resetCurrentStream,
+  ]);
 
   const send = useCallback(
     async (text: string) => {
@@ -147,6 +309,12 @@ export function useReasonixController() {
       if (!conv) {
         conv = createConversation();
       }
+
+      // Wipe any per-turn state carried over from a previous
+      // interrupted stream. Without this, LoomPanel's tool/plan
+      // sections would briefly show the previous turn's leftovers
+      // before the new chunks overwrite them.
+      resetCurrentStream();
 
       const userMessage = {
         id: generateId(),
@@ -172,18 +340,25 @@ export function useReasonixController() {
 
       try {
         await invoke("send_chat_message", {
-          cli: "claude",
+          cli: useModelStore.getState().currentApp,
           message: text,
           conversationId: conv.id,
           projectPath: null,
         });
       } catch (error) {
         console.error("发送消息失败:", error);
-        updateLastMessage({ content: `错误: ${error}` });
+        appendContent(`\n\n错误: ${error}`);
         setStreaming(false);
       }
     },
-    [getCurrentConversation, createConversation, addMessageToCurrent, updateLastMessage, setStreaming]
+    [
+      getCurrentConversation,
+      createConversation,
+      addMessageToCurrent,
+      setStreaming,
+      resetCurrentStream,
+      appendContent,
+    ]
   );
 
   const cancel = useCallback(() => {
@@ -210,6 +385,7 @@ export function useReasonixController() {
       preview: c.messages[0]?.content?.slice(0, 50),
       updatedAt: c.updatedAt || Date.now(),
       messageCount: c.messages.length,
+      agentId: c.metadata?.agentId ?? "claude",
     }));
   }, [conversations]);
 

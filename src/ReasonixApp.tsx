@@ -6,6 +6,7 @@ import {
   Logs, MessageSquare,
   ChartBar, Users, ChevronRight, X,
   Sparkles, MessageCircle,
+  LayoutGrid,
 } from "lucide-react";
 import { useReasonixController } from "./lib/reasonixAdapter";
 import type { Mode } from "./lib/reasonixAdapter";
@@ -16,10 +17,15 @@ import { SettingsDrawer } from "./components/layout/SettingsDrawer";
 import { HistoryDrawer } from "./components/layout/HistoryDrawer";
 import { CommandPalette, useCommandPalette } from "./components/common/CommandPalette";
 import { ToastContainer } from "./components/common/ToastContainer";
+import { LoomPanel } from "./components/Loom/LoomPanel";
+import { ToolsModal } from "./components/layout/ToolsModal";
 import { useThemeStore } from "./stores/useThemeStore";
 import { useModelStore } from "./stores/useModelStore";
+import { useHermesStore } from "./stores/useHermesStore";
 import type { AppId } from "./shared/types";
 import { invoke } from "./lib/tauri";
+import { useConversationStore, selectCurrentAgentId } from "./stores/conversationStore";
+import { useAgentStore, refreshAgentList } from "./lib/useAgents";
 
 // Lazy load panels
 const AgentsPanel = lazy(() => import("./components/LeftPanel/AgentsPanel").then(m => ({ default: m.AgentsPanel })));
@@ -70,12 +76,17 @@ const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
 ];
 
 // Agent tabs config
-const ALL_AGENTS: { id: AppId; label: string; shortLabel: string }[] = [
+// disabled: tab stays in the DOM but cannot be activated. Today the
+// only disabled entry is Hermes — see Phase 3 of the multi-agent plan.
+// Phase 1.5 will additionally gate this on adapter availability
+// (i.e. `which` returned None).
+const ALL_AGENTS: { id: AppId; label: string; shortLabel: string; disabled?: boolean }[] = [
   { id: "claude", label: "Claude Code", shortLabel: "Claude" },
   { id: "codex", label: "Codex", shortLabel: "Codex" },
   { id: "gemini", label: "Gemini CLI", shortLabel: "Gemini" },
   { id: "opencode", label: "OpenCode", shortLabel: "OpenCode" },
   { id: "openclaw", label: "OpenClaw", shortLabel: "OpenClaw" },
+  { id: "hermes", label: "Hermes", shortLabel: "Hermes", disabled: true },
 ];
 
 function isNavKey(value: string | null): value is NavKey {
@@ -113,6 +124,7 @@ export const ReasonixApp: React.FC = () => {
   const [mode, setMode] = useState<Mode>("normal");
   const [histView, setHistView] = useState<any[] | null>(null);
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   // URL is the source of truth for navigation state: deep links,
   // browser back/forward, and reload all stay in sync.
@@ -123,6 +135,28 @@ export const ReasonixApp: React.FC = () => {
   const settingsOpen = searchParams.get("view") === "settings";
   const { mode: themeMode, setMode: setThemeMode } = useThemeStore();
   const { currentApp, setCurrentApp } = useModelStore();
+  // Phase 1.5: the adapter registry is loaded once on mount so the
+  // TopBar can gate CLIs whose binary is missing on disk.
+  const agentRegistry = useAgentStore((s) => s.agents);
+  const lastLoadedAt = useAgentStore((s) => s.lastLoadedAt);
+
+  useEffect(() => {
+    refreshAgentList();
+  }, []);
+
+  // `isUnavailable` is `true` for CLIs the backend reported as missing.
+  // Hermes is excluded from this lookup — its disabled flag on
+  // ALL_AGENTS is the source of truth for not-yet-shipped agents
+  // regardless of `which`.
+  const isUnavailable = useCallback(
+    (id: AppId): boolean => {
+      if (id === "hermes") return false; // disabled flag handles it
+      if (lastLoadedAt === null) return false; // still loading
+      const found = agentRegistry.find((a) => a.id === id);
+      return found ? !found.available : true;
+    },
+    [agentRegistry, lastLoadedAt]
+  );
 
   // Navigation: chat = close panel, others = open panel, settings = open drawer.
   // Each call writes the URL, so deep links and back/forward stay correct.
@@ -144,10 +178,39 @@ export const ReasonixApp: React.FC = () => {
 
   // Switch agent
   const handleAgentSwitch = useCallback((appId: AppId) => {
+    // Hermes is the only disabled tab today; it gets a soft "not yet"
+    // toast instead of being silently accepted. Future unavailable
+    // adapters (Phase 1.5 health gating) will surface install prompts
+    // through the same path.
+    const meta = ALL_AGENTS.find((a) => a.id === appId);
+    if (meta?.disabled) {
+      window.alert(`${meta.label} 暂未上线,详见 Hermes 面板。`);
+      return;
+    }
+    // Phase 1.5: if the backend reported the CLI is not installed,
+    // surface a clear "which" failure message instead of letting
+    // the user click through and get a generic spawn error.
+    if (isUnavailable(appId)) {
+      window.alert(
+        `${meta?.label ?? appId} 未在 $PATH 中找到。请安装后刷新。`
+      );
+      return;
+    }
+    // If a conversation is open and was started on a different agent,
+    // switching tabs would silently re-route the next message to a new
+    // CLI — exactly the bug Phase 2 of the multi-agent plan exists to
+    // prevent. Surface a confirm and start a new conversation if the
+    // user agrees.
+    const currentAgentId = selectCurrentAgentId(useConversationStore.getState());
+    if (currentAgentId !== appId) {
+      const ok = window.confirm(
+        `当前对话归属 ${currentAgentId},切到 ${appId} 会开启新对话。继续?`
+      );
+      if (!ok) return;
+      useConversationStore.getState().createConversation();
+    }
     setCurrentApp(appId);
-    // Also switch via backend if available
-    invoke("switch_agent", { agentId: appId }).catch(() => {});
-  }, [setCurrentApp]);
+  }, [setCurrentApp, isUnavailable]);
 
   // Toggle mode
   const applyMode = useCallback((m: Mode) => {
@@ -181,9 +244,14 @@ export const ReasonixApp: React.FC = () => {
       } else if (mod && e.shiftKey && e.key === "T") {
         e.preventDefault();
         setThemeMode(themeMode === "dark" ? "light" : "dark");
+      } else if (mod && e.shiftKey && e.key === "L") {
+        e.preventDefault();
+        setToolsOpen((v) => !v);
       } else if (e.key === "Escape") {
         if (cmdPaletteOpen) {
           setCmdPaletteOpen(false);
+        } else if (toolsOpen) {
+          setToolsOpen(false);
         } else if (settingsOpen) {
           const next = new URLSearchParams(searchParams);
           next.delete("view");
@@ -200,6 +268,9 @@ export const ReasonixApp: React.FC = () => {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [newSession, setThemeMode, themeMode, cmdPaletteOpen, rightPanelOpen, histView, settingsOpen, searchParams, setSearchParams]);
+  // toolsOpen is intentionally read from closure on each keystroke; we
+  // don't add it to deps to avoid rebinding the global listener on every
+  // modal open/close.
 
   // Command palette commands
   const commands = useCommandPalette({
@@ -355,17 +426,34 @@ export const ReasonixApp: React.FC = () => {
         <header className="topbar">
           {/* Agent Tabs */}
           <div className="agent-tabs">
-            {ALL_AGENTS.map((agent) => (
-              <button
-                key={agent.id}
-                className={`agent-tab${currentApp === agent.id ? " active" : ""}`}
-                onClick={() => handleAgentSwitch(agent.id)}
-                title={agent.label}
-              >
-                <Bot size={12} />
-                {sidebarExpanded ? agent.label : agent.shortLabel}
-              </button>
-            ))}
+            {ALL_AGENTS.map((agent) => {
+              const unavailable = isUnavailable(agent.id);
+              const tooltip = agent.disabled
+                ? `${agent.label} (开发中)`
+                : unavailable
+                ? `${agent.label} (未安装)`
+                : agent.label;
+              return (
+                <button
+                  key={agent.id}
+                  className={
+                    `agent-tab${currentApp === agent.id ? " active" : ""}` +
+                    (agent.disabled ? " agent-tab--disabled" : "") +
+                    (unavailable ? " agent-tab--unavailable" : "")
+                  }
+                  onClick={() => handleAgentSwitch(agent.id)}
+                  title={tooltip}
+                  aria-disabled={agent.disabled || unavailable ? "true" : undefined}
+                >
+                  <Bot size={12} />
+                  {sidebarExpanded ? agent.label : agent.shortLabel}
+                  {agent.disabled && <span className="agent-tab__badge">开发中</span>}
+                  {!agent.disabled && unavailable && (
+                    <span className="agent-tab__badge agent-tab__badge--missing">未安装</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           {/* Spacer */}
@@ -387,6 +475,9 @@ export const ReasonixApp: React.FC = () => {
 
             <button className="chip chip--icon" onClick={() => setCmdPaletteOpen(true)} title="命令面板 (Ctrl+K)">
               <Command size={13} />
+            </button>
+            <button className="chip chip--icon" onClick={() => setToolsOpen(true)} title="工具面板 (Ctrl+Shift+T)">
+              <LayoutGrid size={13} />
             </button>
             <button className="chip chip--icon" onClick={() => listSessions().then(setHistView)} disabled={state.running} title="历史记录">
               <History size={13} />
@@ -433,25 +524,34 @@ export const ReasonixApp: React.FC = () => {
         </footer>
       </div>
 
-      {/* ── Right Panel (slide-in) ── */}
+      {/* ── Loom Panel (persistent right column) ── */}
+      <LoomPanel />
+
+      {/* ── Right Panel (modal — overlays loom-panel) ── */}
       {rightPanelOpen && (
         <>
-          <div className="right-panel-backdrop" onClick={() => {
-  const next = new URLSearchParams(searchParams);
-  next.delete("panel");
-  setSearchParams(next, { replace: true });
-}} />
-          <div className="right-panel">
+          <div
+            className="right-panel-backdrop right-panel-backdrop--modal"
+            onClick={() => {
+              const next = new URLSearchParams(searchParams);
+              next.delete("panel");
+              setSearchParams(next, { replace: true });
+            }}
+          />
+          <div className="right-panel right-panel--modal">
             <div className="right-panel__head">
               <div className="right-panel__title">
                 <Sparkles size={14} className="ilo-fg-accent" />
                 {PANEL_TITLES[activeNav]}
               </div>
-              <button className="chip chip--icon" onClick={() => {
-                const next = new URLSearchParams(searchParams);
-                next.delete("panel");
-                setSearchParams(next, { replace: true });
-              }}>
+              <button
+                className="chip chip--icon"
+                onClick={() => {
+                  const next = new URLSearchParams(searchParams);
+                  next.delete("panel");
+                  setSearchParams(next, { replace: true });
+                }}
+              >
                 <X size={14} />
               </button>
             </div>
@@ -468,6 +568,9 @@ export const ReasonixApp: React.FC = () => {
         onClose={() => setCmdPaletteOpen(false)}
         commands={commands}
       />
+
+      {/* ── Tools Modal (quick launcher for the 12 side panels) ── */}
+      <ToolsModal isOpen={toolsOpen} onClose={() => setToolsOpen(false)} />
 
       {/* ── Toast ── */}
       <ToastContainer />
@@ -545,7 +648,10 @@ function SessionsPanel({ onResume, onDelete, onRename: _onRename }: {
         <div key={s.id || s.path} className="session-row" onClick={() => onResume(s.path)}>
           <MessageSquare size={14} className="ilo-fg-dim session-row__icon" />
           <div className="session-row__body">
-            <div className="session-row__title">{s.title || "无标题会话"}</div>
+            <div className="session-row__title">
+              {s.agentId && <span className="session-row__agent" data-agent={s.agentId}>{s.agentId}</span>}
+              {s.title || "无标题会话"}
+            </div>
             {s.preview && <div className="session-row__preview">{s.preview}</div>}
           </div>
           <button className="chip chip--icon session-row__delete" onClick={(e) => { e.stopPropagation(); onDelete(s.path); }}>
@@ -638,7 +744,12 @@ function SearchPanel() {
 }
 
 function HermesPanel() {
-  const switchHermesMode = (window as any).__hermesStore?.switchHermesMode;
+  // Hermes is not implemented yet (Phase 3 of multi-agent-cockpit.md).
+  // The store no longer exposes a working `checkHealth` / `startAgent`,
+  // so we deliberately do not call them here. The mode toggle is
+  // preserved as a preview of the planned control surface, but the
+  // buttons are read-only until the backend command lands.
+  const { mode } = useHermesStore();
 
   return (
     <div className="hermes-panel">
@@ -646,19 +757,21 @@ function HermesPanel() {
         <div className="hermes-panel__title-row">
           <Bot size={18} className="ilo-fg-accent" />
           <span className="hermes-panel__title">Hermes Agent</span>
-          <span className="hermes-panel__badge">已激活</span>
+          <span className="hermes-panel__badge hermes-panel__badge--wip">开发中</span>
         </div>
         <p className="hermes-panel__desc">
-          Hermes 是 IntentLoom 的本地 AI 助手，运行在您的设备上，保护隐私。
+          Hermes 是 IntentLoom 规划的本地 Agent 运行时,运行在您的设备上以保护隐私。
+          后端命令尚未注册,本面板目前为占位 UI —— 点击模式按钮不会有任何效果。
         </p>
       </div>
       <div>
         <h3 className="hermes-panel__heading">模式</h3>
-        {["normal", "plan", "yolo"].map((m) => (
+        {(["normal", "plan", "yolo"] as const).map((m) => (
           <button
             key={m}
-            className="hermes-panel__mode-btn"
-            onClick={() => switchHermesMode?.(m)}
+            className={`hermes-panel__mode-btn${mode === m ? " is-active" : ""} hermes-panel__mode-btn--disabled`}
+            disabled
+            title="Hermes 暂未上线"
           >
             {m.toUpperCase()}
           </button>
