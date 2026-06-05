@@ -1,0 +1,167 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: I
+      - text: IntentLoom
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - button "聊天" [ref=e9] [cursor=pointer]:
+          - img [ref=e11]
+          - generic: 聊天
+        - button "AI 助手" [ref=e13] [cursor=pointer]:
+          - img [ref=e15]
+          - generic: AI 助手
+        - button "会话管理" [ref=e18] [cursor=pointer]:
+          - img [ref=e20]
+          - generic: 会话管理
+      - generic [ref=e23]:
+        - button "项目管理" [ref=e24] [cursor=pointer]:
+          - img [ref=e26]
+          - generic: 项目管理
+        - button "Skills" [ref=e28] [cursor=pointer]:
+          - img [ref=e30]
+          - generic: Skills
+        - button "专家" [ref=e33] [cursor=pointer]:
+          - img [ref=e35]
+          - generic: 专家
+        - button "Prompts" [ref=e40] [cursor=pointer]:
+          - img [ref=e42]
+          - generic: Prompts
+      - generic [ref=e46]:
+        - button "模型配置" [ref=e47] [cursor=pointer]:
+          - img [ref=e49]
+          - generic: 模型配置
+        - button "MCP" [ref=e51] [cursor=pointer]:
+          - img [ref=e53]
+          - generic: MCP
+        - button "用量统计" [ref=e56] [cursor=pointer]:
+          - img [ref=e58]
+          - generic: 用量统计
+        - button "日志" [ref=e60] [cursor=pointer]:
+          - img [ref=e62]
+          - generic: 日志
+        - button "Hermes Agent" [ref=e63] [cursor=pointer]:
+          - img [ref=e65]
+          - generic: Hermes Agent
+    - generic [ref=e68]:
+      - button "设置" [ref=e69] [cursor=pointer]:
+        - img [ref=e71]
+        - generic: 设置
+      - button [ref=e74] [cursor=pointer]:
+        - img [ref=e75]
+  - generic [ref=e77]:
+    - banner [ref=e78]:
+      - generic [ref=e79]:
+        - button "Claude 未安装" [disabled] [ref=e80] [cursor=pointer]:
+          - img [ref=e81]
+          - text: Claude
+          - generic [ref=e84]: 未安装
+        - button "Codex 未安装" [disabled] [ref=e85] [cursor=pointer]:
+          - img [ref=e86]
+          - text: Codex
+          - generic [ref=e89]: 未安装
+        - button "Gemini 未安装" [disabled] [ref=e90] [cursor=pointer]:
+          - img [ref=e91]
+          - text: Gemini
+          - generic [ref=e94]: 未安装
+        - button "OpenCode 未安装" [disabled] [ref=e95] [cursor=pointer]:
+          - img [ref=e96]
+          - text: OpenCode
+          - generic [ref=e99]: 未安装
+        - button "OpenClaw 未安装" [disabled] [ref=e100] [cursor=pointer]:
+          - img [ref=e101]
+          - text: OpenClaw
+          - generic [ref=e104]: 未安装
+        - button "Hermes 开发中" [disabled] [ref=e105]:
+          - img [ref=e106]
+          - text: Hermes
+          - generic [ref=e109]: 开发中
+      - generic [ref=e110]: IntentLoom
+      - generic [ref=e111]:
+        - button "NORMAL" [ref=e112] [cursor=pointer]: NORMAL
+        - button "命令面板 (Ctrl+K)" [ref=e114] [cursor=pointer]:
+          - img [ref=e115]
+        - button "工具面板 (Ctrl+Shift+T)" [ref=e117] [cursor=pointer]:
+          - img [ref=e118]
+        - button "历史记录" [ref=e123] [cursor=pointer]:
+          - img [ref=e124]
+        - button "选择工作目录" [ref=e128] [cursor=pointer]:
+          - img [ref=e129]
+        - button "切换主题" [ref=e131] [cursor=pointer]:
+          - img [ref=e132]
+        - button "新建会话" [ref=e138] [cursor=pointer]:
+          - img [ref=e139]
+    - main [ref=e142]:
+      - generic [ref=e143]:
+        - generic [ref=e144]: I
+        - heading "IntentLoom" [level=1] [ref=e145]
+        - paragraph [ref=e146]: 将混沌的想法编织成清晰的产品
+        - generic [ref=e147]:
+          - generic [ref=e148]:
+            - generic [ref=e149]: Ctrl
+            - text: +
+            - generic [ref=e150]: K
+            - text: 命令面板
+          - generic [ref=e151]:
+            - generic [ref=e152]: Tab
+            - text: 切换模式
+          - generic [ref=e153]:
+            - generic [ref=e154]: Ctrl
+            - text: +
+            - generic [ref=e155]: "N"
+            - text: 新会话
+        - generic [ref=e156]:
+          - button "帮我解释这段代码的功能" [ref=e157] [cursor=pointer]
+          - button "重构这个组件，使其更易维护" [ref=e158] [cursor=pointer]
+          - button "为这个函数编写单元测试" [ref=e159] [cursor=pointer]
+          - button "分析项目架构，给出改进建议" [ref=e160] [cursor=pointer]
+        - generic [ref=e161]:
+          - button "打开项目" [ref=e162] [cursor=pointer]:
+            - img [ref=e163]
+            - text: 打开项目
+          - button "新建会话" [ref=e165] [cursor=pointer]:
+            - img [ref=e166]
+            - text: 新建会话
+    - contentinfo [ref=e169]:
+      - generic [ref=e171]:
+        - textbox "输入消息... (/ 查看命令)" [ref=e172]
+        - generic [ref=e173]:
+          - generic [ref=e174]: NORMAL
+          - button "发送 (Enter)" [disabled] [ref=e176]:
+            - img [ref=e177]
+      - generic [ref=e179]:
+        - button "Claude Code" [ref=e181] [cursor=pointer]:
+          - img [ref=e182]
+          - text: Claude Code
+          - img [ref=e184]
+        - generic [ref=e187]:
+          - img [ref=e188]
+          - text: 就绪
+        - button "选择目录" [ref=e192] [cursor=pointer]:
+          - img [ref=e193]
+          - text: 选择目录
+  - complementary "Loom" [ref=e195]:
+    - generic [ref=e196]:
+      - generic [ref=e197]: 织机
+      - generic [ref=e199]: 空闲
+    - generic [ref=e200]:
+      - generic [ref=e201]:
+        - generic [ref=e202]:
+          - img [ref=e204]
+          - heading "意图" [level=3] [ref=e207]
+          - generic [ref=e208]: claude
+        - generic [ref=e210]: 还没有用户输入
+      - generic [ref=e211]:
+        - generic [ref=e212]:
+          - img [ref=e214]
+          - heading "计划" [level=3] [ref=e217]
+        - generic [ref=e219]: 本对话无计划
+      - generic [ref=e220]:
+        - generic [ref=e221]:
+          - img [ref=e223]
+          - heading "工具" [level=3] [ref=e225]
+        - generic [ref=e227]: 还没有工具调用
+      - generic [ref=e229]:
+        - img [ref=e231]
+        - heading "产物" [level=3] [ref=e235]
+      - generic [ref=e236]: 右侧的"织机"实时显示当前 CLI 在做什么 —— 计划、工具调用、文件改动。
