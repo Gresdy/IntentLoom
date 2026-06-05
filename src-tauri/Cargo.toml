@@ -31,5 +31,6 @@ reqwest = { version = "0.12", features = ["json"] }
 urlencoding = "2"
 zip = "2"
 walkdir = "2"
+libc = "0.2"
 ureq = "2"
 opener = "0.7"

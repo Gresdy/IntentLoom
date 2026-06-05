@@ -399,8 +399,30 @@ export function useReasonixController() {
   );
 
   const cancel = useCallback(() => {
+    // Stop the spinner immediately so the UI does not stay frozen
+    // for the few hundred ms it takes the kill signal to round-trip
+    // and the wait task to observe the child exit. The end event
+    // handler will set streaming back to false (it's already false
+    // here, so the call is a no-op), and the persisted transcript
+    // will end at whatever the last completed chunk was.
     setStreaming(false);
-  }, [setStreaming]);
+    const conv = getCurrentConversation();
+    if (!conv) return;
+    // Fire-and-forget: a cancel that fails (e.g. the process already
+    // exited) is fine — the registry returns false and the user
+    // simply gets the natural "ai-stream-end" event instead.
+    void invoke("cancel_ai", { sessionId: conv.id }).catch((err) => {
+      // Backend unreachable in vite dev is the common case; demote
+      // to console.warn so the console isn't spammed on every click.
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.warn("[reasonixAdapter] cancel_ai failed:", err);
+      } else {
+        // eslint-disable-next-line no-console
+        console.error("cancel_ai failed:", err);
+      }
+    });
+  }, [setStreaming, getCurrentConversation]);
 
   const approve = useCallback(async (id: string, allow: boolean) => {
     if (allow) {
