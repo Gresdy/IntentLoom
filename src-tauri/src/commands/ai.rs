@@ -3,7 +3,7 @@ use tauri::{command, AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
-use crate::agents::find_adapter;
+use crate::agents::{find_adapter, StreamOptions};
 
 /// Build the [`Command`] used to invoke `cli` for streaming output.
 /// Every adapter owns its own flag layout (Claude uses
@@ -11,16 +11,26 @@ use crate::agents::find_adapter;
 /// stream-json`, Codex uses `exec --json`, OpenClaw uses
 /// `agent --local --json -m`). Unknown ids are rejected so the call
 /// site doesn't silently fall back to a default that only matches
-/// Claude.
-fn build_command(cli: &str, prompt: &str) -> Result<Command, String> {
+/// Claude. The `opts` argument is plumbed to the adapter so per-CLI
+/// mode / reasoning flags make it onto the wire.
+fn build_command(cli: &str, prompt: &str, opts: &StreamOptions) -> Result<Command, String> {
     let adapter = find_adapter(cli).ok_or_else(|| format!("Unknown AI CLI: {cli}"))?;
-    Ok(adapter.build_stream_command(prompt))
+    Ok(adapter.build_stream_command(prompt, opts))
 }
 
-/// Non-streaming call: waits for the whole output.
+/// Non-streaming call: waits for the whole output. The optional
+/// `mode` / `reasoning` strings are forwarded to the adapter so the
+/// non-streaming path (used by some Skills, the market tool, etc.) gets
+/// the same flag treatment as the streaming path.
 #[command]
-pub async fn call_ai(cli: String, prompt: String) -> Result<String, String> {
-    let mut cmd = build_command(&cli, &prompt)?;
+pub async fn call_ai(
+    cli: String,
+    prompt: String,
+    mode: Option<String>,
+    reasoning: Option<String>,
+) -> Result<String, String> {
+    let opts = StreamOptions { mode, reasoning };
+    let mut cmd = build_command(&cli, &prompt, &opts)?;
     let output = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -41,13 +51,17 @@ pub async fn call_ai(cli: String, prompt: String) -> Result<String, String> {
 /// The chunk event carries the raw line as a string payload (the React side
 /// listens with `listen<string>('ai-stream-chunk', ...)`); the end event
 /// carries either `"ok"` or `"exit: <code>"`. Returns the final session id
-/// once the process exits.
+/// once the process exits. The optional `mode` and `reasoning` strings
+/// are forwarded to the adapter so the per-CLI composer dropdowns land
+/// on the CLI's argv verbatim.
 #[command]
 pub async fn stream_ai(
     app: AppHandle,
     cli: String,
     prompt: String,
     session_id: Option<String>,
+    mode: Option<String>,
+    reasoning: Option<String>,
 ) -> Result<String, String> {
     // Reject unknown ids early so the call site doesn't get a half-baked
     // Command back from the default shape.
@@ -66,7 +80,8 @@ pub async fn stream_ai(
         )
     });
 
-    let mut child = build_command(&cli, &prompt)?
+    let opts = StreamOptions { mode, reasoning };
+    let mut child = build_command(&cli, &prompt, &opts)?
         .spawn()
         .map_err(|e| format!("Failed to spawn {cli}: {e}"))?;
 
@@ -116,7 +131,8 @@ pub async fn stream_ai(
 /// `useAcpChat`, `reasonixAdapter`). Forwards to [`stream_ai`] so the same
 /// `ai-stream-chunk` / `ai-stream-end` event contract is honored end-to-end.
 /// The optional `project_path` is prepended as a `[cwd: ...]` hint that
-/// CLI tools can pick up if they want to scope the run.
+/// CLI tools can pick up if they want to scope the run. The `mode` and
+/// `reasoning` strings are read from the composer's per-CLI dropdowns.
 #[command]
 pub async fn send_chat_message(
     app: AppHandle,
@@ -124,13 +140,15 @@ pub async fn send_chat_message(
     message: String,
     conversation_id: String,
     project_path: Option<String>,
+    mode: Option<String>,
+    reasoning: Option<String>,
 ) -> Result<String, String> {
     let prefix = project_path
         .as_deref()
         .map(|p| format!("[cwd: {p}]\n"))
         .unwrap_or_default();
     let prompt = format!("{prefix}{message}");
-    stream_ai(app, cli, prompt, Some(conversation_id)).await
+    stream_ai(app, cli, prompt, Some(conversation_id), mode, reasoning).await
 }
 
 #[command]
@@ -160,7 +178,7 @@ mod tests {
         // Claude's default build_stream_command is the canonical shape.
         // We assert on the std::process::Command that tokio wraps so we
         // can read back program + args.
-        let cmd = build_command("claude", "hello").unwrap();
+        let cmd = build_command("claude", "hello", &StreamOptions::default()).unwrap();
         let std_cmd = cmd.as_std();
         assert_eq!(std_cmd.get_program(), "claude");
         let args: Vec<&str> = std_cmd

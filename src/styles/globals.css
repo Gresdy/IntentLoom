@@ -416,6 +416,13 @@ body {
 .composer__input::placeholder { color: var(--fg-faint); }
 .composer__input:disabled { opacity: 0.6; cursor: not-allowed; }
 
+/* Auto-resize: the textarea's height is set inline (el.style.height)
+   by ReasonixComposer to match its scrollHeight, but we still cap it
+   here with `field-sizing: content` as a no-JS fallback for browsers
+   that support it (Chrome 123+). When that fallback kicks in the
+   field grows to fit its content up to max-height. */
+.composer__input { field-sizing: content; }
+
 .composer__actions {
   display: flex;
   align-items: center;
@@ -423,6 +430,32 @@ body {
   gap: 8px;
   padding: 2px 12px 8px;
 }
+
+/* Per-CLI mode + reasoning dropdowns row. Sits inside .composer__actions
+   on the left of the send button; wraps gracefully when the composer
+   is narrow (mobile / resizer pulled all the way left). Each trigger
+   is the same .chip / .menu__trigger combo so they look like a peer
+   of the other toolbar pills in the topbar / status bar. */
+.composer__prefs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+/* Left group hugs the wrap's left padding; the spacer between the two
+   groups pushes the right one to the edge of the send button. */
+.composer__prefs--left { flex: 0 1 auto; justify-content: flex-start; }
+.composer__prefs--right { flex: 0 1 auto; justify-content: flex-end; }
+.composer__spacer { flex: 1 1 auto; min-width: 8px; }
+
+/* Make sure the composer takes the full footer width — the wrap is
+   100% but the textarea inside was inheriting the page's content
+   max-width from .main-area, leaving a band of empty surface to the
+   right. Forcing 100% + box-sizing here pins the caret to the
+   right edge of the column. */
+.composer__wrap,
+.composer__input { width: 100%; max-width: 100%; }
 
 .composer__send,
 .composer__cancel {
@@ -496,7 +529,10 @@ body {
   display: flex;
   flex-direction: column;
 }
-.menu__panel--upward { bottom: auto; top: calc(100% + 6px); }
+/* Opposite of the default — panel hangs below the trigger.
+   Default (no modifier) keeps the panel above the trigger, which is
+   what we want for a composer pinned to the bottom of the page. */
+.menu__panel--downward { bottom: auto; top: calc(100% + 6px); }
 
 .menu__item {
   display: flex;

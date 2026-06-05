@@ -4,6 +4,7 @@ import { invoke } from "./tauri";
 import { useConversationStore } from "@/stores/conversationStore";
 import { useMessageStore } from "@/stores/messageStore";
 import { useModelStore } from "@/stores/useModelStore";
+import { resolveModeId, resolveReasoningId } from "@/stores/useComposerPrefsStore";
 import { buildArtifactSummary, hasAnyArtifact } from "@/lib/artifactTally";
 import type { ArtifactTally } from "@/lib/artifactTally";
 import { useProductChangesStore } from "@/lib/useProductChanges";
@@ -365,11 +366,21 @@ export function useReasonixController() {
       setStreaming(true);
 
       try {
+        // Per-CLI mode + reasoning live in useComposerPrefsStore; the
+        // Rust side (commands/ai.rs::stream_ai) reads them and forwards
+        // to the matching adapter's build_stream_command, which is
+        // what actually appends --permission-mode / --sandbox / --effort /
+        // -c model_reasoning_effort= etc. We send null when the CLI
+        // doesn't expose a spec so the adapter can fall back to its
+        // own default.
+        const cli = useModelStore.getState().currentApp;
         await invoke("send_chat_message", {
-          cli: useModelStore.getState().currentApp,
+          cli,
           message: text,
           conversationId: conv.id,
           projectPath: null,
+          mode: resolveModeId(cli as Parameters<typeof resolveModeId>[0]),
+          reasoning: resolveReasoningId(cli as Parameters<typeof resolveReasoningId>[0]),
         });
       } catch (error) {
         console.error("发送消息失败:", error);

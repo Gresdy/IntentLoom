@@ -13,6 +13,7 @@
 // per-adapter `AgentEvent` mapping will land here.
 
 use super::AgentAdapter;
+use super::StreamOptions;
 use super::AuthState;
 use std::process::Stdio;
 use tokio::process::Command;
@@ -33,7 +34,7 @@ impl AgentAdapter for GeminiAdapter {
         "Google Gemini command-line client"
     }
 
-    fn build_stream_command(&self, prompt: &str) -> Command {
+    fn build_stream_command(&self, prompt: &str, opts: &StreamOptions) -> Command {
         let mut cmd = Command::new(self.binary());
         cmd.arg("-p")
             .arg(prompt)
@@ -41,6 +42,14 @@ impl AgentAdapter for GeminiAdapter {
             .arg("stream-json")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        // `--approval-mode <default|plan|auto_edit|yolo>`
+        // Gemini does not expose a reasoning knob; `opts.reasoning` is
+        // silently dropped.
+        if let Some(mode) = opts.mode.as_deref() {
+            if !mode.is_empty() {
+                cmd.arg("--approval-mode").arg(mode);
+            }
+        }
         cmd
     }
 
@@ -75,7 +84,7 @@ mod tests {
     #[test]
     fn build_stream_command_matches_verified_flags() {
         // Verified against `gemini --help` on 2026-06-05.
-        let cmd = GeminiAdapter.build_stream_command("hello");
+        let cmd = GeminiAdapter.build_stream_command("hello", &StreamOptions::default());
         let std_cmd = cmd.as_std();
         assert_eq!(std_cmd.get_program(), "gemini");
         let args: Vec<&str> = std_cmd
@@ -83,5 +92,39 @@ mod tests {
             .map(|a| a.to_str().expect("utf-8 arg"))
             .collect();
         assert_eq!(args, vec!["-p", "hello", "--output-format", "stream-json"]);
+    }
+
+    #[test]
+    fn build_stream_command_emits_approval_mode_flag() {
+        let opts = StreamOptions {
+            mode: Some("yolo".to_string()),
+            reasoning: None,
+        };
+        let cmd = GeminiAdapter.build_stream_command("hi", &opts);
+        let args: Vec<&str> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_str().expect("utf-8 arg"))
+            .collect();
+        let i = args.iter().position(|a| *a == "--approval-mode").unwrap();
+        assert_eq!(args[i + 1], "yolo");
+    }
+
+    #[test]
+    fn build_stream_command_drops_reasoning_silently() {
+        // Gemini has no reasoning knob; opts.reasoning must not appear
+        // on the wire and must not error.
+        let opts = StreamOptions {
+            mode: None,
+            reasoning: Some("high".to_string()),
+        };
+        let cmd = GeminiAdapter.build_stream_command("hi", &opts);
+        let args: Vec<&str> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_str().expect("utf-8 arg"))
+            .collect();
+        assert!(!args.contains(&"--effort"));
+        assert!(!args.contains(&"high"));
     }
 }

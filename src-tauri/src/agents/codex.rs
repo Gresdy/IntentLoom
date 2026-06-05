@@ -14,6 +14,7 @@
 // names on a real run before adding an `AgentEvent` mapping here).
 
 use super::AgentAdapter;
+use super::StreamOptions;
 use super::{AuthState, AuthStatus, AuthProbe, evaluate_probe, home_path};
 use std::process::Stdio;
 use tokio::process::Command;
@@ -34,13 +35,27 @@ impl AgentAdapter for CodexAdapter {
         "OpenAI Codex CLI"
     }
 
-    fn build_stream_command(&self, prompt: &str) -> Command {
+    fn build_stream_command(&self, prompt: &str, opts: &StreamOptions) -> Command {
         let mut cmd = Command::new(self.binary());
         cmd.arg("exec")
             .arg("--json")
             .arg(prompt)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        // `--sandbox <read-only|workspace-write|danger-full-access>`
+        if let Some(mode) = opts.mode.as_deref() {
+            if !mode.is_empty() {
+                cmd.arg("--sandbox").arg(mode);
+            }
+        }
+        // `-c model_reasoning_effort=<minimal|low|medium|high|xhigh>`
+        // Single argv token; the leading `-c` and the `key=value` body
+        // are kept together so the shell doesn't split them.
+        if let Some(effort) = opts.reasoning.as_deref() {
+            if !effort.is_empty() {
+                cmd.arg(format!("-c model_reasoning_effort={effort}"));
+            }
+        }
         cmd
     }
 
@@ -83,7 +98,7 @@ mod tests {
     #[test]
     fn build_stream_command_matches_verified_flags() {
         // Verified against `codex exec --help` on 2026-06-05.
-        let cmd = CodexAdapter.build_stream_command("hello");
+        let cmd = CodexAdapter.build_stream_command("hello", &StreamOptions::default());
         let std_cmd = cmd.as_std();
         assert_eq!(std_cmd.get_program(), "codex");
         let args: Vec<&str> = std_cmd
@@ -91,5 +106,42 @@ mod tests {
             .map(|a| a.to_str().expect("utf-8 arg"))
             .collect();
         assert_eq!(args, vec!["exec", "--json", "hello"]);
+    }
+
+    #[test]
+    fn build_stream_command_emits_sandbox_flag() {
+        let opts = StreamOptions {
+            mode: Some("danger-full-access".to_string()),
+            reasoning: None,
+        };
+        let cmd = CodexAdapter.build_stream_command("hi", &opts);
+        let args: Vec<&str> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_str().expect("utf-8 arg"))
+            .collect();
+        let i = args.iter().position(|a| *a == "--sandbox").unwrap();
+        assert_eq!(args[i + 1], "danger-full-access");
+    }
+
+    #[test]
+    fn build_stream_command_emits_reasoning_as_single_argv_token() {
+        let opts = StreamOptions {
+            mode: None,
+            reasoning: Some("high".to_string()),
+        };
+        let cmd = CodexAdapter.build_stream_command("hi", &opts);
+        let args: Vec<&str> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_str().expect("utf-8 arg"))
+            .collect();
+        // The `-c key=value` pair must stay as a single argv token —
+        // shell-tokenizing the value would break it for codex.
+        let token = args
+            .iter()
+            .find(|a| a.starts_with("-c model_reasoning_effort="))
+            .expect("missing -c token in argv");
+        assert_eq!(*token, "-c model_reasoning_effort=high");
     }
 }

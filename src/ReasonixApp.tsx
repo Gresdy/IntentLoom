@@ -9,7 +9,6 @@ import {
   LayoutGrid,
 } from "lucide-react";
 import { useReasonixController } from "./lib/reasonixAdapter";
-import type { Mode } from "./lib/reasonixAdapter";
 import { Transcript } from "./components/Chat/ReasonixTranscript";
 import { Composer } from "./components/Chat/ReasonixComposer";
 import { StatusBar } from "./components/layout/ReasonixStatusBar";
@@ -27,6 +26,12 @@ import type { AppId } from "./shared/types";
 import { invoke } from "./lib/tauri";
 import { useConversationStore, selectCurrentAgentId } from "./stores/conversationStore";
 import { useAgentStore, refreshAgentList } from "./lib/useAgents";
+import { getModeSpec, getReasoningSpec } from "./lib/cliCapabilities";
+import {
+  useComposerPrefsStore,
+  resolveModeId,
+  resolveReasoningId,
+} from "./stores/useComposerPrefsStore";
 
 // Lazy load panels
 const AgentsPanel = lazy(() => import("./components/LeftPanel/AgentsPanel").then(m => ({ default: m.AgentsPanel })));
@@ -127,11 +132,18 @@ const PANEL_TITLES: Record<NavKey, string> = {
 export const ReasonixApp: React.FC = () => {
   const {
     state, send, cancel, approve,
-    setPlan, setBypass,
     newSession, listSessions, resumeSession, deleteSession, renameSession, pickWorkspace,
   } = useReasonixController();
 
-  const [mode, setMode] = useState<Mode>("normal");
+  // Per-CLI mode + reasoning selection lives in its own store so it
+  // survives CLI switches and is read by reasonixAdapter at send time.
+  const setModeForCli = useComposerPrefsStore(
+    (s: ReturnType<typeof useComposerPrefsStore.getState>) => s.setMode,
+  );
+  const setReasoningForCli = useComposerPrefsStore(
+    (s: ReturnType<typeof useComposerPrefsStore.getState>) => s.setReasoning,
+  );
+
   const [histView, setHistView] = useState<any[] | null>(null);
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -233,22 +245,6 @@ export const ReasonixApp: React.FC = () => {
     }
     setCurrentApp(appId);
   }, [setCurrentApp, isUnavailable]);
-
-  // Toggle mode
-  const applyMode = useCallback((m: Mode) => {
-    setMode(m);
-    setPlan(m === "plan");
-    setBypass(m === "yolo");
-  }, [setPlan, setBypass]);
-
-  const cycleMode = useCallback(() => {
-    const next = mode === "normal" ? "plan" : mode === "plan" ? "yolo" : "normal";
-    if (next === "yolo") {
-      const ok = window.confirm("YOLO 模式允许 AI 不经确认直接执行操作。确定开启？");
-      if (!ok) return;
-    }
-    applyMode(next);
-  }, [mode, applyMode]);
 
   // Global shortcuts
   useEffect(() => {
@@ -502,15 +498,6 @@ export const ReasonixApp: React.FC = () => {
 
           {/* Right controls */}
           <div className="topbar__right" data-tour="tools">
-            {/* Mode toggle */}
-            <button
-              className={`mode-badge mode-badge--${mode}`}
-              onClick={cycleMode}
-            >
-              <span className="mode-badge__dot" />
-              {mode === "normal" ? "NORMAL" : mode === "plan" ? "PLAN" : "YOLO"}
-            </button>
-
             <button className="chip chip--icon" onClick={() => setCmdPaletteOpen(true)} title="命令面板 (Ctrl+K)">
               <Command size={13} />
             </button>
@@ -546,14 +533,18 @@ export const ReasonixApp: React.FC = () => {
         <footer className="footer">
           <Composer
             running={state.running}
-            mode={mode}
+            cli={currentApp as AppId}
+            modeSpec={getModeSpec(currentApp as AppId)}
+            modeId={resolveModeId(currentApp as AppId)}
+            onModeChange={(id: string) => setModeForCli(currentApp as AppId, id)}
+            reasoningSpec={getReasoningSpec(currentApp as AppId)}
+            reasoningId={resolveReasoningId(currentApp as AppId)}
+            onReasoningChange={(id: string) => setReasoningForCli(currentApp as AppId, id)}
             onSend={send}
             onCancel={cancel}
-            onCycleMode={cycleMode}
           />
           <StatusBar
             running={state.running}
-            mode={mode}
             turnStartAt={state.turnStartAt}
             turnTokens={state.turnTokens}
             onOpenFolder={() => pickWorkspace?.()}

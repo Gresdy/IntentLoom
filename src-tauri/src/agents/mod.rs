@@ -64,18 +64,24 @@ pub trait AgentAdapter: Send + Sync {
     fn version(&self) -> Option<String> {
         None
     }
-    /// Build the [`Command`] used to spawn the CLI for streaming.
-    /// Adapters that have been verified against their real `--help` output
-    /// override this; the default is the Claude Code shape
-    /// (`--print-format-json --prompt <msg>`) and is used as the placeholder
-    /// for unverified adapters (currently `opencode`).
-    fn build_stream_command(&self, prompt: &str) -> Command {
+    /// Build the [`Command`] used to spawn the CLI for streaming. The
+    /// `opts` argument carries the per-CLI composer dropdown selections
+    /// (mode / reasoning effort). Adapters that expose those flags on
+    /// their `--help` override this method to splice the right argv
+    /// tokens; adapters that don't (opencode, openclaw, hermes today)
+    /// accept the new signature and silently drop the options.
+    ///
+    /// The default body is the Claude Code shape
+    /// (`--print-format-json --prompt <msg>`) and is used as the
+    /// placeholder for unverified adapters.
+    fn build_stream_command(&self, prompt: &str, opts: &StreamOptions) -> Command {
         let mut cmd = Command::new(self.binary());
         cmd.arg("--print-format-json")
             .arg("--prompt")
             .arg(prompt)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        let _ = opts; // default impl ignores options
         cmd
     }
 
@@ -84,6 +90,35 @@ pub trait AgentAdapter: Send + Sync {
     /// to read their own credential file(s) or env var(s).
     fn auth_state(&self) -> AuthState {
         AuthState::unknown()
+    }
+}
+
+/// Per-run options the composer dropdowns (mode / reasoning) set on
+/// the [`AgentAdapter::build_stream_command`] call. Both fields are
+/// `None` when the user has not picked anything; the frontend always
+/// resolves to the spec default, so `None` on the Rust side means
+/// "the caller did not pass them through".
+///
+/// The Rust side keeps this struct small on purpose — anything that
+/// has more than 2-3 known values belongs in a per-CLI helper, not
+/// in the trait surface.
+#[derive(Debug, Clone, Default)]
+pub struct StreamOptions {
+    /// Permission / approval mode. Mapped to `--permission-mode`
+    /// (claude), `--sandbox` (codex), `--approval-mode` (gemini).
+    /// Each adapter decides whether to emit the flag.
+    pub mode: Option<String>,
+    /// Reasoning effort. Mapped to `--effort` (claude) or
+    /// `-c model_reasoning_effort=<value>` (codex). Gemini does
+    /// not expose a reasoning knob.
+    pub reasoning: Option<String>,
+}
+
+impl StreamOptions {
+    /// Convenience for callers that have no per-CLI selections to
+    /// apply (the non-streaming `call_ai` path, for example).
+    pub fn empty() -> Self {
+        Self::default()
     }
 }
 
