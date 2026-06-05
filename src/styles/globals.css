@@ -463,8 +463,18 @@ body {
 /* Left group hugs the wrap's left padding; the spacer between the two
    groups pushes the right one to the edge of the send button. */
 .composer__prefs--left { flex: 0 1 auto; justify-content: flex-start; }
-.composer__prefs--right { flex: 0 1 auto; justify-content: flex-end; }
-.composer__spacer { flex: 1 1 auto; min-width: 8px; }
+/* send-group is a single flex row containing the reasoning menu
+   (right-anchored) and the send/cancel button. margin-left: auto
+   pushes the whole group to the right edge of the composer actions
+   bar so reasoning sits flush against the send button with no gap
+   between them — replacing the old spacer / two-prefs split. */
+.composer__send-group {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
 
 /* Make sure the composer takes the full footer width — the wrap is
    100% but the textarea inside was inheriting the page's content
@@ -550,6 +560,11 @@ body {
    Default (no modifier) keeps the panel above the trigger, which is
    what we want for a composer pinned to the bottom of the page. */
 .menu__panel--downward { bottom: auto; top: calc(100% + 6px); }
+/* Right-anchored panel: the panel's right edge lines up with the
+   trigger's right edge so it doesn't get clipped by the column. Use
+   when the trigger sits on the right edge of its container (e.g. the
+   composer's send-group). */
+.menu__panel--right { left: auto; right: 0; }
 
 .menu__item {
   display: flex;
