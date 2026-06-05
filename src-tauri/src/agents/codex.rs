@@ -14,6 +14,7 @@
 // names on a real run before adding an `AgentEvent` mapping here).
 
 use super::AgentAdapter;
+use super::{AuthState, AuthStatus, AuthProbe, evaluate_probe, home_path};
 use std::process::Stdio;
 use tokio::process::Command;
 
@@ -42,7 +43,30 @@ impl AgentAdapter for CodexAdapter {
             .stderr(Stdio::piped());
         cmd
     }
+
+    fn auth_state(&self) -> AuthState {
+        // Codex CLI ships its credential in `~/.codex/auth.json` as
+        // `{"OPENAI_API_KEY": "..."}`. The literal value `PROXY_MANAGED`
+        // is a sentinel that means "the proxy is providing auth" — it
+        // still counts as logged_in because the proxy is real auth from
+        // Codex's POV.
+        let probe = evaluate_probe(&AuthProbe::ApiKeyFile {
+            path: home_path(".codex/auth.json"),
+            key: "OPENAI_API_KEY",
+            sentinel_values: &["PROXY_MANAGED"],
+        });
+        match probe.status {
+            AuthStatus::LoggedIn => probe,
+            // The probe returns Unknown when the file is missing; that
+            // is a logged_out condition for our purposes, not unknown.
+            AuthStatus::Unknown => {
+                AuthState::logged_out("在 ~/.codex/auth.json 设置 OPENAI_API_KEY")
+            }
+            _ => probe,
+        }
+    }
 }
+
 
 #[cfg(test)]
 mod tests {

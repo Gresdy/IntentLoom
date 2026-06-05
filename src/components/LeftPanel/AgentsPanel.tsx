@@ -11,6 +11,10 @@ interface AgentInfo {
   version: string | null;
   supports_streaming: boolean;
   description: string;
+  auth: {
+    status: "logged_in" | "logged_out" | "unknown" | "not_required";
+    hint: string | null;
+  };
   install_url?: string;
   install_command?: string;
 }
@@ -62,11 +66,18 @@ export const AgentsPanel: React.FC = () => {
     setLoading(true);
     try {
       const result = await invoke<AgentInfo[]>("list_agents");
-      const agentsWithInstall = result.map((agent) => ({
-        ...agent,
-        install_url: AGENT_INSTALL_INFO[agent.id]?.url,
-        install_command: AGENT_INSTALL_INFO[agent.id]?.command,
-      }));
+      const agentsWithInstall = result.map((agent) => {
+        // Older binaries may not have the `auth` field — keep the
+        // panel rendering with a safe "unknown" default so the
+        // chip still appears, just with a "状态未知" label.
+        const auth = agent.auth ?? { status: "unknown", hint: null };
+        return {
+          ...agent,
+          auth,
+          install_url: AGENT_INSTALL_INFO[agent.id]?.url,
+          install_command: AGENT_INSTALL_INFO[agent.id]?.command,
+        };
+      });
       setAgents(agentsWithInstall);
     } catch (e) {
       console.error("Failed to load agents:", e);
@@ -96,6 +107,35 @@ export const AgentsPanel: React.FC = () => {
   const handleCopyCommand = (agent: AgentInfo) => {
     if (agent.install_command) {
       navigator.clipboard.writeText(agent.install_command);
+    }
+  };
+
+  const authChip = (agent: AgentInfo) => {
+    if (!agent.available) return null;
+    switch (agent.auth.status) {
+      case "logged_in":
+        return (
+          <span className="auth-chip auth-chip--ok">
+            <Check size={10} />
+            已登录
+          </span>
+        );
+      case "logged_out":
+        return (
+          <span className="auth-chip auth-chip--warn">
+            <X size={10} />
+            未登录
+          </span>
+        );
+      case "not_required":
+        return <span className="auth-chip auth-chip--muted">无需认证</span>;
+      case "unknown":
+      default:
+        return (
+          <span className="auth-chip auth-chip--muted" title={agent.auth.hint ?? undefined}>
+            状态未知
+          </span>
+        );
     }
   };
 
@@ -190,6 +230,7 @@ export const AgentsPanel: React.FC = () => {
                           未安装
                         </span>
                       )}
+                      {authChip(agent)}
                       {agent.supports_streaming && agent.available && (
                         <span className="px-2 py-0.5 text-xs rounded bg-[#CFFAFE] text-[#0891B2]">
                           流式
@@ -199,6 +240,20 @@ export const AgentsPanel: React.FC = () => {
                     <p className="text-sm text-[#6B7280] mb-2 line-clamp-2">
                       {agent.description}
                     </p>
+                    {agent.available && agent.auth.hint && agent.auth.status !== "logged_in" && (
+                      <p
+                        className={
+                          agent.auth.status === "logged_out"
+                            ? "auth-hint auth-hint--warn"
+                            : "auth-hint auth-hint--muted"
+                        }
+                      >
+                        <span className="auth-hint__label">
+                          {agent.auth.status === "logged_out" ? "需要登录：" : "提示："}
+                        </span>
+                        {agent.auth.hint}
+                      </p>
+                    )}
 
                     {agent.available ? (
                       <div className="space-y-1 text-xs text-[#9CA3AF]">

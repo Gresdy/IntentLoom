@@ -13,6 +13,7 @@
 // per-adapter `AgentEvent` mapping will land here.
 
 use super::AgentAdapter;
+use super::AuthState;
 use std::process::Stdio;
 use tokio::process::Command;
 
@@ -42,7 +43,22 @@ impl AgentAdapter for GeminiAdapter {
             .stderr(Stdio::piped());
         cmd
     }
+
+    fn auth_state(&self) -> AuthState {
+        // Gemini CLI takes its API key from `GEMINI_API_KEY` (canonical)
+        // or `GOOGLE_API_KEY` (legacy / Vertex env-var alias). Either
+        // non-empty value authenticates the binary.
+        for name in ["GEMINI_API_KEY", "GOOGLE_API_KEY"] {
+            if let Ok(v) = std::env::var(name) {
+                if !v.is_empty() {
+                    return AuthState::logged_in();
+                }
+            }
+        }
+        AuthState::logged_out("设置环境变量 GEMINI_API_KEY 或 GOOGLE_API_KEY")
+    }
 }
+
 
 #[cfg(test)]
 mod tests {

@@ -9,6 +9,7 @@
 // is not promised.
 
 use super::AgentAdapter;
+use super::{AuthState, AuthStatus, AuthProbe, evaluate_probe, home_path};
 
 pub struct OpenCodeAdapter;
 
@@ -25,7 +26,25 @@ impl AgentAdapter for OpenCodeAdapter {
     fn description(&self) -> &'static str {
         "Open-source AI coding assistant"
     }
+
+    fn auth_state(&self) -> AuthState {
+        // OpenCode stores provider config in
+        // `~/.config/opencode/opencode.json`; the `provider` key, when
+        // present and non-empty, means the user has wired at least one
+        // inference provider. We cannot tell from this single file
+        // whether OAuth providers (e.g. copilot-acp) have a live token,
+        // so the fallback is `Unknown` rather than `LoggedOut`.
+        let probe = evaluate_probe(&AuthProbe::JsonPath {
+            path: home_path(".config/opencode/opencode.json"),
+            dotted_path: "provider",
+        });
+        if probe.status == AuthStatus::LoggedIn {
+            return probe;
+        }
+        AuthState::unknown_with_hint("首次运行 `opencode` 时按提示配置 provider")
+    }
 }
+
 
 #[cfg(test)]
 mod tests {

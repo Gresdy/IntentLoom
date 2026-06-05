@@ -29,6 +29,7 @@
 //! its own `conversation_id` and passes the full prompt per call.
 
 use super::AgentAdapter;
+use super::{AuthState, AuthStatus, AuthProbe, evaluate_probe, home_path};
 use std::process::Stdio;
 use tokio::process::Command;
 
@@ -58,7 +59,27 @@ impl AgentAdapter for HermesAdapter {
             .stderr(Stdio::piped());
         cmd
     }
+
+    fn auth_state(&self) -> AuthState {
+        // Hermes stores pooled credentials in
+        // `~/.hermes/auth.json` under the `credential_pool` key. The
+        // `auth.login` subcommand can also complete an OAuth dance for
+        // any of the 20+ providers Hermes supports; if the pool is
+        // empty we report `Unknown` rather than `LoggedOut` because
+        // there is no single "login" command — it is `hermes login
+        // <provider>` — and we don't want to prescribe a specific
+        // provider here.
+        let probe = evaluate_probe(&AuthProbe::JsonPath {
+            path: home_path(".hermes/auth.json"),
+            dotted_path: "credential_pool",
+        });
+        if probe.status == AuthStatus::LoggedIn {
+            return probe;
+        }
+        AuthState::unknown_with_hint("运行 `hermes login <provider>` 登录(20+ provider 可选)")
+    }
 }
+
 
 #[cfg(test)]
 mod tests {

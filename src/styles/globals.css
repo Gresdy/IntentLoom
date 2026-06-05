@@ -662,6 +662,49 @@ body {
 .badge--info { background: rgba(91, 154, 230, 0.15); color: var(--accent); border-color: var(--accent); }
 .badge--muted { background: var(--bg-soft); color: var(--fg-faint); border-color: var(--border); }
 
+/* Auth status chip rendered in the Agents panel next to the install
+ * chip. Driven by `AgentInfo.auth.status` from the Rust adapter
+ * registry; the hint lives in `.auth-hint` below. Same color tokens
+ * as `.badge--*` so the panel reads as one family. */
+.auth-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.auth-chip--ok    { background: rgba(74, 138, 80, 0.15); color: var(--ok); border-color: var(--ok); }
+.auth-chip--warn  { background: rgba(184, 134, 46, 0.15); color: var(--warn); border-color: var(--warn); }
+.auth-chip--muted { background: var(--bg-soft); color: var(--fg-faint); border-color: var(--border); }
+
+/* Inline hint shown directly under the description when the user
+ * needs to do something to authenticate. Single line, monospace for
+ * the part that's a command, secondary color so it doesn't compete
+ * with the description. */
+.auth-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.5;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  word-break: break-word;
+}
+.auth-hint--warn  { background: rgba(184, 134, 46, 0.10); color: var(--warn); border: 1px solid rgba(184, 134, 46, 0.25); }
+.auth-hint--muted { background: var(--bg-soft); color: var(--fg-dim); border: 1px solid var(--border); }
+.auth-hint__label {
+  font-weight: 600;
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+  flex-shrink: 0;
+}
 .btn {
   display: inline-flex;
   align-items: center;

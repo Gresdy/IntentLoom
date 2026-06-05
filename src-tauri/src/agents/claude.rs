@@ -7,6 +7,7 @@
 //! default in [`super::AgentAdapter`] is the canonical Claude invocation.
 
 use super::AgentAdapter;
+use super::{AuthState, AuthStatus, AuthProbe, evaluate_probe, home_path};
 
 pub struct ClaudeAdapter;
 
@@ -23,7 +24,36 @@ impl AgentAdapter for ClaudeAdapter {
     fn description(&self) -> &'static str {
         "Anthropic 出品的代码助手 CLI"
     }
+
+    fn auth_state(&self) -> AuthState {
+        // Claude Code's primary auth is OAuth via the user's browser; we
+        // can't tell from disk alone whether that flow has completed. The
+        // two signal paths we *can* read are:
+        //   1. `~/.claude/.credentials.json` carrying a `claudeAiOauth`
+        //      block (the long-lived token, written by `claude /login`).
+        //   2. `~/.claude/settings.json` `env.ANTHROPIC_AUTH_TOKEN` or
+        //      `env.ANTHROPIC_API_KEY` (proxy / API-key style installs).
+        let creds = evaluate_probe(&AuthProbe::JsonPath {
+            path: home_path(".claude/.credentials.json"),
+            dotted_path: "claudeAiOauth.accessToken",
+        });
+        if creds.status == AuthStatus::LoggedIn {
+            return creds;
+        }
+        let settings = home_path(".claude/settings.json");
+        for key in ["env.ANTHROPIC_AUTH_TOKEN", "env.ANTHROPIC_API_KEY"] {
+            let probe = evaluate_probe(&AuthProbe::JsonPath {
+                path: settings.clone(),
+                dotted_path: key,
+            });
+            if probe.status == AuthStatus::LoggedIn {
+                return probe;
+            }
+        }
+        AuthState::unknown_with_hint("运行 `claude` 触发 OAuth 登录,或在 ~/.claude/settings.json 的 env 块设 ANTHROPIC_AUTH_TOKEN")
+    }
 }
+
 
 #[cfg(test)]
 mod tests {

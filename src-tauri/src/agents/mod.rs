@@ -78,6 +78,24 @@ pub trait AgentAdapter: Send + Sync {
             .stderr(Stdio::piped());
         cmd
     }
+
+    /// Per-adapter auth state surfaced to the UI. The default is
+    /// `AuthState::unknown()` — adapters override when they know how
+    /// to read their own credential file(s) or env var(s).
+    fn auth_state(&self) -> AuthState {
+        AuthState::unknown()
+    }
+}
+
+/// Resolve `~/.something` style paths against the user's `$HOME`. Falls
+/// back to the literal suffix (no leading slash) when HOME is unset so
+/// the probes never panic; the file lookup will simply miss.
+pub fn home_path(suffix: &str) -> String {
+    let trimmed = suffix.trim_start_matches('/');
+    match std::env::var("HOME") {
+        Ok(home) if !home.is_empty() => format!("{}/{}", home, trimmed),
+        _ => trimmed.to_string(),
+    }
 }
 
 /// Tiny `which` implementation, copied from `commands::agents::which` so
@@ -288,5 +306,249 @@ mod tests {
     #[test]
     fn which_returns_none_for_missing_binary() {
         assert!(which("definitely-not-a-real-binary-xyz").is_none());
+    }
+}
+
+#[cfg(test)]
+mod probe_tests {
+    //! Unit tests for [`evaluate_probe`]. Each test uses a unique
+    //! `/tmp` path so the suite is safe to run with `cargo test`
+    //! defaults (no shared HOME, no shared state file).
+    use super::*;
+    use std::io::Write;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static SEQ: AtomicUsize = AtomicUsize::new(0);
+
+    fn tmp_path(suffix: &str) -> String {
+        let n = SEQ.fetch_add(1, Ordering::SeqCst);
+        let pid = std::process::id();
+        format!("/tmp/intentloom_probe_{pid}_{n}_{suffix}")
+    }
+
+    fn write(path: &str, body: &[u8]) {
+        let mut f = std::fs::File::create(path).expect("create temp file");
+        f.write_all(body).expect("write temp file");
+        f.sync_all().ok();
+    }
+
+    // -- ApiKeyFile --
+
+    #[test]
+    fn api_key_file_with_real_key_logs_in() {
+        let p = tmp_path("apikey_ok.json");
+        write(&p, br#"{"OPENAI_API_KEY": "sk-real-1234567890"}"#);
+        let probe = AuthProbe::ApiKeyFile {
+            path: p.clone(),
+            key: "OPENAI_API_KEY",
+            sentinel_values: &[],
+        };
+        assert_eq!(evaluate_probe(&probe).status, AuthStatus::LoggedIn);
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn api_key_file_with_sentinel_value_still_logs_in() {
+        let p = tmp_path("apikey_sentinel.json");
+        write(&p, br#"{"OPENAI_API_KEY": "PROXY_MANAGED"}"#);
+        let probe = AuthProbe::ApiKeyFile {
+            path: p.clone(),
+            key: "OPENAI_API_KEY",
+            sentinel_values: &["PROXY_MANAGED"],
+        };
+        assert_eq!(evaluate_probe(&probe).status, AuthStatus::LoggedIn);
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn api_key_file_missing_logs_out() {
+        // Missing file → probe returns Unknown; the Codex adapter
+        // remaps that to LoggedOut with a friendlier hint. The raw
+        // probe behaviour is what we test here.
+        let p = tmp_path("apikey_missing.json");
+        std::fs::remove_file(&p).ok();
+        let probe = AuthProbe::ApiKeyFile {
+            path: p,
+            key: "OPENAI_API_KEY",
+            sentinel_values: &[],
+        };
+        assert_eq!(evaluate_probe(&probe).status, AuthStatus::Unknown);
+    }
+
+    #[test]
+    fn api_key_file_empty_value_logs_out() {
+        let p = tmp_path("apikey_empty.json");
+        write(&p, br#"{"OPENAI_API_KEY": ""}"#);
+        let probe = AuthProbe::ApiKeyFile {
+            path: p.clone(),
+            key: "OPENAI_API_KEY",
+            sentinel_values: &[],
+        };
+        assert_eq!(evaluate_probe(&probe).status, AuthStatus::LoggedOut);
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn api_key_file_malformed_logs_out() {
+        let p = tmp_path("apikey_bad.json");
+        write(&p, b"not valid json");
+        let probe = AuthProbe::ApiKeyFile {
+            path: p.clone(),
+            key: "OPENAI_API_KEY",
+            sentinel_values: &[],
+        };
+        assert_eq!(evaluate_probe(&probe).status, AuthStatus::Unknown);
+        std::fs::remove_file(&p).ok();
+    }
+
+    // -- EnvVar --
+
+    #[test]
+    fn env_var_set_logs_in() {
+        let key = "INTENTLOOM_TEST_AUTH_TOKEN";
+        // SAFETY: this test sets a unique env var and is single-threaded
+        // for that var; other tests in the suite do not touch it.
+        unsafe { std::env::set_var(key, "sk-env-123") };
+        assert_eq!(
+            evaluate_probe(&AuthProbe::EnvVar(key)).status,
+            AuthStatus::LoggedIn
+        );
+        unsafe { std::env::remove_var(key) };
+    }
+
+    #[test]
+    fn env_var_empty_logs_out() {
+        let key = "INTENTLOOM_TEST_AUTH_EMPTY";
+        unsafe { std::env::set_var(key, "") };
+        assert_eq!(
+            evaluate_probe(&AuthProbe::EnvVar(key)).status,
+            AuthStatus::LoggedOut
+        );
+        unsafe { std::env::remove_var(key) };
+    }
+
+    #[test]
+    fn env_var_unset_logs_out() {
+        let key = "INTENTLOOM_TEST_AUTH_UNSET_XYZ_12345";
+        unsafe { std::env::remove_var(key) };
+        assert_eq!(
+            evaluate_probe(&AuthProbe::EnvVar(key)).status,
+            AuthStatus::LoggedOut
+        );
+    }
+
+    // -- JsonPath --
+
+    #[test]
+    fn json_path_non_empty_object_logs_in() {
+        let p = tmp_path("json_obj.json");
+        write(&p, br#"{"auth": {"profiles": {"minimax": {}}}}"#);
+        let probe = AuthProbe::JsonPath {
+            path: p.clone(),
+            dotted_path: "auth.profiles",
+        };
+        assert_eq!(evaluate_probe(&probe).status, AuthStatus::LoggedIn);
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn json_path_non_empty_string_logs_in() {
+        let p = tmp_path("json_str.json");
+        write(&p, br#"{"env": {"ANTHROPIC_AUTH_TOKEN": "sk-x"}}"#);
+        let probe = AuthProbe::JsonPath {
+            path: p.clone(),
+            dotted_path: "env.ANTHROPIC_AUTH_TOKEN",
+        };
+        assert_eq!(evaluate_probe(&probe).status, AuthStatus::LoggedIn);
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn json_path_empty_object_logs_out() {
+        let p = tmp_path("json_empty.json");
+        write(&p, br#"{"auth": {"profiles": {}}}"#);
+        let probe = AuthProbe::JsonPath {
+            path: p.clone(),
+            dotted_path: "auth.profiles",
+        };
+        assert_eq!(evaluate_probe(&probe).status, AuthStatus::LoggedOut);
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn json_path_missing_segment_logs_out() {
+        // Rename is a little imprecise — a missing segment along the
+        // dotted path returns `Unknown` from the probe (we cannot tell
+        // whether the user is logged out vs. hasn't written that key
+        // yet), not `LoggedOut`. The "out" part of the name now refers
+        // to "no leaf object/array/string found" rather than "the user
+        // is logged out". Keep the name for symmetry with the other
+        // path-based tests; the assertion is what matters.
+        // See `json_path_file_missing_is_unknown` for the file-level
+        // missing case; the segment-level missing case is `Unknown`
+        // rather than `LoggedOut` because we don't want to claim
+        // "logged out" for keys the CLI may not even write.
+        let p = tmp_path("json_missing.json");
+        write(&p, br#"{"env": {}}"#);
+        let probe = AuthProbe::JsonPath {
+            path: p.clone(),
+            dotted_path: "env.ANTHROPIC_AUTH_TOKEN",
+        };
+        let state = evaluate_probe(&probe);
+        assert_eq!(state.status, AuthStatus::Unknown);
+        // The hint should help the user understand the gap.
+        assert!(state.hint.is_some(), "missing segment must carry a hint");
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn json_path_file_missing_is_unknown() {
+        let p = tmp_path("json_no_file.json");
+        std::fs::remove_file(&p).ok();
+        let probe = AuthProbe::JsonPath {
+            path: p,
+            dotted_path: "auth.profiles",
+        };
+        assert_eq!(evaluate_probe(&probe).status, AuthStatus::Unknown);
+    }
+
+    // -- OAuthBrowser --
+
+    #[test]
+    fn oauth_browser_is_always_unknown_with_hint() {
+        let s = evaluate_probe(&AuthProbe::OAuthBrowser);
+        assert_eq!(s.status, AuthStatus::Unknown);
+        assert!(s.hint.is_some());
+    }
+
+    // -- home_path helper --
+
+    #[test]
+    fn home_path_resolves_under_home() {
+        // SAFETY: HOME is process-wide; this test sets it to a known
+        // value and restores it before returning. Other tests in the
+        // suite do not read HOME, so the brief window is safe.
+        let saved = std::env::var("HOME").ok();
+        unsafe { std::env::set_var("HOME", "/tmp/intentloom_test_home") };
+        let p = home_path(".codex/auth.json");
+        assert_eq!(p, "/tmp/intentloom_test_home/.codex/auth.json");
+        if let Some(v) = saved {
+            unsafe { std::env::set_var("HOME", v) };
+        } else {
+            unsafe { std::env::remove_var("HOME") };
+        }
+    }
+
+    #[test]
+    fn home_path_strips_leading_slash() {
+        // The "no HOME" case should still produce a usable relative
+        // path; the file lookup will just miss, never panic.
+        let saved = std::env::var("HOME").ok();
+        unsafe { std::env::remove_var("HOME") };
+        let p = home_path("/.claude/settings.json");
+        assert_eq!(p, ".claude/settings.json");
+        if let Some(v) = saved {
+            unsafe { std::env::set_var("HOME", v) };
+        }
     }
 }

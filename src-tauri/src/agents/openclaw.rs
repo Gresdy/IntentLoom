@@ -17,6 +17,7 @@
 // chat transcript still renders.
 
 use super::AgentAdapter;
+use super::{AuthState, AuthStatus, AuthProbe, evaluate_probe, home_path};
 use std::process::Stdio;
 use tokio::process::Command;
 
@@ -47,7 +48,25 @@ impl AgentAdapter for OpenClawAdapter {
             .stderr(Stdio::piped());
         cmd
     }
+
+    fn auth_state(&self) -> AuthState {
+        // OpenClaw writes its `auth.profiles` map to
+        // `~/.openclaw/openclaw.json`; any non-empty profile entry
+        // (e.g. `minimax-cn:default`) means at least one provider is
+        // wired. The `wizard.lastRunAt` marker is a softer signal that
+        // we intentionally do not check — the user can have completed
+        // the wizard without settling on a profile.
+        let probe = evaluate_probe(&AuthProbe::JsonPath {
+            path: home_path(".openclaw/openclaw.json"),
+            dotted_path: "auth.profiles",
+        });
+        if probe.status == AuthStatus::LoggedIn {
+            return probe;
+        }
+        AuthState::logged_out("运行 `openclaw onboard` 选择 provider")
+    }
 }
+
 
 #[cfg(test)]
 mod tests {

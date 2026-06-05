@@ -18,6 +18,13 @@ export interface AgentInfo {
   version: string | null;
   supports_streaming: boolean;
   description: string;
+  /** Per-adapter auth state. The hint is rendered inline next to the
+   * chip in the Agents panel so the user knows what command to run
+   * (or what env var to set) when credentials are missing. */
+  auth: {
+    status: "logged_in" | "logged_out" | "unknown" | "not_required";
+    hint: string | null;
+  };
 }
 
 interface AgentState {

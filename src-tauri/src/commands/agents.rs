@@ -1,4 +1,5 @@
 use crate::agents;
+use crate::agents::AuthState;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tauri::command;
@@ -14,6 +15,11 @@ pub struct AgentInfo {
     pub version: Option<String>,
     pub supports_streaming: bool,
     pub description: String,
+    /// Per-adapter auth state (logged in / logged out / unknown / not
+    /// required). The hint is surfaced next to the chip in the Agents
+    /// panel and tells the user what command to run when credentials
+    /// are missing.
+    pub auth: AuthState,
 }
 
 #[allow(dead_code)]
@@ -50,6 +56,7 @@ pub async fn list_agents() -> Result<Vec<AgentInfo>, String> {
             version: a.version(),
             supports_streaming: a.supports_streaming(),
             description: a.description().to_string(),
+            auth: a.auth_state(),
         });
     }
     Ok(out)
