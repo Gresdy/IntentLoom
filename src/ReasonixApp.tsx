@@ -409,6 +409,17 @@ export const ReasonixApp: React.FC = () => {
         <div className="sidebar__header">
           <div className="sidebar__logo">I</div>
           <span className="sidebar__title">IntentLoom</span>
+          <button
+            className="sidebar__toggle"
+            onClick={() => setSidebarExpanded(!sidebarExpanded)}
+            title={sidebarExpanded ? "收起侧边栏 (Ctrl+B)" : "展开侧边栏 (Ctrl+B)"}
+            aria-label={sidebarExpanded ? "收起侧边栏" : "展开侧边栏"}
+          >
+            <ChevronRight
+              size={14}
+              className={`sidebar__toggle-icon${sidebarExpanded ? " sidebar__toggle-icon--expanded" : ""}`}
+            />
+          </button>
         </div>
 
         <div className="sidebar__nav">
@@ -443,14 +454,6 @@ export const ReasonixApp: React.FC = () => {
           >
             <span className="sidebar__nav-item-icon"><Settings size={18} /></span>
             <span className="sidebar__nav-item-label">设置</span>
-          </button>
-
-          <button
-            className="sidebar__toggle"
-            onClick={() => setSidebarExpanded(!sidebarExpanded)}
-          >
-            <ChevronRight size={14} className={`sidebar__toggle-icon${sidebarExpanded ? " sidebar__toggle-icon--expanded" : ""}`} />
-            {sidebarExpanded && <span>收起</span>}
           </button>
         </div>
       </nav>
