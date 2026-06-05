@@ -84,6 +84,11 @@ pub fn run() {
             commands::experts::toggle_expert_active,
             commands::experts::scan_expert_files,
             commands::experts::import_expert_to_project,
+            // product_changes (cross-conversation artifact ledger)
+            commands::product_changes::record_product_change,
+            commands::product_changes::record_product_changes_batch,
+            commands::product_changes::list_product_changes,
+            commands::product_changes::list_product_changes_aggregate,
             // skills
             commands::skills::marketplace::search_skills,
             commands::skills::marketplace::install_skill,

@@ -82,6 +82,24 @@ pub fn init() {
     )
     .expect("Failed to create database tables");
 
+    conn.execute_batch(
+        "\
+        CREATE TABLE IF NOT EXISTS product_changes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            path TEXT,
+            summary TEXT,
+            created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_pc_conv ON product_changes(conversation_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_pc_agent ON product_changes(agent_id);
+        CREATE INDEX IF NOT EXISTS idx_pc_kind ON product_changes(kind);
+        ",
+    )
+    .expect("Failed to create product_changes table");
+
     info!("Database initialized at {:?}", db_path);
 
     DB_CONNECTION

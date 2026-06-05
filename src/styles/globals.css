@@ -1514,6 +1514,56 @@ body {
   font-style: italic;
 }
 
+/* Cross-conversation product_changes roll-up. Sits next to the
+   per-conversation artifact list; the SQLite-backed numbers
+   survive conversation switches and app restarts, so this is the
+   place to look for "how much have I actually built so far". */
+.loom-aggregate {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+}
+.loom-aggregate__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg-dim);
+}
+.loom-aggregate__row strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+.loom-aggregate__by-agent {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border-soft);
+}
+.loom-aggregate__agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--fg-faint);
+}
+.loom-aggregate__agent-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.loom-aggregate__empty {
+  color: var(--fg-faint);
+  font-style: italic;
+  font-size: 10px;
+}
+
 /* Right panel as modal (overlays loom-panel rather than competing for
    horizontal space). Used when a user clicks a sidebar entry to open a
    management panel; closing it returns to the persistent loom view. */

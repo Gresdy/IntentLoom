@@ -9,3 +9,4 @@ pub mod acp;
 pub mod permissions;
 pub mod proxy;
 pub mod experts;
+pub mod product_changes;

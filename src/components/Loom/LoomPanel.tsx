@@ -13,13 +13,14 @@
 // is active, every section falls back to a clear "no data yet" hint
 // rather than showing stale or invented content.
 
-import { useMemo } from "react";
-import { Bot, ListTodo, Wrench, Package, FileEdit, Terminal, FilePlus2, FileX2 } from "lucide-react";
+import { useMemo, useEffect } from "react";
+import { Bot, ListTodo, Wrench, Package, FileEdit, Terminal, FilePlus2, FileX2, TrendingUp } from "lucide-react";
 import { useModelStore } from "@/stores/useModelStore";
 import { useMessageStore } from "@/stores/messageStore";
 import { useConversationStore } from "@/stores/conversationStore";
 import type { ToolCall, PlanEntry } from "@/types/message";
 import { buildArtifactSummary, hasAnyArtifact } from "@/lib/artifactTally";
+import { useProductChangesStore } from "@/lib/useProductChanges";
 
 export function LoomPanel() {
   const currentApp = useModelStore((s) => s.currentApp);
@@ -29,6 +30,15 @@ export function LoomPanel() {
   const isStreaming = useMessageStore((s) => s.isStreaming);
   const conversations = useConversationStore((s) => s.conversations);
   const currentConversationId = useConversationStore((s) => s.currentConversationId);
+  // Cross-conversation product_changes aggregate, lazily refreshed
+  // on mount. The store also re-fetches itself after every batch
+  // write, so the numbers stay in sync with whatever turns the
+  // streaming controller has just finished persisting.
+  const aggregate = useProductChangesStore((s) => s.aggregate);
+  const refreshProductChanges = useProductChangesStore((s) => s.refresh);
+  useEffect(() => {
+    void refreshProductChanges();
+  }, [refreshProductChanges]);
 
   // The latest user message of the current conversation is the best
   // "intent" proxy we have until Phase 1 wires a real intent parser.
@@ -106,6 +116,14 @@ export function LoomPanel() {
           empty="还没有产物"
         >
           <ArtifactSummary summary={artifacts} />
+        </LoomSection>
+
+        <LoomSection
+          icon={<TrendingUp size={12} />}
+          title="跨对话累计"
+          empty="还没有跨对话的产物记录"
+        >
+          <AggregateTally summary={aggregate} />
         </LoomSection>
 
         <div className="loom-panel__hint">
@@ -248,6 +266,63 @@ function ArtifactSummary({ summary }: { summary: ArtifactTally }) {
           {summary.filesTouched.length > 5 && (
             <span className="loom-artifacts__more">+{summary.filesTouched.length - 5}</span>
           )}
+        </li>
+      )}
+    </ul>
+  );
+}
+
+function AggregateTally({
+  summary,
+}: {
+  summary: {
+    byKind: Record<string, number>;
+    byAgent: Record<string, number>;
+    totalFiles: number;
+    totalCommands: number;
+    totalRows: number;
+  };
+}) {
+  if (summary.totalRows === 0) {
+    return <div className="loom-aggregate__empty">还没有跨对话的产物记录</div>;
+  }
+  // Stable agent color dots so the user can eyeball which CLIs
+  // produced the most output. Order is preserved from the backend
+  // (BTreeMap insertion order, i.e. first-write wins), which is good
+  // enough for a glance.
+  const agentColors: Record<string, string> = {
+    claude: "#cc785c",
+    codex: "#10a37f",
+    gemini: "#4285f4",
+    opencode: "#a78bfa",
+    openclaw: "#f59e0b",
+    hermes: "#22d3ee",
+  };
+  return (
+    <ul className="loom-aggregate">
+      <li className="loom-aggregate__row">
+        <FilePlus2 size={10} className="loom-artifacts__icon loom-artifacts__icon--add" />
+        <span>
+          <strong>{summary.totalFiles}</strong> 个文件改动
+        </span>
+      </li>
+      <li className="loom-aggregate__row">
+        <Terminal size={10} className="loom-artifacts__icon" />
+        <span>
+          <strong>{summary.totalCommands}</strong> 个命令
+        </span>
+      </li>
+      {Object.keys(summary.byAgent).length > 0 && (
+        <li className="loom-aggregate__by-agent">
+          {Object.entries(summary.byAgent).map(([agent, count]) => (
+            <span key={agent} className="loom-aggregate__agent">
+              <span
+                className="loom-aggregate__agent-dot"
+                style={{ background: agentColors[agent] ?? "#888" }}
+              />
+              {agent} · {count}
+            </span>
+          ))}
         </li>
       )}
     </ul>

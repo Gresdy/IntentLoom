@@ -6,6 +6,7 @@ import { useMessageStore } from "@/stores/messageStore";
 import { useModelStore } from "@/stores/useModelStore";
 import { buildArtifactSummary, hasAnyArtifact } from "@/lib/artifactTally";
 import type { ArtifactTally } from "@/lib/artifactTally";
+import { useProductChangesStore } from "@/lib/useProductChanges";
 import { parseStreamChunk } from "@/lib/streamChunkParser";
 import type { ToolCall } from "@/types/message";
 
@@ -272,6 +273,21 @@ export function useReasonixController() {
           if (hasAnyArtifact(tally)) {
             setSummary(conv.id, tally);
           }
+          // Mirror the live turn into the cross-conversation
+          // product_changes ledger. We do this here (not earlier)
+          // because the Rust write is synchronous-ish and would slow
+          // the streaming loop; once the turn is done the user is
+          // already waiting for a final response, so a single batch
+          // insert is invisible. Failures are caught inside the
+          // store and demoted to a console warning — the live tally
+          // above still works.
+          const agentId =
+            conv.metadata?.agentId ??
+            useModelStore.getState().currentApp ??
+            "claude";
+          void useProductChangesStore
+            .getState()
+            .recordBatch(conv.id, agentId, tcs);
         }
 
         setStreaming(false);
