@@ -260,17 +260,9 @@ body {
   background: var(--bg);
 }
 
-/* Sidebar toggle lives at the start of the topbar (not the sidebar
-   header) so it's always visible regardless of sidebar state.
-   Previously the toggle was placed inside .sidebar__header, but
-   the collapsed sidebar is only 52 px wide and the 24-px button
-   + 22-px logo would overflow and get clipped by overflow:hidden. */
-.topbar__sidebar-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
+/* (Topbar no longer hosts the sidebar toggle — the toggle now lives
+   in the sidebar header, where the logo + toggle fit at the new
+   60-px collapsed width.) */
 .main-content {
   flex: 1;
   overflow-y: auto;
@@ -453,6 +445,82 @@ body {
 .composer__cancel { background: #e5484d; }
 .composer__cancel:hover { background: #d23a3f; }
 
+/* ── Popover dropdown (Menu.tsx) ── */
+/* Used by the composer's per-CLI mode and reasoning effort selectors.
+   The trigger is rendered as a slim pill that matches the rest of the
+   .chip family; the panel is a single floating card with a check mark
+   on the active row. */
+.menu { position: relative; display: inline-flex; }
+.menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--bg-soft);
+  color: var(--fg);
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.menu__trigger:hover { background: var(--bg-elev-2); border-color: var(--border); }
+.menu__trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.menu__caption {
+  color: var(--fg-faint);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+.menu__value { color: var(--fg); font-weight: 600; }
+.menu__chevron { color: var(--fg-faint); transition: transform 0.15s; }
+.menu__chevron--open { transform: rotate(180deg); }
+
+.menu__panel {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 30;
+  min-width: 180px;
+  max-width: 260px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+.menu__panel--upward { bottom: auto; top: calc(100% + 6px); }
+
+.menu__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.3;
+}
+.menu__item:hover { background: var(--bg-soft); }
+.menu__item--active { background: var(--accent-soft); color: var(--accent); }
+.menu__item-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.menu__item-label { font-weight: 600; }
+.menu__item-desc { color: var(--fg-faint); font-size: 10.5px; line-height: 1.3; }
+.menu__item--active .menu__item-desc { color: var(--accent); opacity: 0.75; }
+.menu__item-check { flex-shrink: 0; }
+
 /* ── Slash command menu (floats above the textarea) ── */
 .slashmenu {
   position: absolute;
@@ -499,16 +567,16 @@ body {
   font-size: 14px;
   color: var(--fg);
   user-select: none;
-  gap: 8px;
-  padding: 0 6px 0 10px;
+  gap: 4px;
+  padding: 0 2px 0 6px;
   white-space: nowrap;
   overflow: hidden;
 }
 
 .sidebar__header .sidebar__toggle {
   margin-left: auto;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -539,8 +607,8 @@ body {
 .sidebar__toggle-icon--expanded { transform: rotate(180deg); }
 
 .sidebar__logo {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -553,6 +621,7 @@ body {
 }
 
 .sidebar__title {
+  display: none;
   opacity: 0;
   width: 0;
   overflow: hidden;
@@ -561,6 +630,7 @@ body {
 }
 
 .sidebar.sidebar--expanded .sidebar__title {
+  display: inline;
   opacity: 1;
   width: auto;
 }

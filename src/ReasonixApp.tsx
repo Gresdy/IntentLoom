@@ -409,6 +409,14 @@ export const ReasonixApp: React.FC = () => {
         <div className="sidebar__header">
           <div className="sidebar__logo">I</div>
           <span className="sidebar__title">IntentLoom</span>
+          <button
+            className="sidebar__toggle"
+            onClick={() => setSidebarExpanded(!sidebarExpanded)}
+            title={sidebarExpanded ? "收起侧边栏 (Ctrl+B)" : "展开侧边栏 (Ctrl+B)"}
+            aria-label={sidebarExpanded ? "收起侧边栏" : "展开侧边栏"}
+          >
+            {sidebarExpanded ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
+          </button>
         </div>
 
         <div className="sidebar__nav">
@@ -451,20 +459,6 @@ export const ReasonixApp: React.FC = () => {
       <div className="main-area" data-tour="chat">
         {/* Top Bar */}
         <header className="topbar">
-          {/* Sidebar toggle (lives in topbar, not the sidebar header,
-              because the collapsed sidebar is only 52 px wide — the
-              24-px toggle button + 22-px logo would overflow and get
-              clipped. Putting it at the very start of the topbar keeps
-              the toggle always visible regardless of sidebar state.) */}
-          <button
-            className="topbar__sidebar-toggle chip chip--icon"
-            onClick={() => setSidebarExpanded(!sidebarExpanded)}
-            title={sidebarExpanded ? "收起侧边栏 (Ctrl+B)" : "展开侧边栏 (Ctrl+B)"}
-            aria-label={sidebarExpanded ? "收起侧边栏" : "展开侧边栏"}
-          >
-            {sidebarExpanded ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
-          </button>
-
           {/* Agent Tabs */}
           <div className="agent-tabs">
             {ALL_AGENTS.map((agent) => {
