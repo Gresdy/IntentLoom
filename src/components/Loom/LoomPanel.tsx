@@ -113,7 +113,6 @@ export function LoomPanel() {
         <LoomSection
           icon={<Package size={12} />}
           title="产物"
-          empty="还没有产物"
         >
           <ArtifactSummary summary={artifacts} />
         </LoomSection>
@@ -121,7 +120,6 @@ export function LoomPanel() {
         <LoomSection
           icon={<TrendingUp size={12} />}
           title="跨对话累计"
-          empty="还没有跨对话的产物记录"
         >
           <AggregateTally summary={aggregate} />
         </LoomSection>
@@ -228,7 +226,12 @@ import type { ArtifactTally } from "@/lib/artifactTally";
 
 function ArtifactSummary({ summary }: { summary: ArtifactTally }) {
   if (!hasAnyArtifact(summary)) {
-    return null;
+    // Render the same `.loom-section__empty` div the Intent / Aggregate
+    // sections use, so the empty state is consistent across all five
+    // Loom sections. Returning `null` would leave the body blank,
+    // because LoomSection's `!children && empty` short-circuit can't
+    // see through a React element that renders to nothing.
+    return <div className="loom-section__empty">还没有产物</div>;
   }
   return (
     <ul className="loom-artifacts">
@@ -280,11 +283,17 @@ function AggregateTally({
     byAgent: Record<string, number>;
     totalFiles: number;
     totalCommands: number;
-    totalRows: number;
+  totalRows: number;
   };
 }) {
+  // Empty state: render the same `.loom-section__empty` div the Intent
+  // section uses (which lives in `children`), so every Loom section
+  // shares one empty-state style. We don't rely on LoomSection's
+  // `empty` prop here because `children` is a React element
+  // (`<AggregateTally />`) and stays truthy even when this component
+  // returns null — LoomSection's `!children && empty` would never fire.
   if (summary.totalRows === 0) {
-    return <div className="loom-aggregate__empty">还没有跨对话的产物记录</div>;
+    return <div className="loom-section__empty">还没有跨对话的产物记录</div>;
   }
   // Stable agent color dots so the user can eyeball which CLIs
   // produced the most output. Order is preserved from the backend

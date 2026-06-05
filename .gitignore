@@ -9,3 +9,10 @@ docs/
 *.docx
 *.bak
 .obsidian/
+
+# Playwright CLI / visual debug residue
+.playwright-cli/
+ui-*.png
+.playwright-cli/
+ui-*.png
+**/ui-*.png

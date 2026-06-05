@@ -1558,11 +1558,6 @@ body {
   height: 6px;
   border-radius: 50%;
 }
-.loom-aggregate__empty {
-  color: var(--fg-faint);
-  font-style: italic;
-  font-size: 10px;
-}
 
 /* Right panel as modal (overlays loom-panel rather than competing for
    horizontal space). Used when a user clicks a sidebar entry to open a
