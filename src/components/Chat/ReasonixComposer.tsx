@@ -178,7 +178,7 @@ export function Composer({
 
         {/* 操作按钮 */}
         <div className="composer__actions">
-          {/* 模式(左侧) + 推理(右侧,挨着发送按钮) — 只对当前 CLI 有 spec 时显示 */}
+          {/* 模式(左侧) */}
           <div className="composer__prefs composer__prefs--left">
             {modeSpec && (
               <Menu
@@ -186,40 +186,42 @@ export function Composer({
                 value={modeId}
                 options={modeSpec.options}
                 onChange={onModeChange}
+                downward={false}
               />
             )}
           </div>
-          <div className="composer__spacer" />
-          <div className="composer__prefs composer__prefs--right">
+
+          {/* 推理(右侧,紧贴发送按钮) + 发送/取消 — 同一个 send-group 推到最右 */}
+          <div className="composer__send-group">
             {reasoningSpec && (
               <Menu
                 caption="推理"
                 value={reasoningId}
                 options={reasoningSpec.options}
                 onChange={onReasoningChange}
+                downward={false}
+                align="right"
               />
             )}
+            {running ? (
+              <button
+                className="composer__cancel"
+                onClick={onCancel}
+                title="取消 (Ctrl+C)"
+              >
+                <Square size={14} />
+              </button>
+            ) : (
+              <button
+                className="composer__send"
+                onClick={handleSubmit}
+                disabled={!text.trim()}
+                title="发送 (Enter)"
+              >
+                <ArrowUp size={14} />
+              </button>
+            )}
           </div>
-
-          {/* 发送/取消 */}
-          {running ? (
-            <button
-              className="composer__cancel"
-              onClick={onCancel}
-              title="取消 (Ctrl+C)"
-            >
-              <Square size={14} />
-            </button>
-          ) : (
-            <button
-              className="composer__send"
-              onClick={handleSubmit}
-              disabled={!text.trim()}
-              title="发送 (Enter)"
-            >
-              <ArrowUp size={14} />
-            </button>
-          )}
         </div>
       </div>
     </div>

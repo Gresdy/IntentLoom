@@ -21,6 +21,8 @@ type MenuProps = {
   triggerClassName?: string;
   /** When true, the panel hangs below the trigger (default: above). */
   downward?: boolean;
+  /** Horizontal alignment of the panel relative to the trigger. Default "left". */
+  align?: "left" | "right";
 };
 
 /**
@@ -35,6 +37,7 @@ export function Menu({
   onChange,
   triggerClassName,
   downward,
+  align = "left",
 }: MenuProps) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -72,7 +75,10 @@ export function Menu({
         <ChevronDown size={11} className={`menu__chevron${open ? " menu__chevron--open" : ""}`} />
       </button>
       {open && (
-        <div className={`menu__panel${downward ? " menu__panel--downward" : ""}`} role="listbox">
+        <div
+          className={`menu__panel${downward ? " menu__panel--downward" : ""}${align === "right" ? " menu__panel--right" : ""}`}
+          role="listbox"
+        >
           {options.map((opt) => {
             const active = opt.id === value;
             return (
