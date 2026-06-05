@@ -19,8 +19,8 @@ type MenuProps = {
   onChange: (id: string) => void;
   /** Optional className for the trigger button. */
   triggerClassName?: string;
-  /** When true, the panel renders above the trigger (used near the page bottom). */
-  upward?: boolean;
+  /** When true, the panel hangs below the trigger (default: above). */
+  downward?: boolean;
 };
 
 /**
@@ -34,7 +34,7 @@ export function Menu({
   options,
   onChange,
   triggerClassName,
-  upward,
+  downward,
 }: MenuProps) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -72,7 +72,7 @@ export function Menu({
         <ChevronDown size={11} className={`menu__chevron${open ? " menu__chevron--open" : ""}`} />
       </button>
       {open && (
-        <div className={`menu__panel${upward ? " menu__panel--upward" : ""}`} role="listbox">
+        <div className={`menu__panel${downward ? " menu__panel--downward" : ""}`} role="listbox">
           {options.map((opt) => {
             const active = opt.id === value;
             return (

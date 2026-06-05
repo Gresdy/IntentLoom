@@ -51,6 +51,11 @@ const MODEL_CONTEXT_LIMITS: Record<string, number> = {
   'claude-3.5-haiku': 200_000,
   'claude-3-opus': 200_000,
   'claude-3-haiku': 200_000,
+
+  // MiniMax series — 1M context (matches the published spec)
+  'MiniMax-M3': 1_048_576,
+  'MiniMax-m3': 1_048_576,
+  'MiniMax-M2.7': 1_048_576,
 };
 
 /**

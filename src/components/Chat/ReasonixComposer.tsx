@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { KeyboardEvent } from "react";
 import { ArrowUp, Square, Zap, Hash, Lightbulb } from "lucide-react";
-import type { Mode } from "../../lib/reasonixAdapter";
+import type { AppId } from "../../shared/types";
+import type { CliOption } from "../../lib/cliCapabilities";
+import { Menu } from "../ui/Menu";
 
 // 斜杠命令
 const SLASH_COMMANDS = [
@@ -12,15 +14,29 @@ const SLASH_COMMANDS = [
 
 interface ComposerProps {
   running: boolean;
-  mode: Mode;
+  /** Current CLI selection; used to gate which dropdowns render. */
+  cli: AppId;
+  /** Spec for the current CLI's permission/mode dropdown. Undefined = hidden. */
+  modeSpec?: { flagTemplate: string; defaultId: string; options: CliOption[] };
+  modeId: string | null;
+  onModeChange: (id: string) => void;
+  /** Spec for the current CLI's reasoning dropdown. Undefined = hidden. */
+  reasoningSpec?: { flagTemplate: string; defaultId: string; options: CliOption[] };
+  reasoningId: string | null;
+  onReasoningChange: (id: string) => void;
   onSend: (text: string) => void;
   onCancel: () => void;
-  onCycleMode: () => void;
 }
 
 export function Composer({
   running,
-  mode,
+  cli,
+  modeSpec,
+  modeId,
+  onModeChange,
+  reasoningSpec,
+  reasoningId,
+  onReasoningChange,
   onSend,
   onCancel,
 }: ComposerProps) {
@@ -116,15 +132,8 @@ export function Composer({
     [showSlashMenu, slashMatches, slashActive, handleSubmit]
   );
 
-  // 模式颜色
-  const modeColors: Record<Mode, { bg: string; text: string }> = {
-    normal: { bg: "var(--bg-elev-2)", text: "var(--fg-faint)" },
-    plan: { bg: "var(--accent-soft)", text: "var(--accent)" },
-    yolo: { bg: "#e5484d", text: "#fff" },
-  };
-
   return (
-    <div className="composer">
+    <div className="composer" data-cli={cli}>
       <div className="composer__wrap">
         {/* 斜杠命令菜单 */}
         {showSlashMenu && (
@@ -169,19 +178,27 @@ export function Composer({
 
         {/* 操作按钮 */}
         <div className="composer__actions">
-          {/* 模式指示 */}
-          <div
-            className="flex items-center gap-1.5 px-2 py-1 rounded text-xs"
-            style={{
-              background: modeColors[mode].bg,
-              color: modeColors[mode].text,
-            }}
-          >
-            <span
-              className="w-1.5 h-1.5 rounded-full"
-              style={{ background: modeColors[mode].text }}
-            />
-            {mode === "normal" ? "NORMAL" : mode === "plan" ? "PLAN" : "YOLO"}
+          {/* 模式(左侧) + 推理(右侧,挨着发送按钮) — 只对当前 CLI 有 spec 时显示 */}
+          <div className="composer__prefs composer__prefs--left">
+            {modeSpec && (
+              <Menu
+                caption="模式"
+                value={modeId}
+                options={modeSpec.options}
+                onChange={onModeChange}
+              />
+            )}
+          </div>
+          <div className="composer__spacer" />
+          <div className="composer__prefs composer__prefs--right">
+            {reasoningSpec && (
+              <Menu
+                caption="推理"
+                value={reasoningId}
+                options={reasoningSpec.options}
+                onChange={onReasoningChange}
+              />
+            )}
           </div>
 
           {/* 发送/取消 */}

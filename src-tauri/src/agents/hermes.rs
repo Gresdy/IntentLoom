@@ -29,6 +29,7 @@
 //! its own `conversation_id` and passes the full prompt per call.
 
 use super::AgentAdapter;
+use super::StreamOptions;
 use super::{AuthState, AuthStatus, AuthProbe, evaluate_probe, home_path};
 use std::process::Stdio;
 use tokio::process::Command;
@@ -49,7 +50,7 @@ impl AgentAdapter for HermesAdapter {
         "本地多 provider 统一 agent(支持 20+ 推理后端)"
     }
 
-    fn build_stream_command(&self, prompt: &str) -> Command {
+    fn build_stream_command(&self, prompt: &str, _opts: &StreamOptions) -> Command {
         let mut cmd = Command::new(self.binary());
         cmd.arg("chat")
             .arg("-q")
@@ -97,7 +98,7 @@ mod tests {
     #[test]
     fn build_stream_command_matches_verified_flags() {
         // Verified against `hermes chat --help` on 2026-06-05.
-        let cmd = HermesAdapter.build_stream_command("hi");
+        let cmd = HermesAdapter.build_stream_command("hi", &StreamOptions::default());
         let std_cmd = cmd.as_std();
         assert_eq!(std_cmd.get_program(), "hermes");
         let args: Vec<&str> = std_cmd

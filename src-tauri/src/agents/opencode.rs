@@ -11,6 +11,11 @@
 use super::AgentAdapter;
 use super::{AuthState, AuthStatus, AuthProbe, evaluate_probe, home_path};
 
+// `StreamOptions` is only referenced in the #[cfg(test)] module below;
+// importing it at module scope triggers an `unused_imports` warning
+// because the impl block inherits the default method. The test module's
+// `use super::*;` brings the type in scope for the test functions.
+
 pub struct OpenCodeAdapter;
 
 impl AgentAdapter for OpenCodeAdapter {
@@ -49,6 +54,7 @@ impl AgentAdapter for OpenCodeAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agents::StreamOptions;
 
     #[test]
     fn has_expected_metadata() {
@@ -64,7 +70,7 @@ mod tests {
         // installs opencode and clicks the tab, the call will fail in
         // the way the README's "关键诚实声明 §五-1" promises: protocol
         // is unverified, do not pretend otherwise.
-        let cmd = OpenCodeAdapter.build_stream_command("hello");
+        let cmd = OpenCodeAdapter.build_stream_command("hello", &StreamOptions::default());
         let std_cmd = cmd.as_std();
         assert_eq!(std_cmd.get_program(), "opencode");
         let args: Vec<&str> = std_cmd

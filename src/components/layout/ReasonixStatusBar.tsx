@@ -10,7 +10,6 @@ const MODELS = [
 
 interface StatusBarProps {
   running: boolean;
-  mode: "normal" | "plan" | "yolo";
   turnStartAt?: number | null;
   turnTokens: number;
   onOpenFolder?: () => void;

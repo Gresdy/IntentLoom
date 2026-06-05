@@ -113,6 +113,10 @@ export const CLI_CAPABILITIES: Record<AppId, CliCapabilities> = {
   claude: { modes: CLAUDE_MODES, reasoning: CLAUDE_REASONING },
   codex: { modes: CODEX_MODES, reasoning: CODEX_REASONING },
   gemini: { modes: GEMINI_MODES },
+  // "claude-code" is the legacy tab id; functionally identical to
+  // "claude" (same binary, same flags). Keeping it in lockstep avoids
+  // a second source of truth for the same adapter.
+  "claude-code": { modes: CLAUDE_MODES, reasoning: CLAUDE_REASONING },
   // The remaining CLIs don't expose a comparable flag today; the
   // composer hides the dropdown when the spec is missing.
   hermes: {},

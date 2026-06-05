@@ -1,13 +1,21 @@
 //! Claude Code adapter — the reference implementation. Protocol
 //! **verified** against `claude --help` on a real install (2026-06-05).
 //!
-//! `claude --help` exposes `--print-format-json` and `--prompt <text>` for
-//! non-interactive streaming JSON output. This matches the trait's default
-//! shape, so we deliberately do NOT override `build_stream_command` — the
-//! default in [`super::AgentAdapter`] is the canonical Claude invocation.
+//! `claude --help` exposes:
+//!   * `--print-format-json --prompt <text>` — non-interactive streaming JSON
+//!   * `--permission-mode <default|plan|acceptEdits|dontAsk|bypassPermissions>`
+//!     — controls how file-editing / shell tools are approved. We honor
+//!     `StreamOptions::mode` and emit the flag verbatim; `"default"` is a
+//!     no-op the CLI accepts, so the frontend is free to send the
+//!     resolved default through unchanged.
+//!   * `--effort <low|medium|high|xhigh|max>` — maps to
+//!     `StreamOptions::reasoning`.
 
 use super::AgentAdapter;
+use super::StreamOptions;
 use super::{AuthState, AuthStatus, AuthProbe, evaluate_probe, home_path};
+use std::process::Stdio;
+use tokio::process::Command;
 
 pub struct ClaudeAdapter;
 
@@ -23,6 +31,28 @@ impl AgentAdapter for ClaudeAdapter {
     }
     fn description(&self) -> &'static str {
         "Anthropic 出品的代码助手 CLI"
+    }
+
+    fn build_stream_command(&self, prompt: &str, opts: &StreamOptions) -> Command {
+        let mut cmd = Command::new(self.binary());
+        cmd.arg("--print-format-json")
+            .arg("--prompt")
+            .arg(prompt)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        // `--permission-mode <default|plan|acceptEdits|dontAsk|bypassPermissions>`
+        if let Some(mode) = opts.mode.as_deref() {
+            if !mode.is_empty() {
+                cmd.arg("--permission-mode").arg(mode);
+            }
+        }
+        // `--effort <low|medium|high|xhigh|max>`
+        if let Some(effort) = opts.reasoning.as_deref() {
+            if !effort.is_empty() {
+                cmd.arg("--effort").arg(effort);
+            }
+        }
+        cmd
     }
 
     fn auth_state(&self) -> AuthState {
@@ -73,7 +103,7 @@ mod tests {
         // Verified against `claude --help` on 2026-06-05. The default
         // `build_stream_command` in `super::AgentAdapter` is the canonical
         // Claude invocation: `--print-format-json --prompt <msg>`.
-        let cmd = ClaudeAdapter.build_stream_command("hello");
+        let cmd = ClaudeAdapter.build_stream_command("hello", &StreamOptions::default());
         let std_cmd = cmd.as_std();
         assert_eq!(std_cmd.get_program(), "claude");
         let args: Vec<&str> = std_cmd
@@ -81,5 +111,59 @@ mod tests {
             .map(|a| a.to_str().expect("utf-8 arg"))
             .collect();
         assert_eq!(args, vec!["--print-format-json", "--prompt", "hello"]);
+    }
+
+    #[test]
+    fn build_stream_command_emits_permission_mode_flag() {
+        let opts = StreamOptions {
+            mode: Some("plan".to_string()),
+            reasoning: None,
+        };
+        let cmd = ClaudeAdapter.build_stream_command("hi", &opts);
+        let args: Vec<&str> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_str().expect("utf-8 arg"))
+            .collect();
+        assert!(args.contains(&"--permission-mode"), "missing flag in {args:?}");
+        assert!(args.contains(&"plan"), "missing value in {args:?}");
+        // Prompt is somewhere in argv (not necessarily last when options
+        // are present, since the mode flag is appended after the base).
+        assert!(args.contains(&"hi"), "prompt missing in {args:?}");
+    }
+
+    #[test]
+    fn build_stream_command_emits_effort_flag() {
+        let opts = StreamOptions {
+            mode: None,
+            reasoning: Some("xhigh".to_string()),
+        };
+        let cmd = ClaudeAdapter.build_stream_command("hi", &opts);
+        let args: Vec<&str> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_str().expect("utf-8 arg"))
+            .collect();
+        assert!(args.contains(&"--effort"), "missing flag in {args:?}");
+        assert!(args.contains(&"xhigh"), "missing value in {args:?}");
+    }
+
+    #[test]
+    fn build_stream_command_emits_both_flags() {
+        let opts = StreamOptions {
+            mode: Some("bypassPermissions".to_string()),
+            reasoning: Some("max".to_string()),
+        };
+        let cmd = ClaudeAdapter.build_stream_command("hi", &opts);
+        let args: Vec<&str> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_str().expect("utf-8 arg"))
+            .collect();
+        // Both flag pairs present, in mode→reasoning order.
+        let mode_idx = args.iter().position(|a| *a == "--permission-mode").unwrap();
+        let effort_idx = args.iter().position(|a| *a == "--effort").unwrap();
+        assert_eq!(args[mode_idx + 1], "bypassPermissions");
+        assert_eq!(args[effort_idx + 1], "max");
     }
 }

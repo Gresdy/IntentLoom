@@ -17,6 +17,7 @@
 // chat transcript still renders.
 
 use super::AgentAdapter;
+use super::StreamOptions;
 use super::{AuthState, AuthStatus, AuthProbe, evaluate_probe, home_path};
 use std::process::Stdio;
 use tokio::process::Command;
@@ -37,7 +38,7 @@ impl AgentAdapter for OpenClawAdapter {
         "OpenClaw custom agent"
     }
 
-    fn build_stream_command(&self, prompt: &str) -> Command {
+    fn build_stream_command(&self, prompt: &str, _opts: &StreamOptions) -> Command {
         let mut cmd = Command::new(self.binary());
         cmd.arg("agent")
             .arg("--local")
@@ -83,7 +84,7 @@ mod tests {
     #[test]
     fn build_stream_command_matches_verified_flags() {
         // Verified against `openclaw agent --help` on 2026-06-05.
-        let cmd = OpenClawAdapter.build_stream_command("hello");
+        let cmd = OpenClawAdapter.build_stream_command("hello", &StreamOptions::default());
         let std_cmd = cmd.as_std();
         assert_eq!(std_cmd.get_program(), "openclaw");
         let args: Vec<&str> = std_cmd
