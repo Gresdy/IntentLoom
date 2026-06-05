@@ -5,6 +5,13 @@ mod db;
 mod types;
 mod utils;
 
+// Local-CLI adapter registry. Each adapter (claude, gemini, codex,
+// opencode, openclaw) lives in `src/agents/` and implements
+// `agents::AgentAdapter`. The Tauri commands in `commands::agents` and
+// `commands::ai` both consult this registry to look up identity and
+// binary resolution.
+pub mod agents;
+
 use std::panic;
 
 pub fn run() {
@@ -49,6 +56,7 @@ pub fn run() {
             // AI
             commands::ai::call_ai,
             commands::ai::stream_ai,
+            commands::ai::send_chat_message,
             commands::ai::cancel_ai,
             // agents
             commands::agents::list_agents,

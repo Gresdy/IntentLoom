@@ -9,11 +9,6 @@ interface ProjectState {
   addProject: (path: string, name: string, ideTargets: string[]) => ProjectConfig | undefined;
   removeProject: (projectId: string) => boolean;
   selectProject: (id: string | null) => void;
-  updateProjectIdeTargets: (projectId: string, ideTargets: string[]) => boolean;
-  updateDetectedIdeDirs: (
-    projectId: string,
-    detectedIdeDirs: ProjectConfig["detectedIdeDirs"]
-  ) => boolean;
 }
 
 export const useProjectStore = create<ProjectState>()(
@@ -65,24 +60,6 @@ export const useProjectStore = create<ProjectState>()(
       },
 
       selectProject: (id) => set({ selectedProjectId: id }),
-
-      updateProjectIdeTargets: (projectId, ideTargets) => {
-        const { projects } = get();
-        const project = projects.find((p) => p.id === projectId);
-        if (!project) return false;
-        project.ideTargets = ideTargets;
-        set({ projects: [...projects] });
-        return true;
-      },
-
-      updateDetectedIdeDirs: (projectId, detectedIdeDirs) => {
-        const { projects } = get();
-        const project = projects.find((p) => p.id === projectId);
-        if (!project) return false;
-        project.detectedIdeDirs = detectedIdeDirs;
-        set({ projects: [...projects] });
-        return true;
-      },
     }),
     {
       name: "intentloom-projects",

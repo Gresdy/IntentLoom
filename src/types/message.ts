@@ -114,6 +114,10 @@ export interface Conversation {
     model?: string;
     backend?: string;
     workspace?: string;
+    // Which agent (CLI) this conversation belongs to. Older persisted
+    // conversations won't have this; readers must default to "claude"
+    // for backwards compatibility.
+    agentId?: string;
   };
 }
 

@@ -1,3 +1,4 @@
+use crate::agents;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tauri::command;
@@ -15,6 +16,7 @@ pub struct AgentInfo {
     pub description: String,
 }
 
+#[allow(dead_code)]
 fn which(bin: &str) -> Option<String> {
     let path = std::env::var("PATH").unwrap_or_default();
     for dir in path.split(':') {
@@ -31,44 +33,42 @@ fn which(bin: &str) -> Option<String> {
 
 #[command]
 pub async fn list_agents() -> Result<Vec<AgentInfo>, String> {
-    let candidates: Vec<(&str, &str, &str, &str)> = vec![
-        ("claude", "claude", "Claude Code", "Anthropic 出品的代码助手 CLI"),
-        ("gemini", "gemini", "Gemini CLI", "Google Gemini 命令行客户端"),
-        ("codex", "codex", "Codex", "OpenAI Codex CLI"),
-        ("opencode", "opencode", "OpenCode", "开源 AI 编程助手"),
-        ("openclaw", "openclaw", "OpenClaw", "OpenClaw 自定义代理"),
-    ];
-
-    let mut agents = Vec::new();
-    for (id, bin, display, desc) in candidates {
-        let path = which(bin);
-        agents.push(AgentInfo {
-            id: id.to_string(),
-            name: bin.to_string(),
-            display_name: display.to_string(),
+    let adapters = agents::all_adapters();
+    let mut out = Vec::with_capacity(adapters.len());
+    for a in adapters {
+        let path = if a.check_available() {
+            agents::which(a.binary())
+        } else {
+            None
+        };
+        out.push(AgentInfo {
+            id: a.id().to_string(),
+            name: a.binary().to_string(),
+            display_name: a.display_name().to_string(),
             available: path.is_some(),
             path,
-            version: None,
-            supports_streaming: true,
-            description: desc.to_string(),
+            version: a.version(),
+            supports_streaming: a.supports_streaming(),
+            description: a.description().to_string(),
         });
     }
-    Ok(agents)
+    Ok(out)
 }
 
 static CURRENT_AGENT_IDX: AtomicUsize = AtomicUsize::new(0);
 
+/// Deprecated no-op kept for backwards compatibility with the old
+/// `invoke("switch_agent", { agentId })` callers. The active route is
+/// decided on the frontend via `useModelStore.currentApp` and passed to
+/// `send_chat_message` as the `cli` parameter on every request. This
+/// command is safe to call but no longer affects which CLI runs.
 #[command]
 pub async fn switch_agent(agent_id: String) -> Result<String, String> {
-    let agents = list_agents().await?;
-    let idx = agents.iter().position(|a| a.id == agent_id);
-    match idx {
-        Some(i) => {
-            CURRENT_AGENT_IDX.store(i, Ordering::SeqCst);
-            Ok(agent_id)
-        }
-        None => Err(format!("Unknown agent: {agent_id}")),
-    }
+    tracing::warn!(
+        agent_id = %agent_id,
+        "switch_agent is deprecated; route is decided by cli param on send_chat_message"
+    );
+    Ok(agent_id)
 }
 
 #[command]
