@@ -42,9 +42,18 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       const agents = await invoke<AgentInfo[]>("list_agents");
       set({ agents, loading: false, lastLoadedAt: Date.now() });
     } catch (e) {
-      // Backend unreachable is not fatal: the TopBar just shows every
-      // CLI as "未验证" until the next successful load.
-      console.error("Failed to load agents:", e);
+      // Backend unreachable is the common case in vite dev (no Tauri
+      // shell listening for the IPC bridge) and harmless — the TopBar
+      // just shows every CLI as "未验证" until the next successful
+      // load. Demote to console.warn in dev so the console isn't
+      // dominated by the same message on every mount.
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.warn("[useAgents] backend unreachable:", e);
+      } else {
+        // eslint-disable-next-line no-console
+        console.error("Failed to load agents:", e);
+      }
       set({
         agents: [],
         loading: false,

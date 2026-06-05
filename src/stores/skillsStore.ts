@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/tauri";
 import type { RemoteSkill, LocalSkill, IdeSkill, IdeOption, DownloadTask, MarketSortMode, MarketStatus, Overview } from "./skillTypes";
 import { normalizeSkillName } from "./skillUtils";
 import { STORAGE_KEYS, defaultMarketStatuses, defaultEnabledMarkets } from "./skillConstants";

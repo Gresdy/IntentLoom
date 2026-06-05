@@ -283,7 +283,17 @@ export function useReasonixController() {
       });
     };
 
-    setupListeners();
+    setupListeners().catch((err) => {
+      // Vite dev (no Tauri shell) and edge cases where the IPC bridge
+      // isn't ready will reject the listen() promise. The UI is built
+      // around streaming events from the Rust backend, so there is
+      // nothing to render when they are missing — stay silent instead
+      // of crashing the whole component tree.
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.warn("[reasonixAdapter] stream listeners unavailable:", err);
+      }
+    });
     return () => {
       unlistenChunk?.();
       unlistenEnd?.();
