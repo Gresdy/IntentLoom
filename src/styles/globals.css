@@ -1228,9 +1228,20 @@ body {
    10. Loom Panel — the right "weaving" column
    ═══════════════════════════════════════════ */
 
+/* Wrapper for the resizable loom column. Width is driven by
+   inline style from ReasonixApp; the inner .loom-panel fills 100%
+   so the drag handle in between is the only thing controlling size. */
+.loom-panel-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+  position: relative;
+}
+
 .loom-panel {
-  width: 320px;
-  min-width: 320px;
+  width: 100%;
+  min-width: 0;
   border-left: 1px solid var(--border);
   background: var(--bg-elev);
   display: flex;
@@ -1238,6 +1249,15 @@ body {
   overflow: hidden;
   z-index: 10;
   flex-shrink: 0;
+}
+
+/* Resizer sitting between .main-area and .loom-panel-wrapper. The
+   Resizer component brings its own width + cursor; we add
+   flex-shrink: 0 so the app flex row keeps the handle at 4px. */
+.loom-resizer {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 11;
 }
 
 .loom-panel__head {
@@ -1886,3 +1906,252 @@ body {
 .session-row__agent[data-agent="gemini"] { color: #4285f4; border-color: #4285f4; }
 .session-row__agent[data-agent="opencode"] { color: #8b5cf6; border-color: #8b5cf6; }
 .session-row__agent[data-agent="openclaw"] { color: #f59e0b; border-color: #f59e0b; }
+
+
+/* ═══════════════════════════════════════════
+   12. Onboarding — first-launch welcome + 4-step tour
+   ═══════════════════════════════════════════ */
+
+.onboarding-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 12, 18, 0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: onboarding-fade 0.18s ease-out;
+}
+
+.onboarding-card {
+  width: min(360px, calc(100vw - 32px));
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 28px 24px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.32);
+  animation: onboarding-rise 0.22s ease-out;
+}
+
+.onboarding-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-soft));
+  color: var(--accent-fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  box-shadow: 0 8px 24px var(--accent-soft);
+}
+
+.onboarding-name {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+}
+
+.onboarding-icons {
+  display: flex;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+}
+
+.onboarding-icons__dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-elev-2);
+  color: var(--fg-dim);
+  border: 1px solid var(--border-soft);
+}
+
+.onboarding-actions {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.onboarding-skip,
+.onboarding-start {
+  flex: 1;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg-dim);
+}
+
+.onboarding-skip:hover {
+  color: var(--fg);
+  background: var(--bg-soft);
+}
+
+.onboarding-start {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+
+.onboarding-start:hover {
+  filter: brightness(1.06);
+}
+
+/* Tour overlay — transparent, just clicks + a close button + the
+   floating indicator + tooltip next to the focused [data-tour] area. */
+.onboarding-tour {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  cursor: pointer;
+}
+
+.onboarding-close {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bg-elev);
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1002;
+  transition: background 0.12s, color 0.12s;
+}
+
+.onboarding-close:hover {
+  color: var(--fg);
+  background: var(--bg-elev-2);
+}
+
+.onboarding-indicator {
+  position: fixed;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px 0 8px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.32), 0 0 0 3px var(--accent-soft);
+  z-index: 1001;
+  pointer-events: none;
+  animation: onboarding-pop 0.18s ease-out;
+}
+
+.onboarding-step {
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.onboarding-tooltip {
+  position: fixed;
+  min-width: 200px;
+  background: var(--bg-elev);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
+  z-index: 1001;
+  pointer-events: auto;
+  animation: onboarding-pop 0.18s ease-out;
+  cursor: default;
+}
+
+.onboarding-tooltip__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.onboarding-tooltip__progress {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.onboarding-tooltip__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: background 0.12s, width 0.18s;
+}
+
+.onboarding-tooltip__dot.is-done {
+  background: var(--accent-soft);
+}
+
+.onboarding-tooltip__dot.is-active {
+  background: var(--accent);
+  width: 18px;
+  border-radius: 999px;
+}
+
+.onboarding-tooltip__next {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: filter 0.12s;
+}
+
+.onboarding-tooltip__next:hover {
+  filter: brightness(1.06);
+}
+
+@keyframes onboarding-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes onboarding-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes onboarding-pop {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}

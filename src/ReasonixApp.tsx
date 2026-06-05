@@ -18,6 +18,8 @@ import { HistoryDrawer } from "./components/layout/HistoryDrawer";
 import { CommandPalette, useCommandPalette } from "./components/common/CommandPalette";
 import { ToastContainer } from "./components/common/ToastContainer";
 import { LoomPanel } from "./components/Loom/LoomPanel";
+import { Onboarding } from "./components/Onboarding";
+import { Resizer } from "./components/Resizer";
 import { ToolsModal } from "./components/layout/ToolsModal";
 import { useThemeStore } from "./stores/useThemeStore";
 import { useModelStore } from "./stores/useModelStore";
@@ -75,6 +77,13 @@ const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
   },
 ];
 
+// Flat view of NAV_GROUPS in display order. Used by the keyboard
+// shortcut handler to map Ctrl+1..9 onto the most-used navigation
+// targets. Hermes / usage / logs are intentionally excluded because
+// nine is a useful ceiling for chord-based navigation and those
+// three have lower daily hit rate.
+const FLAT_NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
+
 // Agent tabs config
 // disabled: tab stays in the DOM but cannot be activated. Today the
 // only disabled entry is Hermes — see Phase 3 of the multi-agent plan.
@@ -126,6 +135,21 @@ export const ReasonixApp: React.FC = () => {
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  // Loom panel width lives in localStorage so the column stays at
+  // the user's preferred size across reloads. 320 px matches the
+  // default baked into globals.css; the [240, 520] range keeps the
+  // chat area usable on laptop screens.
+  const [loomPanelWidth, setLoomPanelWidth] = useState<number>(() => {
+    if (typeof window === "undefined") return 320;
+    const raw = window.localStorage.getItem("intentloom.loomWidth");
+    const n = raw ? Number.parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) && n >= 240 && n <= 520 ? n : 320;
+  });
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("intentloom.loomWidth", String(loomPanelWidth));
+    }
+  }, [loomPanelWidth]);
   // URL is the source of truth for navigation state: deep links,
   // browser back/forward, and reload all stay in sync.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -241,12 +265,27 @@ export const ReasonixApp: React.FC = () => {
       } else if (mod && e.key === "b") {
         e.preventDefault();
         setSidebarExpanded((v) => !v);
+      } else if (mod && e.key === "/") {
+        // Alias for Ctrl+B — common in editors (e.g. VSCode's sidebar
+        // toggle) so muscle memory carries over. Keep both bindings.
+        e.preventDefault();
+        setSidebarExpanded((v) => !v);
       } else if (mod && e.shiftKey && e.key === "T") {
         e.preventDefault();
         setThemeMode(themeMode === "dark" ? "light" : "dark");
       } else if (mod && e.shiftKey && e.key === "L") {
         e.preventDefault();
         setToolsOpen((v) => !v);
+      } else if (mod && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key)) {
+        // Ctrl+1..9 jumps to the n-th nav item in display order. Only
+        // fires when the index exists; users pressing Ctrl+5 when
+        // there are only 4 items get a no-op.
+        const idx = Number(e.key) - 1;
+        const target = FLAT_NAV_ITEMS[idx];
+        if (target) {
+          e.preventDefault();
+          handleNavClick(target.key);
+        }
       } else if (e.key === "Escape") {
         if (cmdPaletteOpen) {
           setCmdPaletteOpen(false);
@@ -370,7 +409,7 @@ export const ReasonixApp: React.FC = () => {
   return (
     <div className="app">
       {/* ── Sidebar ── */}
-      <nav className={`sidebar${sidebarExpanded ? " sidebar--expanded" : ""}`} data-testid="sidebar">
+      <nav className={`sidebar${sidebarExpanded ? " sidebar--expanded" : ""}`} data-testid="sidebar" data-tour="sidebar">
         <div className="sidebar__header">
           <div className="sidebar__logo">I</div>
           <span className="sidebar__title">IntentLoom</span>
@@ -421,7 +460,7 @@ export const ReasonixApp: React.FC = () => {
       </nav>
 
       {/* ── Main Area ── */}
-      <div className="main-area">
+      <div className="main-area" data-tour="chat">
         {/* Top Bar */}
         <header className="topbar">
           {/* Agent Tabs */}
@@ -463,7 +502,7 @@ export const ReasonixApp: React.FC = () => {
           <span className="topbar__model">{state.meta?.cwd || "IntentLoom"}</span>
 
           {/* Right controls */}
-          <div className="topbar__right">
+          <div className="topbar__right" data-tour="tools">
             {/* Mode toggle */}
             <button
               className={`mode-badge mode-badge--${mode}`}
@@ -525,7 +564,16 @@ export const ReasonixApp: React.FC = () => {
       </div>
 
       {/* ── Loom Panel (persistent right column) ── */}
-      <LoomPanel />
+      <Resizer
+        direction="horizontal"
+        className="loom-resizer"
+        onResize={(delta) =>
+          setLoomPanelWidth((w) => Math.min(520, Math.max(240, w + delta)))
+        }
+      />
+      <div className="loom-panel-wrapper" data-tour="loom" style={{ width: loomPanelWidth, minWidth: loomPanelWidth }}>
+        <LoomPanel />
+      </div>
 
       {/* ── Right Panel (modal — overlays loom-panel) ── */}
       {rightPanelOpen && (
@@ -611,6 +659,7 @@ export const ReasonixApp: React.FC = () => {
   next.delete("view");
   setSearchParams(next, { replace: true });
 }} />}
+      <Onboarding />
     </div>
   );
 };
