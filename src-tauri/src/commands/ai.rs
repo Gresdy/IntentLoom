@@ -150,7 +150,7 @@ mod tests {
         // Exercise the same lookup synchronously to keep the test fast.
         assert!(find_adapter("not-a-real-cli").is_none());
         // All five registered ids resolve to an adapter.
-        for id in ["claude", "gemini", "codex", "opencode", "openclaw"] {
+        for id in ["claude", "gemini", "codex", "opencode", "openclaw", "hermes"] {
             assert!(find_adapter(id).is_some(), "expected adapter for {id}");
         }
     }

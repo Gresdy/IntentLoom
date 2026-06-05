@@ -23,7 +23,6 @@ import { Resizer } from "./components/Resizer";
 import { ToolsModal } from "./components/layout/ToolsModal";
 import { useThemeStore } from "./stores/useThemeStore";
 import { useModelStore } from "./stores/useModelStore";
-import { useHermesStore } from "./stores/useHermesStore";
 import type { AppId } from "./shared/types";
 import { invoke } from "./lib/tauri";
 import { useConversationStore, selectCurrentAgentId } from "./stores/conversationStore";
@@ -39,7 +38,9 @@ const UsageDashboard = lazy(() => import("./components/LeftPanel/UsageDashboard"
 const LogsPanel = lazy(() => import("./components/LeftPanel/LogsPanel").then(m => ({ default: m.LogsPanel })));
 const ExpertPanel = lazy(() => import("./components/LeftPanel/ExpertPanel").then(m => ({ default: m.ExpertPanel })));
 
-type NavKey = "chat" | "projects" | "agents" | "model" | "prompts" | "mcp" | "usage" | "skills" | "expert" | "sessions" | "logs" | "hermes" | "search" | "settings";
+// Hermes is intentionally absent: it lives in ALL_AGENTS as a top-tab
+// peer of Claude / Codex / Gemini, with no dedicated side panel.
+type NavKey = "chat" | "projects" | "agents" | "model" | "prompts" | "mcp" | "usage" | "skills" | "expert" | "sessions" | "logs" | "search" | "settings";
 
 interface NavItem {
   key: NavKey;
@@ -72,21 +73,22 @@ const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
       { key: "mcp", icon: <Server size={18} />, label: "MCP" },
       { key: "usage", icon: <ChartBar size={18} />, label: "用量统计" },
       { key: "logs", icon: <Logs size={18} />, label: "日志" },
-      { key: "hermes", icon: <Bot size={18} />, label: "Hermes Agent" },
     ],
   },
 ];
 
 // Flat view of NAV_GROUPS in display order. Used by the keyboard
 // shortcut handler to map Ctrl+1..9 onto the most-used navigation
-// targets. Hermes / usage / logs are intentionally excluded because
-// nine is a useful ceiling for chord-based navigation and those
-// three have lower daily hit rate.
+// targets. Usage / logs are intentionally excluded because nine is a
+// useful ceiling for chord-based navigation and those two have lower
+// daily hit rate. (Hermes used to live here too; it now lives in
+// ALL_AGENTS as a top-tab peer of Claude / Codex.)
 const FLAT_NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
 // Agent tabs config
 // disabled: tab stays in the DOM but cannot be activated. Today the
-// only disabled entry is Hermes — see Phase 3 of the multi-agent plan.
+// list has no disabled entries; every CLI is gated at runtime by
+// `isUnavailable` (Phase 1.5), which the adapter registry reports
 // Phase 1.5 will additionally gate this on adapter availability
 // (i.e. `which` returned None).
 const ALL_AGENTS: { id: AppId; label: string; shortLabel: string; disabled?: boolean }[] = [
@@ -95,14 +97,14 @@ const ALL_AGENTS: { id: AppId; label: string; shortLabel: string; disabled?: boo
   { id: "gemini", label: "Gemini CLI", shortLabel: "Gemini" },
   { id: "opencode", label: "OpenCode", shortLabel: "OpenCode" },
   { id: "openclaw", label: "OpenClaw", shortLabel: "OpenClaw" },
-  { id: "hermes", label: "Hermes", shortLabel: "Hermes", disabled: true },
+  { id: "hermes", label: "Hermes", shortLabel: "Hermes" },
 ];
 
 function isNavKey(value: string | null): value is NavKey {
   if (!value) return false;
   return [
     "chat", "projects", "agents", "model", "prompts", "mcp",
-    "usage", "skills", "expert", "sessions", "logs", "hermes", "search", "settings",
+    "usage", "skills", "expert", "sessions", "logs", "search", "settings",
   ].includes(value);
 }
 
@@ -118,7 +120,6 @@ const PANEL_TITLES: Record<NavKey, string> = {
   expert: "专家",
   sessions: "会话管理",
   logs: "日志",
-  hermes: "Hermes Agent",
   search: "搜索",
   settings: "设置",
 };
@@ -169,12 +170,11 @@ export const ReasonixApp: React.FC = () => {
   }, []);
 
   // `isUnavailable` is `true` for CLIs the backend reported as missing.
-  // Hermes is excluded from this lookup — its disabled flag on
-  // ALL_AGENTS is the source of truth for not-yet-shipped agents
-  // regardless of `which`.
+  // Every peer adapter (Claude / Codex / Gemini / OpenCode / OpenClaw /
+  // Hermes) consults the live registry — there is no longer a special
+  // case for any agent in this list.
   const isUnavailable = useCallback(
     (id: AppId): boolean => {
-      if (id === "hermes") return false; // disabled flag handles it
       if (lastLoadedAt === null) return false; // still loading
       const found = agentRegistry.find((a) => a.id === id);
       return found ? !found.available : true;
@@ -202,13 +202,11 @@ export const ReasonixApp: React.FC = () => {
 
   // Switch agent
   const handleAgentSwitch = useCallback((appId: AppId) => {
-    // Hermes is the only disabled tab today; it gets a soft "not yet"
-    // toast instead of being silently accepted. Future unavailable
-    // adapters (Phase 1.5 health gating) will surface install prompts
-    // through the same path.
+    // A disabled tab (none today) gets a soft "not yet" toast. Unmet
+    // availability is reported separately via `isUnavailable` below.
     const meta = ALL_AGENTS.find((a) => a.id === appId);
     if (meta?.disabled) {
-      window.alert(`${meta.label} 暂未上线,详见 Hermes 面板。`);
+      window.alert(`${meta.label} 暂未上线。`);
       return;
     }
     // Phase 1.5: if the backend reported the CLI is not installed,
@@ -390,9 +388,7 @@ export const ReasonixApp: React.FC = () => {
               onRename={(path, title) => renameSession(path, title)}
             />
           </Suspense>
-        );
-      case "hermes":
-        return <HermesPanel />;
+      );
       case "model":
         return <ModelPanel />;
       case "search":
@@ -788,44 +784,6 @@ function SearchPanel() {
       {!results.length && query && !searching && (
         <div className="search-panel__empty">无结果</div>
       )}
-    </div>
-  );
-}
-
-function HermesPanel() {
-  // Hermes is not implemented yet (Phase 3 of multi-agent-cockpit.md).
-  // The store no longer exposes a working `checkHealth` / `startAgent`,
-  // so we deliberately do not call them here. The mode toggle is
-  // preserved as a preview of the planned control surface, but the
-  // buttons are read-only until the backend command lands.
-  const { mode } = useHermesStore();
-
-  return (
-    <div className="hermes-panel">
-      <div className="hermes-panel__card">
-        <div className="hermes-panel__title-row">
-          <Bot size={18} className="ilo-fg-accent" />
-          <span className="hermes-panel__title">Hermes Agent</span>
-          <span className="hermes-panel__badge hermes-panel__badge--wip">开发中</span>
-        </div>
-        <p className="hermes-panel__desc">
-          Hermes 是 IntentLoom 规划的本地 Agent 运行时,运行在您的设备上以保护隐私。
-          后端命令尚未注册,本面板目前为占位 UI —— 点击模式按钮不会有任何效果。
-        </p>
-      </div>
-      <div>
-        <h3 className="hermes-panel__heading">模式</h3>
-        {(["normal", "plan", "yolo"] as const).map((m) => (
-          <button
-            key={m}
-            className={`hermes-panel__mode-btn${mode === m ? " is-active" : ""} hermes-panel__mode-btn--disabled`}
-            disabled
-            title="Hermes 暂未上线"
-          >
-            {m.toUpperCase()}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }

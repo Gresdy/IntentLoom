@@ -1055,75 +1055,6 @@ body {
   text-align: center;
   padding: 20px;
 }
-
-.hermes-panel { padding: 16px; }
-.hermes-panel__card {
-  padding: 16px;
-  border-radius: var(--radius-md);
-  background: var(--bg);
-  border: 1px solid var(--border-soft);
-  margin-bottom: 16px;
-}
-.hermes-panel__title-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.hermes-panel__title {
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--fg);
-}
-.hermes-panel__badge {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 20px;
-  background: var(--ok);
-  color: var(--accent-fg);
-}
-.hermes-panel__desc {
-  font-size: 12px;
-  color: var(--fg-dim);
-}
-.hermes-panel__heading {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fg);
-  margin-bottom: 8px;
-}
-.hermes-panel__mode-btn {
-  display: block;
-  width: 100%;
-  padding: 8px 12px;
-  margin-bottom: 4px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-soft);
-  background: var(--bg);
-  color: var(--fg-dim);
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-}
-.hermes-panel__mode-btn:hover { background: var(--bg-soft); color: var(--fg); }
-.hermes-panel__mode-btn.is-active {
-  background: var(--bg-accent);
-  color: var(--fg-onaccent);
-  border-color: var(--border-accent);
-}
-.hermes-panel__mode-btn.is-active:hover { background: var(--bg-accent); color: var(--fg-onaccent); }
-.hermes-panel__mode-btn--disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-.hermes-panel__mode-btn--disabled:hover { background: var(--bg); color: var(--fg-dim); }
-.hermes-panel__mode-btn--disabled.is-active { background: var(--bg-soft); color: var(--fg-dim); border-color: var(--border-soft); }
-.hermes-panel__badge--wip {
-  background: var(--bg-soft);
-  color: var(--fg-dim);
-  border: 1px dashed var(--border);
-}
-
 .sidebar__toggle-icon--expanded { transform: rotate(180deg); }
 
 .topbar__right {
@@ -1194,7 +1125,8 @@ body {
      this state still render so the user can see the surface exists,
      but the click is rejected by `handleAgentSwitch`. Visually we
      use a dotted underline rather than the heavy "disabled" treatment
-     reserved for not-yet-shipped agents (Hermes). */
+     reserved for not-yet-shipped agents (none today, see the
+     `disabled` field on `ALL_AGENTS` in `ReasonixApp.tsx`). */
   opacity: 0.7;
   text-decoration: line dotted var(--fg-faint);
   text-underline-offset: 2px;

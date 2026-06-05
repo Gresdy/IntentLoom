@@ -26,7 +26,10 @@ pub use codex::CodexAdapter;
 pub use gemini::GeminiAdapter;
 pub use openclaw::OpenClawAdapter;
 pub use opencode::OpenCodeAdapter;
+pub mod hermes;
+pub use hermes::HermesAdapter;
 
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Stdio;
 use tokio::process::Command;
@@ -104,6 +107,7 @@ pub fn all_adapters() -> Vec<Box<dyn AgentAdapter>> {
         Box::new(CodexAdapter),
         Box::new(OpenCodeAdapter),
         Box::new(OpenClawAdapter),
+        Box::new(HermesAdapter),
     ]
 }
 
@@ -120,13 +124,132 @@ pub fn binary_for(id: &str) -> Option<&'static str> {
     find_adapter(id).map(|a| a.binary())
 }
 
+/// Where the adapter's auth credential lives, used by the
+/// `auth_state()` implementations to know what to probe.
+///
+/// - `ApiKeyFile(path)` — read the file as JSON, look for a key under
+///   a known name. Empty / missing / sentinel values count as "not set".
+/// - `EnvVar(name)` — `std::env::var(name)` set & non-empty counts as set.
+/// - `JsonPath { file, dotted_path }` — read JSON, walk a dotted path
+///   (e.g. `auth.profiles`), return `LoggedIn` if the result is a
+///   non-empty object or array.
+/// - `OAuthBrowser` — the CLI does OAuth via the user's browser when
+///   first launched; we cannot tell from disk whether the user has
+///   completed that flow. Default is `Unknown` with no hint.
+#[derive(Debug, Clone)]
+pub enum AuthProbe {
+    ApiKeyFile { path: String, key: &'static str, sentinel_values: &'static [&'static str] },
+    EnvVar(&'static str),
+    JsonPath { path: String, dotted_path: &'static str },
+    OAuthBrowser,
+}
+
+/// Per-adapter auth state surfaced to the UI. `LoggedIn` is the only
+/// state with no `hint` — the others carry a short, user-visible
+/// next-step (e.g. "运行 `claude` 触发 OAuth 登录").
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthStatus {
+    /// We can see a credential locally (API key file, OAuth token,
+    /// env var, non-empty profile). The CLI will be able to authenticate.
+    LoggedIn,
+    /// The CLI is installed but we can see no local credential.
+    LoggedOut,
+    /// We cannot determine without invoking the CLI (browser OAuth,
+    /// remote provider login, etc.). The hint tells the user how to
+    /// verify themselves.
+    Unknown,
+    /// The CLI does not require authentication (local-only model).
+    NotRequired,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthState {
+    pub status: AuthStatus,
+    /// Short, user-visible hint when status is not `LoggedIn`. Always
+    /// `None` for `LoggedIn` / `NotRequired` — the UI doesn't show a
+    /// hint when there is nothing to do.
+    pub hint: Option<String>,
+}
+
+impl AuthState {
+    pub fn logged_in() -> Self {
+        Self { status: AuthStatus::LoggedIn, hint: None }
+    }
+    pub fn logged_out(hint: &str) -> Self {
+        Self { status: AuthStatus::LoggedOut, hint: Some(hint.to_string()) }
+    }
+    pub fn unknown_with_hint(hint: &str) -> Self {
+        Self { status: AuthStatus::Unknown, hint: Some(hint.to_string()) }
+    }
+    pub fn unknown() -> Self {
+        Self { status: AuthStatus::Unknown, hint: None }
+    }
+    pub fn not_required() -> Self {
+        Self { status: AuthStatus::NotRequired, hint: None }
+    }
+}
+
+/// Run a single `AuthProbe` against the host filesystem / environment.
+/// Used by the per-adapter `auth_state()` methods and by the unit
+/// tests, which feed in a synthetic probe against a temp file.
+pub fn evaluate_probe(probe: &AuthProbe) -> AuthState {
+    match probe {
+        AuthProbe::ApiKeyFile { path, key, sentinel_values } => {
+            let Ok(raw) = std::fs::read_to_string(path) else {
+                return AuthState::unknown_with_hint("凭证文件不存在");
+            };
+            let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw) else {
+                return AuthState::unknown_with_hint("凭证文件不是合法 JSON");
+            };
+            let value = json.get(*key).and_then(|v| v.as_str()).unwrap_or("");
+            if value.is_empty() {
+                return AuthState::logged_out("凭证文件缺少 API Key");
+            }
+            if sentinel_values.iter().any(|s| *s == value) {
+                // `PROXY_MANAGED` and similar sentinels still mean
+                // "the credential is set" — a proxy is providing it.
+                return AuthState::logged_in();
+            }
+            AuthState::logged_in()
+        }
+        AuthProbe::EnvVar(name) => match std::env::var(name) {
+            Ok(v) if !v.is_empty() => AuthState::logged_in(),
+            _ => AuthState::logged_out("未设置环境变量"),
+        },
+        AuthProbe::JsonPath { path, dotted_path } => {
+            let Ok(raw) = std::fs::read_to_string(path) else {
+                return AuthState::unknown_with_hint("配置文件不存在");
+            };
+            let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw) else {
+                return AuthState::unknown_with_hint("配置文件不是合法 JSON");
+            };
+            let mut current = &json;
+            for segment in dotted_path.split('.') {
+                match current.get(segment) {
+                    Some(next) => current = next,
+                    None => return AuthState::unknown_with_hint("未在配置中找到凭证段"),
+                }
+            }
+            match current {
+                serde_json::Value::Object(map) if !map.is_empty() => AuthState::logged_in(),
+                serde_json::Value::Array(arr) if !arr.is_empty() => AuthState::logged_in(),
+                serde_json::Value::String(s) if !s.is_empty() => AuthState::logged_in(),
+                _ => AuthState::logged_out("配置文件中凭证段为空"),
+            }
+        }
+        AuthProbe::OAuthBrowser => AuthState::unknown_with_hint("首次运行 CLI 时触发浏览器登录"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn registry_contains_five_adapters() {
-        assert_eq!(all_adapters().len(), 5);
+    fn registry_contains_six_adapters() {
+        assert_eq!(all_adapters().len(), 6);
     }
 
     #[test]
@@ -140,7 +263,7 @@ mod tests {
 
     #[test]
     fn all_known_ids_resolve() {
-        for id in ["claude", "gemini", "codex", "opencode", "openclaw"] {
+        for id in ["claude", "gemini", "codex", "opencode", "openclaw", "hermes"] {
             assert!(
                 find_adapter(id).is_some(),
                 "adapter '{id}' missing from registry"

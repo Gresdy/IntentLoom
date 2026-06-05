@@ -2,10 +2,9 @@
 // `src-tauri/src/agents/` is the source of truth for which CLIs exist
 // and whether they are installed; this store mirrors the subset of
 // that data the UI needs to gate the TopBar tabs (Phase 1.5 of
-// `docs/plan/multi-agent-cockpit.md`). Hermes is *not* part of the
-// adapter registry — its disabled state lives on the `ALL_AGENTS`
-// constant in ReasonixApp, which is the source of truth for not-yet-
-// shipped agents regardless of `which`.
+// `docs/plan/multi-agent-cockpit.md`). All 6 adapters (Claude, Codex,
+// Gemini, OpenCode, OpenClaw, Hermes) live in the registry; there is
+// no longer a special case here.
 
 import { create } from "zustand";
 import { invoke } from "./tauri";

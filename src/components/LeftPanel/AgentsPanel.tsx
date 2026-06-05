@@ -44,9 +44,12 @@ const AGENT_INSTALL_INFO: Record<string, { url: string; command: string }> = {
     url: "https://github.com/nanobot-ai/nanobot",
     command: "npm install -g nanobot",
   },
+  // Hermes is a Python project shipped from a CNB mirror (the user's
+  // install lives at ~/.hermes/hermes-agent, symlinked into ~/.local/bin).
+  // Generic one-liner — keep this in sync when the upstream URL changes.
   hermes: {
-    url: "https://docs.anthropic.com/en/docs/hermes",
-    command: "npm install -g @anthropic-ai/hermes",
+    url: "https://cnb.cool/hermesagent-cn",
+    command: "git clone https://cnb.cool/hermesagent-cn/hermes-agent-cn-mirror.git && cd hermes-agent && pip install -e .",
   },
 };
 

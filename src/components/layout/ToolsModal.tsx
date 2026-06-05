@@ -29,7 +29,9 @@ type Tab = {
 // / "wip" badge is honest about which panels are real and which are
 // placeholders until their backend lands.
 const TABS: Tab[] = [
-  { key: "agents",   label: "AI 助手",   icon: <Bot size={14} />,         description: "本地 CLI agent 管理(claude / gemini / codex / opencode / openclaw)", status: "ok" },
+  // Hermes lives in ALL_AGENTS in the top tab as a peer of Claude /
+  // Codex; the side panel was removed in favour of a chat-only path.
+  { key: "agents",   label: "AI 助手",   icon: <Bot size={14} />,         description: "Claude / Codex / Gemini / OpenCode / OpenClaw / Hermes —— 顶部 tab 直接切换,这里管安装与凭证。", status: "ok" },
   { key: "projects", label: "项目",      icon: <FolderOpen size={14} />,  description: "项目目录与上下文绑定",                                            status: "ok" },
   { key: "skills",   label: "Skills",    icon: <Sparkles size={14} />,    description: "可复用的 prompt 模板与工具集合(本项目最扎实的子系统)",           status: "ok" },
   { key: "prompts",  label: "Prompts",   icon: <FileCode size={14} />,    description: "系统提示词管理",                                                    status: "ok" },
@@ -38,7 +40,6 @@ const TABS: Tab[] = [
   { key: "logs",     label: "日志",      icon: <ScrollText size={14} />,  description: "查看应用与 CLI 输出日志",                                          status: "ok" },
   { key: "expert",   label: "专家",      icon: <Briefcase size={14} />,   description: "领域专家配置(路由 / 提示词 / 工具集合)",                          status: "ok" },
   { key: "sessions", label: "会话",      icon: <HistoryIcon size={14} />, description: "历史会话管理(resume / delete / rename)",                           status: "ok" },
-  { key: "hermes",   label: "Hermes",    icon: <Cpu size={14} />,         description: "Hermes Agent —— ⚠️ 后端 0 实现,仅占位 UI(Phase 3 诚实化目标)",   status: "stub" },
   { key: "model",    label: "模型",      icon: <Cpu size={14} />,         description: "Provider / API key 配置",                                          status: "ok" },
   { key: "search",   label: "搜索",      icon: <SearchIcon size={14} />,  description: "代码搜索",                                                          status: "ok" },
 ];
