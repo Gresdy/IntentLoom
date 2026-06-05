@@ -172,7 +172,7 @@ export function Composer({
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="输入消息... (/ 查看命令)"
-          rows={3}
+          rows={1}
           disabled={running}
         />
 
