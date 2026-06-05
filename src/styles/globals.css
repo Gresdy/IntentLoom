@@ -39,7 +39,7 @@
   --radius-md: 8px;
   --radius-lg: 12px;
   --maxw: 880px;
-  --sidebar-w: 52px;
+  --sidebar-w: 60px;
   --topbar-h: 40px;
   --overlay: rgba(0, 0, 0, 0.55);
 }
@@ -260,6 +260,17 @@ body {
   background: var(--bg);
 }
 
+/* Sidebar toggle lives at the start of the topbar (not the sidebar
+   header) so it's always visible regardless of sidebar state.
+   Previously the toggle was placed inside .sidebar__header, but
+   the collapsed sidebar is only 52 px wide and the 24-px button
+   + 22-px logo would overflow and get clipped by overflow:hidden. */
+.topbar__sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
 .main-content {
   flex: 1;
   overflow-y: auto;
@@ -357,14 +368,19 @@ body {
 }
 
 /* ── Composer (ReasonixComposer.tsx) ── */
-/* Replaces the older .chat-input / .chat-input-wrap markup. Mirrors
-   the dark-theme look but matches the new BEM-ish naming so the
-   input blends with the chat column, fills the available width,
-   and supports the auto-resize the component drives from JS. */
+/* ReasonixComposer.tsx. The composer is edge-to-edge across the chat
+   column: no horizontal padding on .composer, no border-radius on the
+   wrap, no max-width — the textarea fills the whole footer. The wrap
+   is transparent (same as .footer bg) so the only visual element is
+   a single top border (matches the rest of the chrome). A subtle
+   focus-within ring on the wrap communicates active state without
+   floating a "card" above the surface. The textarea is auto-resized
+   by JS in [40, 160] px. */
 .composer {
-  padding: 8px 0 0;
+  padding: 0;
   background: var(--bg);
   border-top: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .composer__wrap {
@@ -372,22 +388,21 @@ body {
   display: flex;
   flex-direction: column;
   width: 100%;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--border-soft);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .composer__wrap:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent-soft);
+  border-top-color: var(--accent);
 }
 
 .composer__input {
   width: 100%;
-  min-height: 64px;
+  min-height: 44px;
   max-height: 160px;
-  padding: 10px 12px 4px;
+  padding: 12px 16px 6px;
   border: none;
   outline: none;
   background: transparent;
@@ -396,6 +411,7 @@ body {
   line-height: 1.5;
   font-family: inherit;
   resize: none;
+  overflow-y: auto;
   box-sizing: border-box;
 }
 
@@ -413,7 +429,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 4px 6px 6px 10px;
+  padding: 2px 12px 8px;
 }
 
 .composer__send,
