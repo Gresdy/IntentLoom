@@ -2,12 +2,9 @@ import { useState, useEffect } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Download, RefreshCw, Plus } from "lucide-react";
 import type { Skill } from "../../shared/types";
+import { invoke } from "../../lib/tauri";
 
-// 动态导入invoke函数
-const invoke = async (command: string, args?: any) => {
-  const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
-  return tauriInvoke(command, args);
-};
+// `invoke` is now imported from `lib/tauri` to keep IPC entry points unified.
 
 type TabKey = "local" | "market" | "ide" | "project" | "settings";
 

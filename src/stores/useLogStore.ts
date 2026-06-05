@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { invoke } from "../lib/tauri";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -30,11 +31,6 @@ interface LogState {
   toggleExpanded: () => void;
   setExpanded: (expanded: boolean) => void;
 }
-
-const invoke = async (command: string, args?: any) => {
-  const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
-  return tauriInvoke(command, args);
-};
 
 export const useLogStore = create<LogState>((set, get) => ({
   logs: [],
