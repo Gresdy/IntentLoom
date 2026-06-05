@@ -2,18 +2,21 @@ import { useEffect, useRef, useState } from "react";
 import { useLogStore, LogEntry, LogLevel } from "../stores/useLogStore";
 import { ChevronDown, ChevronUp, XCircle } from "lucide-react";
 
-const levelColors: Record<LogLevel, string> = {
-  debug: "gray",
-  info: "blue",
-  warn: "orange",
-  error: "red",
-};
-
 const levelLabels: Record<LogLevel, string> = {
   debug: "调试",
   info: "信息",
   warn: "警告",
   error: "错误",
+};
+
+// Maps a log level straight to the .badge--* class added in
+// globals.css. Keeps the level chip a single className with no
+// inline color/borderColor fallback to maintain.
+const levelClass: Record<LogLevel, string> = {
+  debug: "badge badge--muted",
+  info: "badge badge--info",
+  warn: "badge badge--warn",
+  error: "badge badge--err",
 };
 
 const LogItem: React.FC<{ log: LogEntry; onClick: () => void }> = ({ log, onClick }) => {
@@ -24,7 +27,7 @@ const LogItem: React.FC<{ log: LogEntry; onClick: () => void }> = ({ log, onClic
     >
       <div className="flex items-center gap-2">
         <span className="ilo-fg-dim">{log.timestamp}</span>
-        <span className="badge" style={{ color: levelColors[log.level] === "red" ? "var(--err)" : levelColors[log.level] === "orange" ? "var(--warn)" : levelColors[log.level] === "blue" ? "var(--accent)" : "var(--fg-faint)", borderColor: levelColors[log.level] === "red" ? "var(--err)" : levelColors[log.level] === "orange" ? "var(--warn)" : levelColors[log.level] === "blue" ? "var(--accent)" : "var(--border)" }}>
+        <span className={levelClass[log.level]}>
           {levelLabels[log.level]}
         </span>
         <span className="ilo-fg-faint ilo-bg-soft px-1 rounded">
@@ -68,7 +71,7 @@ const LogDetail: React.FC<{ log: LogEntry | null; onClose: () => void }> = ({ lo
             </div>
             <div>
               <span className="text-blue-600">级别：</span>
-              <span className="badge" style={{ color: levelColors[log.level] === "red" ? "var(--err)" : levelColors[log.level] === "orange" ? "var(--warn)" : levelColors[log.level] === "blue" ? "var(--accent)" : "var(--fg-faint)", borderColor: levelColors[log.level] === "red" ? "var(--err)" : levelColors[log.level] === "orange" ? "var(--warn)" : levelColors[log.level] === "blue" ? "var(--accent)" : "var(--border)" }}>
+              <span className={levelClass[log.level]}>
                 {levelLabels[log.level]}
               </span>
             </div>

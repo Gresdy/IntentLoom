@@ -653,11 +653,14 @@ body {
   border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
+  border: 1px solid transparent;
 }
 
-.badge--ok { background: rgba(74, 138, 80, 0.15); color: var(--ok); }
-.badge--warn { background: rgba(184, 134, 46, 0.15); color: var(--warn); }
-.badge--err { background: rgba(201, 74, 75, 0.15); color: var(--err); }
+.badge--ok { background: rgba(74, 138, 80, 0.15); color: var(--ok); border-color: var(--ok); }
+.badge--warn { background: rgba(184, 134, 46, 0.15); color: var(--warn); border-color: var(--warn); }
+.badge--err { background: rgba(201, 74, 75, 0.15); color: var(--err); border-color: var(--err); }
+.badge--info { background: rgba(91, 154, 230, 0.15); color: var(--accent); border-color: var(--accent); }
+.badge--muted { background: var(--bg-soft); color: var(--fg-faint); border-color: var(--border); }
 
 .btn {
   display: inline-flex;
