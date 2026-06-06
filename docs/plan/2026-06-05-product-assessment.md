@@ -157,3 +157,45 @@ IntentLoom = **本地多 AI-CLI 统一聊天入口**:顶部 6 个 tab 同级(Cla
 - `bd13fcc` merge: composer reasoning flush + right-anchored panel
 - `43cc1ae` feat(composer): reasoning menu flush right against send button, right-anchored panel, explicit upward
 - (待提) feat(ai): 进程注册表 + 真 cancel,前端 cancel 调 cancel_ai
+
+---
+
+## 9. 2026-06-06 续:T1–T10 全部落
+
+接 8 节,在 2026-06-06 这一轮把上面 Round 1–4 的 T1–T10
+全部实现 + 测过 + 提交,顺序如下。每条都跟着一句"实际改动
+了什么"和"怎么验过"。
+
+| Item | Commit | 一句话改动 | 怎么验过 |
+| --- | --- | --- | --- |
+| 前置 | `bd486f2` | `kill_process` 测试改用合理大正数 pid,修 macOS `kill(-1)` 自杀测试 runner 的 bug | `cargo test --lib kill_process_does_not_panic` |
+| T1 | `6cd6813` | 后端 `commands/projects::pick_workspace` 弹原生目录选择器,前端 `reasonixAdapter.pickWorkspace` 真接 + cwd 落 `state.meta.cwd` + localStorage;顺手把 `setBypass` 死引用从 controller 出口拆掉 | 4 个 vitest case + Rust 签名锁死单测 |
+| T2 | `7564f97` | `renameSession` 走 `useConversationStore.updateConversation`,空 / 空白 / 未知 id 拒绝返回 false,自动 trim | 4 个 vitest case |
+| T3 | `f8c3c57` | `setModel` 路由到 `switchProvider` (provider 优先) / `setCurrentApp` (fallback),空 / 空白拒绝;StatusBar 删硬编码 MODELS,改读 `useModelStore.providers` | 5 个 vitest case |
+| T4 | `8b09ff3` | AgentsPanel 删 `kiro` / `nanobot` 死引用,`AGENT_INSTALL_INFO` export 出来 + 测锁死 key 集合 = 6 个 adapter id | 3 个 vitest case |
+| T5 | `0adcaa8` | `parseStreamChunk` 匹配 `session_id:` (含 `-` / `_` / 大小写容差),返回 `control: session_started` 走 controller 现有 break 路径 | 5 个新 vitest case |
+| T6 | `801fa88` | `detectHermesNotice` 捕获 `🔐` 前缀或 4xx/5xx + 错误短语对,返回 `notice` chunk;messageStore 加 `notices` 数组 + `addNotice` (去重连续相同行);Transcript 渲染 `notice--error` / `--warn` / `--info` + `role="alert"` | 5 个 parser case + 8 个 store + controller 集成 case |
+| T7 | `382858b` | `send` 失败:toast (`useToastStore.addToast`, 5s) + transcript 红条 (`addNotice("error", ...)`) + `setStreaming(false)`;兼容 Error / 任意 throw 值 | 3 个 controller 集成 case |
+| T8 | `0f56181` | E2E runbook 文档 `docs/plan/2026-06-06-e2e-runbook.md` (5 路径 + 7 步骤 + 三件套门槛),sandbox 没法跑 `tauri dev` 留 5% 给真桌面 | 文档 + 三件套 + Vite build |
+| T9 | `104bb18` | `reasonixAdapter` 流 chunk handler 在 `appendContent` 之前过 `stripThinkTags`(原始 fallback + 解析后 text 两条路径),`utils/thinkTagFilter` 从孤立工具变有消费者 | 5 个 controller 集成 case (spy appendContent) |
+| T10 | `eec569e` | `useModelStore.registerProvider` (幂等 first-wins),`presetToProvider` 把 `claudeProviderPresets` (40 条) 翻译成 Provider,`seedProvidersFromPresets` 在 ReasonixApp 启动时跑一次,StatusBar 模型菜单现在有真条目 | 10 个 vitest case (5 个 presetToProvider + 5 个 seedProvidersFromPresets) |
+
+### 9.1 当前门槛(提交 `eec569e` 时)
+
+- `npm run typecheck` → 0 errors
+- `npx vitest run` → **135 / 135 pass** (14 个 test file)
+- `cargo test --lib --no-fail-fast` → **57 / 57 pass**
+- `npm run build` → 314 KB 主包,1.69 s 出
+
+### 9.2 本轮没碰的(留给 W4 / on-device validation)
+
+- 真正 import `~/.claude/settings.json` / `~/.codex/auth.json` 到 useModelStore — 现在 seed 还是 bundle 进去的 40 条 `claudeProviderPresets`,settings.json import 是 preset 体系的自然扩展,需要 Rust 侧读盘 + 解析 + 一个新 Tauri command,留待 W4。
+- 流 chunk 落到 transcript 的同步路径(`appendContent` 走 `messageStore`,`addMessageToCurrent` 走 `conversationStore`,end-of-stream 只同步 toolCalls / plan 不同步 text)— 这是个 pre-existing 的不一致,T9 没改它(不属于 T9 范围),但真桌面走 R4 第 4 步"长 turn 后 transcript 内容应持久"时会暴露,需要单独 PR 修。
+- `claude` 作为 `useModelStore.currentApp` 的默认 id + 顶部 "Claude" tab id 是 alias,这个 alias 链没文档化,后续若想加 alias 也得跟 `binary_for()` 的测试一起改。
+- Hermes / OpenClaw / OpenCode 三个 adapter 的 mode + reasoning spec 还没填,T3 的 StatusBar 菜单对它们只能 fall back 到 `currentApp`。
+
+### 9.3 评审建议(下次接手时)
+
+1. 跑 `docs/plan/2026-06-06-e2e-runbook.md` 里 7 步,真桌面走一遍。这是最快暴露上面 9.2 那批 pre-existing 问题的方式。
+2. `useReasonixController.send` 失败 / 成功两条分支在 `appendContent` 之外还都有同步逻辑(把流式内容写进 `useConversationStore`),但 `ai-stream-end` 只 sync toolCalls / plan,没把 `currentToolCalls` 之外的 text 一起 sync — 这是 9.2 提到的 pre-existing 漏洞,影响 transcript 在 reload 后能不能看到流式内容,优先级比 9.2 其余几条都高。
+3. T8 runbook 的第 9 节"Known sandbox limits"是 tauri dev 跑不起来的真正原因(`EPERM ::1:5173` + 没 native WebView)。下次实机时如果还跑不起来,先看 WebView2 (Windows) / WebKitGTK (Linux) / Xcode CLT (macOS) 有没有装。
