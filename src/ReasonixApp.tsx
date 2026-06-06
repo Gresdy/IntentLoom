@@ -133,6 +133,7 @@ export const ReasonixApp: React.FC = () => {
   const {
     state, send, cancel, approve,
     newSession, listSessions, resumeSession, deleteSession, renameSession, pickWorkspace,
+    setModel,
   } = useReasonixController();
 
   // Per-CLI mode + reasoning selection lives in its own store so it
@@ -549,6 +550,7 @@ export const ReasonixApp: React.FC = () => {
             turnTokens={state.turnTokens}
             onOpenFolder={() => pickWorkspace?.()}
             cwd={state.meta?.cwd}
+            onSetModel={setModel}
           />
         </footer>
       </div>

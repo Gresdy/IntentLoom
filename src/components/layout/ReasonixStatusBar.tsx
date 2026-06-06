@@ -1,12 +1,6 @@
-import { useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { ChevronDown, FolderOpen, Zap, Cpu, Clock } from "lucide-react";
-
-const MODELS = [
-  { id: "claude", name: "Claude Code", provider: "Anthropic" },
-  { id: "claude-sonnet", name: "Claude Sonnet", provider: "Anthropic" },
-  { id: "gpt-4o", name: "GPT-4o", provider: "OpenAI" },
-  { id: "gemini", name: "Gemini Pro", provider: "Google" },
-];
+import { useModelStore } from "@/stores/useModelStore";
 
 interface StatusBarProps {
   running: boolean;
@@ -14,6 +8,14 @@ interface StatusBarProps {
   turnTokens: number;
   onOpenFolder?: () => void;
   cwd?: string;
+  /**
+   * Called when the user picks a model / provider from the menu.
+   * The id is routed to either `switchProvider` (for known
+   * providers) or `setCurrentApp` (for top-tab CLI ids) inside
+   * `reasonixAdapter.setModel`; this component just passes the
+   * chosen id through.
+   */
+  onSetModel?: (id: string) => void;
 }
 
 export function StatusBar({
@@ -22,10 +24,29 @@ export function StatusBar({
   turnTokens,
   onOpenFolder,
   cwd,
+  onSetModel,
 }: StatusBarProps) {
   const [showMenu, setShowMenu] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [currentModel, setCurrentModel] = useState(MODELS[0]);
+  // Derive the dropdown contents from the live model store. The
+  // previous hardcoded `MODELS` array was a 0.x demo — it had no
+  // relationship to whatever the user had actually configured —
+  // and the click only logged. The 0.x array is now gone; the
+  // menu reads `providers` instead. If the user has not yet
+  // imported a preset (T10 wires that up), the menu collapses
+  // to a single "current CLI" entry derived from `currentApp`,
+  // so the trigger label still reflects something honest.
+  const { providers, currentProviderId, currentApp } = useModelStore();
+  const menuItems = useMemo(() => {
+    const fromProviders = Object.values(providers).map((p) => ({
+      id: p.id,
+      name: p.name,
+      provider: p.type ?? "",
+    }));
+    if (fromProviders.length > 0) return fromProviders;
+    return [{ id: currentApp, name: currentApp, provider: "default" }];
+  }, [providers, currentApp]);
+  const activeModelId = currentProviderId || currentApp;
 
   useEffect(() => {
     if (!running || !turnStartAt) {
@@ -51,30 +72,37 @@ export function StatusBar({
 
   return (
     <div className="statusbar">
-      {/* 模型选择 */}
       <div style={{ position: "relative" }}>
-        <button className="modelsw__trigger" onClick={() => setShowMenu(!showMenu)}>
+        <button
+          className="modelsw__trigger"
+          onClick={() => setShowMenu((v) => !v)}
+          title={activeModelId}
+        >
           <Zap size={11} />
-          <span className="modelsw__label">{currentModel.name}</span>
+          <span className="modelsw__label">
+            {menuItems.find((m) => m.id === activeModelId)?.name ?? activeModelId}
+          </span>
           <ChevronDown size={11} />
         </button>
         {showMenu && (
           <>
             <div className="modelsw__backdrop" onClick={() => setShowMenu(false)} />
             <div className="modelsw__menu">
-              {MODELS.map((m) => (
+              {menuItems.map((m) => (
                 <button
                   key={m.id}
-                  className={`modelsw__item ${m.id === currentModel.id ? "modelsw__item--current" : ""}`}
+                  className={`modelsw__item ${m.id === activeModelId ? "modelsw__item--current" : ""}`}
                   onClick={() => {
-                    setCurrentModel(m);
+                    onSetModel?.(m.id);
                     setShowMenu(false);
                   }}
                 >
                   <span className="modelsw__model">{m.name}</span>
-                  <span style={{ color: "var(--fg-faint)", fontSize: 10 }}>
-                    {m.provider}
-                  </span>
+                  {m.provider && (
+                    <span style={{ color: "var(--fg-faint)", fontSize: 10 }}>
+                      {m.provider}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>

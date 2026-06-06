@@ -120,7 +120,12 @@ export function useReasonixController() {
     updateConversation,
   } = useConversationStore();
 
-  const { currentProviderId, providers } = useModelStore();
+  const {
+    currentProviderId,
+    providers,
+    switchProvider,
+    setCurrentApp,
+  } = useModelStore();
   const currentProvider = currentProviderId ? providers[currentProviderId] : null;
 
   const {
@@ -553,9 +558,38 @@ export function useReasonixController() {
     }
   }, []);
 
-  const setModelFn = useCallback((name: string) => {
-    console.log("切换模型:", name);
-  }, []);
+  const setModelFn = useCallback(
+    (id: string): boolean => {
+      // The StatusBar's model menu (see ReasonixStatusBar.tsx)
+      // shows two kinds of ids mixed together:
+      //   1. Provider ids ("anthropic", "deepseek", …) — these
+      //      map to entries in `useModelStore.providers` and
+      //      should drive `switchProvider` (i.e. swap the
+      //      base-URL / model for the underlying CLI).
+      //   2. CLI / app ids ("claude", "codex", "gemini", …) —
+      //      these map to a TopBar tab and drive
+      //      `setCurrentApp` (i.e. switch which CLI the next
+      //      `send_chat_message` actually spawns).
+      // The previous implementation only logged the click; the
+      // 0.x demo never reached the store. We now route to the
+      // correct setter depending on which bucket the id falls
+      // into, and return a boolean so a caller (e.g. an
+      // upcoming settings panel) can detect a typo.
+      const trimmed = id.trim();
+      if (!trimmed) return false;
+      if (providers[trimmed]) {
+        switchProvider(trimmed);
+        return true;
+      }
+      // Last-resort: treat the id as an app id (matches the
+      // TopBar tab set in ReasonixApp). This keeps the menu
+      // functional even before providers have been populated
+      // (T10 wires that up via presets import).
+      setCurrentApp(trimmed);
+      return true;
+    },
+    [providers, switchProvider, setCurrentApp],
+  );
 
   const setPlanFn = useCallback((_v: boolean) => {
     // TODO: 实现 Plan 模式
