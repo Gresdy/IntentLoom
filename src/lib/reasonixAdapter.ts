@@ -10,6 +10,7 @@ import type { ArtifactTally } from "@/lib/artifactTally";
 import { useProductChangesStore } from "@/lib/useProductChanges";
 import { parseStreamChunk } from "@/lib/streamChunkParser";
 import { useToastStore } from "@/lib/useToast";
+import { stripThinkTags } from "@/utils/thinkTagFilter";
 import type { ToolCall } from "@/types/message";
 
 export type Mode = "normal" | "plan" | "yolo";
@@ -275,13 +276,28 @@ export function useReasonixController() {
         // contract so adapters that haven't migrated to the new
         // event contract still render something visible.
         if (!parsed) {
-          appendContent(raw);
+          // T9: a stray `<thinking>...</thinking>` or
+          // `<answer>...</answer>` block in a non-JSON line must
+          // not leak into the transcript. The parser's structured
+          // path already routes `thinking_delta` chunks to
+          // `appendThinking`, so this strip is a safety net for
+          // adapters that emit thinking inline as text.
+          appendContent(stripThinkTags(raw));
           return;
         }
 
         switch (parsed.kind) {
           case "text":
-            appendContent(parsed.text);
+            // T9: same strip as the raw fallback above. The
+            // parser's `thinking` kind already goes to
+            // `appendThinking` below, so this only fires for
+            // adapters that interleave plain text and inline
+            // thinking in the same `text` event — Claude
+            // streaming-protocol users, for example, when a
+            // model emits `<answer>...</answer>` blocks inside
+            // its text delta. Belt-and-braces: never trust the
+            // wire to keep thinking and text on separate channels.
+            appendContent(stripThinkTags(parsed.text));
             break;
           case "thinking":
             appendThinking(parsed.text);
