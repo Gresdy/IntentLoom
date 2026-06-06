@@ -370,16 +370,20 @@ mod tests {
     }
 
     #[test]
-    fn kill_process_dispatches_signal() {
-        // We can't observe SIGTERM delivery from inside the test
-        // process, but we can confirm `kill_process` returns true
-        // for a pid we own (the test runner itself). For an invalid
-        // pid the OS will return ESRCH; we treat that as "signal
-        // dispatched" because the call returned 0 (the syscall
-        // didn't fail at the API boundary), so this is more of a
-        // smoke test for the function shape than for the OS state.
-        let _ = kill_process(std::process::id());
-        let _ = kill_process(0); // 0 means "send to process group of caller"
+    fn kill_process_does_not_panic_on_any_input() {
+        // We deliberately do NOT call kill_process() with our own
+        // pid, `0` (process group), `-1`, or `u32::MAX` (which
+        // truncates to -1 in i32) — any of those would broadcast
+        // SIGTERM to the test runner itself on Unix. Stay strictly
+        // above any plausible pid (Linux default pid_max is
+        // 4194304; macOS pids rarely exceed a few hundred thousand)
+        // and strictly positive, so libc::kill returns -1/ESRCH
+        // safely and taskkill exits non-zero. The only invariant
+        // worth testing is "the function returns a bool and does
+        // not panic on a definitely-out-of-range pid".
+        let _ = kill_process(2_000_000_000);
+        let _ = kill_process(1_000_000_000);
+        let _ = kill_process(50_000_000);
     }
 
     // -- existing tests below --
