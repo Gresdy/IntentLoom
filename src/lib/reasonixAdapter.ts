@@ -9,6 +9,7 @@ import { buildArtifactSummary, hasAnyArtifact } from "@/lib/artifactTally";
 import type { ArtifactTally } from "@/lib/artifactTally";
 import { useProductChangesStore } from "@/lib/useProductChanges";
 import { parseStreamChunk } from "@/lib/streamChunkParser";
+import { useToastStore } from "@/lib/useToast";
 import type { ToolCall } from "@/types/message";
 
 export type Mode = "normal" | "plan" | "yolo";
@@ -464,9 +465,24 @@ export function useReasonixController() {
           mode: resolveModeId(cli as Parameters<typeof resolveModeId>[0]),
           reasoning: resolveReasoningId(cli as Parameters<typeof resolveReasoningId>[0]),
         });
-      } catch (error) {
-        console.error("发送消息失败:", error);
-        appendContent(`\n\n错误: ${error}`);
+  } catch (error) {
+        // The old behaviour folded the error string into the
+        // assistant message with `appendContent`, which then
+        // mixed it into the chat transcript where users would
+        // scroll past it. T7 splits the surface: a transient
+        // toast (top-right, auto-dismisses) for the immediate
+        // signal, and a red notice banner inside the
+        // transcript (T6's addNotice) so the failure stays
+        // attached to the conversation when the toast fades.
+        const message =
+          error instanceof Error ? error.message : String(error);
+        console.error("send_chat_message failed:", error);
+        useToastStore.getState().addToast({
+          type: "error",
+          message: `发送消息失败: ${message}`,
+          duration: 5000,
+        });
+        addNotice("error", `发送消息失败: ${message}`);
         setStreaming(false);
       }
     },
@@ -476,7 +492,7 @@ export function useReasonixController() {
       addMessageToCurrent,
       setStreaming,
       resetCurrentStream,
-      appendContent,
+      addNotice,
     ]
   );
 
