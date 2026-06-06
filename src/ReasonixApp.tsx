@@ -22,6 +22,7 @@ import { Resizer } from "./components/Resizer";
 import { ToolsModal } from "./components/layout/ToolsModal";
 import { useThemeStore } from "./stores/useThemeStore";
 import { useModelStore } from "./stores/useModelStore";
+import { seedProvidersFromPresets } from "./config/providerPresets";
 import type { AppId } from "./shared/types";
 import { invoke } from "./lib/tauri";
 import { useConversationStore, selectCurrentAgentId } from "./stores/conversationStore";
@@ -164,6 +165,15 @@ export const ReasonixApp: React.FC = () => {
       window.localStorage.setItem("intentloom.loomWidth", String(loomPanelWidth));
     }
   }, [loomPanelWidth]);
+
+  // T10: seed `useModelStore.providers` from the bundled
+  // `claudeProviderPresets` once on mount. This makes the
+  // StatusBar model menu (T3) render real entries instead of
+  // the empty fallback. `registerProvider` is idempotent so
+  // the dev-mode StrictMode double-effect is harmless.
+  useEffect(() => {
+    seedProvidersFromPresets(useModelStore.getState().registerProvider);
+  }, []);
   // URL is the source of truth for navigation state: deep links,
   // browser back/forward, and reload all stay in sync.
   const [searchParams, setSearchParams] = useSearchParams();

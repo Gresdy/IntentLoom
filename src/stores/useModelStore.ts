@@ -9,6 +9,7 @@ interface ModelState {
   setCurrentApp: (appId: string) => void;
   setCurrentCli: (cli: AICLI) => void;
   setCurrentProvider: (provider: Provider | null) => void;
+  registerProvider: (provider: Provider) => void;
   switchProvider: (id: string) => void;
   getEnabledProvider: () => Provider | null;
 }
@@ -32,6 +33,12 @@ export const useModelStore = create<ModelState>((set, get) => ({
     }
     set({
       currentProviderId: provider.id,
+      providers: { ...get().providers, [provider.id]: { ...provider } },
+    });
+  },
+  registerProvider: (provider) => {
+    if (get().providers[provider.id]) return;
+    set({
       providers: { ...get().providers, [provider.id]: { ...provider } },
     });
   },

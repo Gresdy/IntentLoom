@@ -604,3 +604,94 @@ export const PRESET_CATEGORY_LABELS: Record<string, string> = {
   third_party: "第三方",
   cloud_provider: "云服务商",
 };
+
+import type { Provider } from "@/shared/types";
+
+/**
+ * Map a preset's `category` to the `Provider.type` enum that
+ * `useModelStore` understands. Anything that isn't a first-party
+ * Anthropic / Google / OpenAI endpoint counts as a proxy in our
+ * model — a Chinese local provider, an aggregator, or a third
+ * party is reachable only through a base-URL override on top of
+ * the matching CLI, so functionally it is a proxy.
+ */
+function presetCategoryToType(
+  category: ProviderPreset["category"],
+): Provider["type"] {
+  switch (category) {
+    case "official":
+      return "official";
+    case "cloud_provider":
+      return "aws-bedrock";
+    case "cn_official":
+    case "aggregator":
+    case "third_party":
+    default:
+      return "proxy";
+  }
+}
+
+/**
+ * Stable, file-system-safe id derived from a preset's display
+ * name. We need a deterministic transform so re-running the
+ * seed (e.g. on app reload) doesn't churn the providers map
+ * and create phantom diffs in the persist layer.
+ */
+function presetIdFromName(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "unnamed"
+  );
+}
+
+/**
+ * Convert a `ProviderPreset` (the config-side shape used in
+ * `providerPresets.ts`) into a `Provider` (the store-side
+ * shape used in `useModelStore`). We only forward the fields
+ * the front-end actually consumes today; the original env
+ * map stays available on the preset so a future Tauri-side
+ * import can write the values into `~/.claude/settings.json`.
+ */
+export function presetToProvider(preset: ProviderPreset): Provider {
+  const env = preset.settingsConfig?.env ?? {};
+  const apiBase = env.ANTHROPIC_BASE_URL ?? env.OPENAI_BASE_URL;
+  // We intentionally preserve an empty-string token (a
+  // common "user will paste one in later" signal) instead of
+  // dropping the field. Downstream code that needs to know
+  // "is this provider ready to use?" checks
+  // `provider.api_key && provider.api_key.length > 0` —
+  // having the field present makes the "missing key" state
+  // explicit in the UI rather than implicitly undefined.
+  const apiKey = env.ANTHROPIC_AUTH_TOKEN ?? env.OPENAI_API_KEY ?? "";
+  return {
+    id: presetIdFromName(preset.name),
+    name: preset.name,
+    type: presetCategoryToType(preset.category),
+    ...(apiBase ? { api_base: apiBase } : {}),
+    ...(apiKey !== undefined ? { api_key: apiKey } : {}),
+  };
+}
+
+/**
+ * T10: seed `useModelStore.providers` from the bundled
+ * `claudeProviderPresets` so the StatusBar's model menu (T3)
+ * has real entries to render, instead of the empty fallback
+ * that only shows the current CLI. The caller decides *when*
+ * to seed; today `ReasonixApp` runs it once on mount.
+ *
+ * The function is `append`-style: re-running it after the
+ * first mount is a no-op for already-registered ids (the
+ * store's `registerProvider` enforces that), so it is safe to
+ * call from React's `useEffect` even though the effect may
+ * run twice in dev (StrictMode).
+ */
+export function seedProvidersFromPresets(
+  register: (provider: Provider) => void,
+  presets: ProviderPreset[] = claudeProviderPresets,
+): void {
+  for (const preset of presets) {
+    register(presetToProvider(preset));
+  }
+}
