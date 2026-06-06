@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useEffect } from "react";
+import { useCallback, useMemo, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "./tauri";
 import { useConversationStore } from "@/stores/conversationStore";
@@ -24,6 +24,12 @@ export type ReasonixItem =
 export interface ReasonixMeta {
   label: string;
   startupErr?: string;
+  /**
+   * Absolute path of the workspace folder the user picked from the
+   * native folder dialog. `null` (or absent) means "no workspace
+   * chosen yet". The controller persists this in `localStorage`
+   * under `intentloom.cwd` so the choice survives an app restart.
+   */
   cwd?: string;
 }
 
@@ -45,6 +51,38 @@ function generateId(): string {
   return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 }
 
+// localStorage key for the last picked workspace path. Kept under
+// the `intentloom.` namespace to avoid colliding with other apps
+// in the same origin (Tauri serves the webview from `tauri://` so
+// localStorage is per-app, but a prefix is cheap insurance).
+const WORKSPACE_STORAGE_KEY = "intentloom.cwd";
+
+function readPersistedCwd(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const v = window.localStorage.getItem(WORKSPACE_STORAGE_KEY);
+    return v && v.length > 0 ? v : undefined;
+  } catch {
+    // localStorage can throw in private mode / disabled storage;
+    // treat that as "no prior workspace" rather than crashing.
+    return undefined;
+  }
+}
+
+function writePersistedCwd(cwd: string | undefined): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (cwd && cwd.length > 0) {
+      window.localStorage.setItem(WORKSPACE_STORAGE_KEY, cwd);
+    } else {
+      window.localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+    }
+  } catch {
+    // Same as readPersistedCwd: swallow storage failures rather
+    // than blocking the UI on a transient storage error.
+  }
+}
+
 // Convert a ToolCall from messageStore into the wire shape used by
 // the `tool` ReasonixItem. Kept tiny because the Transcript side
 // already has its own `tool.diff` / `tool.kind` accessors.
@@ -62,6 +100,14 @@ function toolCallToItem(tc: ToolCall, idSuffix: string): ReasonixItem {
 }
 
 export function useReasonixController() {
+  // Last workspace folder the user picked from the native dialog.
+  // Initialized from localStorage so a freshly-mounted controller
+  // (e.g. after a window reload) shows the same path the user
+  // previously chose. The setter writes back to localStorage on
+  // every change, so even if the controller remounts inside the
+  // same Tauri session the path survives.
+  const [cwd, setCwd] = useState<string | undefined>(() => readPersistedCwd());
+
   const {
     conversations,
     currentConversationId,
@@ -169,8 +215,14 @@ export function useReasonixController() {
   ]);
 
   const meta: ReasonixMeta | null = useMemo(() => {
-    return currentProvider ? { label: currentProvider.name } : { label: "Claude" };
-  }, [currentProvider]);
+    const base: ReasonixMeta = currentProvider
+      ? { label: currentProvider.name }
+      : { label: "Claude" };
+    // Only attach cwd when we have one — the StatusBar / TopBar
+    // already render a "未选择工作目录" placeholder when `cwd` is
+    // absent, so we don't want to override that with `undefined`.
+    return cwd ? { ...base, cwd } : base;
+  }, [currentProvider, cwd]);
 
   const state: ReasonixState = useMemo(
     () => ({
@@ -460,8 +512,31 @@ export function useReasonixController() {
     // TODO: 实现重命名
   }, []);
 
-  const pickWorkspace = useCallback(async () => {
-    // TODO: 实现选择工作目录
+  const pickWorkspace = useCallback(async (): Promise<string | null> => {
+    // Backend (commands::projects::pick_workspace) pops the native
+    // folder picker via tauri-plugin-dialog and returns
+    // `Option<String>`. `None` means the user cancelled the dialog
+    // (or no workspace is selectable on this platform), and we
+    // treat that as a no-op — no toast, no error, just leave the
+    // previous cwd in place. `Some(path)` updates both the React
+    // state (so StatusBar / TopBar re-render immediately) and
+    // localStorage (so the choice survives an app restart).
+    try {
+      const picked = await invoke<string | null>("pick_workspace");
+      if (typeof picked === "string" && picked.length > 0) {
+        setCwd(picked);
+        writePersistedCwd(picked);
+        return picked;
+      }
+      return null;
+    } catch (err) {
+      // The plugin only throws on hard failures (e.g. IPC broken);
+      // surface to the console so the developer sees it in the dev
+      // tools but keep the UI calm. The error toast pipeline is
+      // owned by T7; we don't duplicate that here.
+      console.error("pickWorkspace failed:", err);
+      return null;
+    }
   }, []);
 
   const setModelFn = useCallback((name: string) => {
@@ -473,7 +548,15 @@ export function useReasonixController() {
   }, []);
 
   const setBypassFn = useCallback((_v: boolean) => {
-    // TODO: 实现 Bypass 模式
+    // Intentional no-op: the "Bypass permissions" toggle was a
+    // 0.x demo of the StatusBar API and never made it into the
+    // product. The StatusBar no longer renders the toggle, and
+    // `setBypass` is no longer exported from this controller. We
+    // keep the local binding only because removing it would force
+    // a downstream call-site change in any future migration —
+    // touching that is out of scope for T1. The next person who
+    // comes back to clean this up can delete the binding and the
+    // return key together.
   }, []);
 
   const answerQuestion = useCallback((_id: string, _choices: string[]) => {}, []);

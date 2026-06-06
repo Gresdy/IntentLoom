@@ -1,4 +1,6 @@
 use crate::db;
+use tauri::AppHandle;
+use tauri_plugin_dialog::DialogExt;
 use serde::{Deserialize, Serialize};
 use tauri::command;
 
@@ -64,4 +66,41 @@ pub fn remove_project(id: i64) -> Result<(), String> {
     conn.execute("DELETE FROM projects WHERE id = ?1", [id])
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Open the native folder picker and return the selected directory.
+///
+/// Returns `None` if the user cancelled the dialog (or the platform
+/// has no blocking dialog — mobile, headless). Returns `Some(path)`
+/// on success. The `Option<String>` shape matches what the
+/// front-end's `reasonixAdapter.pickWorkspace` already consumes, so
+/// we don't need a new Tauri event for "user cancelled".
+///
+/// We use the blocking variant because the Tauri command runs on
+/// the async runtime and the dialog itself must run on the main
+/// thread; the plugin handles that hop internally. Folder pickers
+/// are intentional, multi-second operations on slow disks, so a
+/// blocking call here is the right ergonomics — the UI button
+/// shows a busy state via the controller.
+#[command]
+pub fn pick_workspace(app: AppHandle) -> Result<Option<String>, String> {
+    let picked = app.dialog().file().blocking_pick_folder();
+    Ok(picked.and_then(|fp| fp.as_path().map(|p| p.to_string_lossy().into_owned())))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// We can't pop a real dialog in `cargo test` (no main thread /
+    /// no AppHandle), so the only invariant we can pin from a unit
+    /// test is "the command signature resolves and returns
+    /// Result<Option<String>, String>". Compiling this function
+    /// pointer is enough to keep the surface honest — a flag rename
+    /// in `tauri-plugin-dialog` will break this build, which is
+    /// what we want to catch.
+    #[test]
+    fn pick_workspace_signature_is_stable() {
+        let _f: fn(AppHandle) -> Result<Option<String>, String> = pick_workspace;
+    }
 }
