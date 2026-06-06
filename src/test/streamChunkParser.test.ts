@@ -256,4 +256,63 @@ describe("parseStreamChunk", () => {
       expect(parseStreamChunk(JSON.stringify({ foo: "bar" }))).toBeNull();
     });
   });
+
+  // Hermes Agent (`src-tauri/src/agents/hermes.rs`) emits a
+  // leading `session_id: <id>` line as its session bootstrap.
+  // The backend adapter intentionally forwards it; the parser
+  // is responsible for not letting it slip into the transcript.
+  // We emit a no-op control event so the controller's switch
+  // statement drops it on the floor (the existing
+  // `case "control": break` is exactly this path).
+  describe("Hermes session_id line", () => {
+    it("classifies a plain 'session_id: <id>' line as session_started control", () => {
+      expect(parseStreamChunk("session_id: 7c3a-9e21")).toEqual({
+        kind: "control",
+        event: "session_started",
+      });
+    });
+
+    it("accepts a flexible amount of whitespace around the colon", () => {
+      expect(parseStreamChunk("session_id:    abc123")).toEqual({
+        kind: "control",
+        event: "session_started",
+      });
+      expect(parseStreamChunk("session_id:xyz")).toEqual({
+        kind: "control",
+        event: "session_started",
+      });
+    });
+
+    it("also matches the session-id / SESSION_ID spellings", () => {
+      // Hermes is the only adapter known to use the underscore
+      // form today, but the parser is intentionally lenient so
+      // future forks of the CLI don't have to coordinate a
+      // parser bump to add a new spelling.
+      expect(parseStreamChunk("session-id: 42")).toEqual({
+        kind: "control",
+        event: "session_started",
+      });
+      expect(parseStreamChunk("SESSION_ID: 42")).toEqual({
+        kind: "control",
+        event: "session_started",
+      });
+    });
+
+    it("does not treat 'session_idle' or 'session_idle: 5' as session_started", () => {
+      // The key must be followed by a colon immediately after
+      // (optionally with whitespace), not by another identifier
+      // character. A "session_idle" timer value would otherwise
+      // be mis-classified.
+      expect(parseStreamChunk("session_idle")).toBeNull();
+      expect(parseStreamChunk("session_idle: 5")).toBeNull();
+    });
+
+    it("does not match a session_id field embedded in prose", () => {
+      // The regex anchors to the start of the trimmed line, so
+      // a chat reply that happens to mention "session_id" is
+      // unaffected — it stays text.
+      const prose = "use the session_id from the prior turn to resume";
+      expect(parseStreamChunk(prose)).toBeNull();
+    });
+  });
 });

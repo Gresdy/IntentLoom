@@ -39,6 +39,23 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk | 
   const trimmed = raw.trim();
   if (!trimmed) return null;
 
+  // Hermes Agent (`src-tauri/src/agents/hermes.rs`) emits a
+  // leading `session_id: <id>` line on stdout as its session
+  // bootstrap, followed by the actual response. The backend
+  // adapter deliberately forwards it to the front-end (it is
+  // useful metadata for other consumers — see the comment in
+  // hermes.rs), so we filter it here: recognise the shape, emit
+  // a no-op control event so the controller's switch falls
+  // through (the existing `case "control": break` is exactly
+  // this), and do not let the historical "raw line is text"
+  // fallback append `session_id: 7c3a-...` to the transcript.
+  // We accept `session_id:`, `session-id:`, and a flexible amount
+  // of whitespace between the key, the colon, and the value.
+  const sessionMatch = /^session[-_]id\s*:\s*\S+/i.exec(trimmed);
+  if (sessionMatch) {
+    return { kind: "control", event: "session_started" };
+  }
+
   let event: unknown;
   try {
     event = JSON.parse(trimmed);
