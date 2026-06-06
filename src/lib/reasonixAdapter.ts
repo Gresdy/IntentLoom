@@ -117,6 +117,7 @@ export function useReasonixController() {
     addMessageToCurrent,
     updateLastMessage,
     getCurrentConversation,
+    updateConversation,
   } = useConversationStore();
 
   const { currentProviderId, providers } = useModelStore();
@@ -508,9 +509,22 @@ export function useReasonixController() {
     deleteConversation(path);
   }, [deleteConversation]);
 
-  const renameSessionFn = useCallback((_path: string, _title: string) => {
-    // TODO: 实现重命名
-  }, []);
+  const renameSessionFn = useCallback(
+    (path: string, title: string): boolean => {
+      // The HistoryDrawer calls this with `editTitle.trim()` (see
+      // src/components/layout/HistoryDrawer.tsx:104,111), so we
+      // also re-trim defensively in case a future caller forgets.
+      // An empty / whitespace-only title would otherwise produce
+      // a blank header in the transcript, which the user
+      // experience team has flagged as "worse than no rename".
+      const trimmed = title.trim();
+      if (trimmed.length === 0) return false;
+      if (!conversations.some((c) => c.id === path)) return false;
+      updateConversation(path, { name: trimmed });
+      return true;
+    },
+    [conversations, updateConversation],
+  );
 
   const pickWorkspace = useCallback(async (): Promise<string | null> => {
     // Backend (commands::projects::pick_workspace) pops the native
