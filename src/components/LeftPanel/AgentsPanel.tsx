@@ -19,7 +19,17 @@ interface AgentInfo {
   install_command?: string;
 }
 
-const AGENT_INSTALL_INFO: Record<string, { url: string; command: string }> = {
+/**
+ * Install hints keyed by adapter id. The key set is the source
+ * of truth on the front-end for "which CLIs does IntentLoom
+ * know about" and MUST stay in sync with the Rust adapter
+ * registry in `src-tauri/src/agents/` — the `agentsPanel.test.ts`
+ * vitest suite locks both lists to the same six ids. Adding a
+ * new id here without wiring a matching adapter leaves a
+ * "Install" button that points at a CLI the app will never
+ * recognise, and the test catches that.
+ */
+export const AGENT_INSTALL_INFO: Record<string, { url: string; command: string }> = {
   claude: {
     url: "https://docs.anthropic.com/en/docs/claude-code/overview",
     command: "npm install -g @anthropic-ai/claude-code",
@@ -39,14 +49,6 @@ const AGENT_INSTALL_INFO: Record<string, { url: string; command: string }> = {
   openclaw: {
     url: "https://github.com/openclaw/openclaw",
     command: "npm install -g @openclaw/cli",
-  },
-  kiro: {
-    url: "https://kiro.ai",
-    command: "安装 Kiro",
-  },
-  nanobot: {
-    url: "https://github.com/nanobot-ai/nanobot",
-    command: "npm install -g nanobot",
   },
   // Hermes is a Python project shipped from a CNB mirror (the user's
   // install lives at ~/.hermes/hermes-agent, symlinked into ~/.local/bin).
