@@ -1283,6 +1283,20 @@ body {
 .message.error { background: rgba(201,74,75,0.1); color: var(--err); border: 1px solid rgba(201,74,75,0.2); }
 .message.success { background: rgba(74,138,80,0.1); color: var(--ok); border: 1px solid rgba(74,138,80,0.2); }
 
+/* In-conversation notice banners rendered by the Transcript.
+ * Emitted today by Hermes (T6) when the CLI prints
+ * `🔐 ... 401 — authentication failed.` (and similar 4xx/5xx
+ * blocks) to stdout. Without these styles, the notice kind
+ * would render as plain text indistinguishable from an
+ * assistant message; with them, the user gets a clear visual
+ * signal that the upstream rejected the request. The level
+ * variants match `ConversationNotice["level"]` in
+ * `src/stores/messageStore.ts`. */
+.notice { margin-top: 12px; padding: 10px 12px; border-radius: var(--radius); font-size: 13px; line-height: 1.5; }
+.notice--error { background: rgba(201,74,75,0.10); color: var(--err); border: 1px solid rgba(201,74,75,0.25); }
+.notice--warn  { background: rgba(184,134,46,0.10); color: var(--warn); border: 1px solid rgba(184,134,46,0.25); }
+.notice--info  { background: var(--bg-soft); color: var(--fg); border: 1px solid var(--border); }
+
 .hint { font-size: 13px; color: var(--fg-dim); margin-top: 6px; }
 
 .card {

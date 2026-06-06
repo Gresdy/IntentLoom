@@ -57,30 +57,33 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk | 
     return { kind: "control", event: "session_started" };
   }
 
-  // Hermes auth / network failure block. The CLI writes a
-  // plain-text line starting with 🔐 (followed by a short
-  // explanation and a 401/403/5xx) when the upstream provider
-  // rejects the request. We surface that as a styled `notice`
-  // chunk so the Transcript renders it as a red banner, not
-  // as part of the assistant reply. Detection is intentionally
-  // narrow — a bare 401 in a normal code answer shouldn't trip
-  // this — only when the surrounding text looks like an error
-  // report (the 🔐 prefix, or one of the explicit phrases
-  // paired with a 4xx/5xx status code).
-  const hermesNotice = detectHermesNotice(trimmed);
-  if (hermesNotice) {
-    return hermesNotice;
-  }
-
   let event: unknown;
   try {
     event = JSON.parse(trimmed);
   } catch {
+    // The chunk did not parse as JSON. Fall through to the
+    // Hermes error detector below — it only runs on the
+    // raw line, not on a partially-parsed object, so a
+    // future adapter that ships a proper `type: "error"`
+    // JSON event is unaffected.
+    event = null;
+  }
+  if (!event || typeof event !== "object") {
+    // Plain-text path. Hermes auth / network failure block.
+    // The CLI writes a plain-text line starting with 🔐
+    // (followed by a short explanation and a 401/403/5xx)
+    // when the upstream provider rejects the request. We
+    // surface that as a styled `notice` chunk so the
+    // Transcript renders it as a red banner, not as part
+    // of the assistant reply. The detector is intentionally
+    // narrow — see the long comment on `detectHermesNotice`
+    // for the exact rules.
+    const hermesNotice = detectHermesNotice(trimmed);
+    if (hermesNotice) {
+      return hermesNotice;
+    }
     return null;
   }
-  if (!event || typeof event !== "object") return null;
-
-  // ----- Claude / Anthropic streaming protocol -----
   if ((event as any).type === "content_block_delta") {
     return parseContentBlockDelta(event as any);
   }
@@ -127,10 +130,9 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk | 
       kind: "permission",
       id: String((event as any).id ?? ""),
       tool: String((event as any).tool ?? (event as any).tool_name ?? ""),
-      args: (event as any).args ?? (event as any).arguments ?? {},
+    args: (event as any).args ?? (event as any).arguments ?? {},
     };
   }
-
   return null;
 }
 

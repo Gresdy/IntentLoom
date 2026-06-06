@@ -83,7 +83,22 @@ function ItemRenderer({ item }: { item: ReasonixItem }) {
       return <div className="phase">{item.text}</div>;
 
     case "notice":
-      return <div className={`notice ${item.level === "warn" ? "notice--warn" : ""}`}>{item.text}</div>;
+      // Map the streaming controller's `level` ("info" / "warn" /
+      // "error") to the matching CSS modifier so the banner picks
+      // up the right red / amber / neutral background. We only
+      // emit the modifier when the level is one we recognise —
+      // unknown values fall through to a plain `.notice` block
+      // rather than dumping a bogus class name into the DOM.
+      const lvl = item.level;
+      const lvlClass =
+        lvl === "error" || lvl === "warn" || lvl === "info"
+          ? `notice--${lvl}`
+          : "";
+      return (
+        <div className={lvlClass ? `notice ${lvlClass}` : "notice"} role={lvl === "error" ? "alert" : "status"}>
+          {item.text}
+        </div>
+      );
 
     case "summary":
       return <ConversationSummary summary={item.tally} />;

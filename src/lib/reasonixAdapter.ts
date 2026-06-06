@@ -134,6 +134,7 @@ export function useReasonixController() {
     currentToolCalls,
     setStreaming,
     summaryByConversation,
+    notices,
     addToolCall,
     addToolResponse,
     updateToolCall,
@@ -141,6 +142,7 @@ export function useReasonixController() {
     setPermission,
     appendContent,
     appendThinking,
+    addNotice,
     setSummary,
     resetCurrentStream,
   } = useMessageStore();
@@ -209,6 +211,16 @@ export function useReasonixController() {
       }
     }
 
+    // In-conversation notices (Hermes auth / network banners,
+    // T6). We push them after the per-conversation summary so
+    // they render at the bottom of the transcript where a
+    // "the upstream rejected your request" banner is the
+    // natural place to look. The Transcript already styles
+    // the `notice` kind with a red border / soft background.
+    for (const n of notices) {
+      result.push({ kind: "notice", id: n.id, level: n.level, text: n.text });
+    }
+
     return result;
   }, [
     conversationMessages,
@@ -218,6 +230,7 @@ export function useReasonixController() {
     currentConversation,
     currentConversationId,
     summaryByConversation,
+    notices,
   ]);
 
   const meta: ReasonixMeta | null = useMemo(() => {
@@ -295,6 +308,17 @@ export function useReasonixController() {
               args: parsed.args,
               status: "pending",
             });
+            break;
+          case "notice":
+            // Hermes auth / network failure banner (T6). The
+            // parser detected 🔐-prefixed or status-code+phrase
+            // lines and surfaced them as a `notice` chunk so we
+            // render them as a styled red banner rather than
+            // folding them into the assistant message text.
+            // `addNotice` is in the messageStore; it dedupes
+            // identical consecutive lines so a retrying CLI
+            // doesn't spam the transcript.
+            addNotice(parsed.level, parsed.text);
             break;
           case "control":
             // message_start/stop/delta and content_block_stop are
