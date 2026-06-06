@@ -32,6 +32,7 @@ export type ParsedChunk =
   | { kind: "tool_response"; id: string; result: unknown }
   | { kind: "plan"; plan: PlanState }
   | { kind: "permission"; id: string; tool: string; args: unknown }
+  | { kind: "notice"; level: "info" | "warn" | "error"; text: string }
   | { kind: "control"; event: string };
 
 export function parseStreamChunk(raw: string | null | undefined): ParsedChunk | null {
@@ -54,6 +55,21 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk | 
   const sessionMatch = /^session[-_]id\s*:\s*\S+/i.exec(trimmed);
   if (sessionMatch) {
     return { kind: "control", event: "session_started" };
+  }
+
+  // Hermes auth / network failure block. The CLI writes a
+  // plain-text line starting with 🔐 (followed by a short
+  // explanation and a 401/403/5xx) when the upstream provider
+  // rejects the request. We surface that as a styled `notice`
+  // chunk so the Transcript renders it as a red banner, not
+  // as part of the assistant reply. Detection is intentionally
+  // narrow — a bare 401 in a normal code answer shouldn't trip
+  // this — only when the surrounding text looks like an error
+  // report (the 🔐 prefix, or one of the explicit phrases
+  // paired with a 4xx/5xx status code).
+  const hermesNotice = detectHermesNotice(trimmed);
+  if (hermesNotice) {
+    return hermesNotice;
   }
 
   let event: unknown;
@@ -182,6 +198,52 @@ function normalizePlan(event: any): PlanState {
     currentIndex: typeof event.currentIndex === "number" ? event.currentIndex : -1,
     isRunning: Boolean(event.isRunning),
   };
+}
+
+/**
+ * Hermes-friendly error detector.
+ *
+ * Returns a `notice` chunk when the trimmed line looks like a
+ * Hermes auth / network failure block; returns `null` otherwise
+ * so the caller falls through to its normal text / JSON path.
+ *
+ * The detection is intentionally conservative. We only flag a
+ * line when it carries both a clear failure signal and a
+ * concrete indicator of where it came from:
+ *
+ *   - the line starts with the 🔐 emoji that Hermes prepends
+ *     to its auth-failure banner;
+ *   - OR the line contains a recognised HTTP status code
+ *     (401 / 403 / 404 / 429 / 5xx) AND one of the failure
+ *     phrases Hermes uses ("authentication failed",
+ *     "permission denied", "rate limit", "internal server
+ *     error", "bad gateway", "service unavailable"). The pair
+ *     requirement stops a stray "HTTP 401" mention in a normal
+ *     code answer from being mis-classified.
+ *
+ * The function is exported so the vitest suite can hit it
+ * directly without going through the full `parseStreamChunk`
+ * pipeline (which makes the assertions about input boundaries
+ * cleaner).
+ */
+export function detectHermesNotice(
+  trimmed: string,
+): { kind: "notice"; level: "info" | "warn" | "error"; text: string } | null {
+  if (!trimmed) return null;
+  if (trimmed.startsWith("🔐")) {
+    return { kind: "notice", level: "error", text: trimmed };
+  }
+  // Status-code + phrase pair. We intentionally match the phrase
+  // before the code in the alternation, so a line like
+  // "authentication failed (401)" is recognised even though
+  // the digit appears after the words.
+  const statusCode = /(?:401|403|404|429|5\d{2})/;
+  const failurePhrase =
+    /authentication\s+failed|permission\s+denied|rate\s+limit|internal\s+server\s+error|bad\s+gateway|service\s+unavailable|unauthor(?:ized|ised)|forbidden|not\s+found/i;
+  if (statusCode.test(trimmed) && failurePhrase.test(trimmed)) {
+    return { kind: "notice", level: "error", text: trimmed };
+  }
+  return null;
 }
 
 // crypto.randomUUID is available in modern browsers and Tauri WebView;

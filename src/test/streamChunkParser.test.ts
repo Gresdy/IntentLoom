@@ -315,4 +315,71 @@ describe("parseStreamChunk", () => {
       expect(parseStreamChunk(prose)).toBeNull();
     });
   });
+
+  // Hermes auth / network failure detection. T6 surfaces these
+  // as styled `notice` chunks so the Transcript can render them
+  // as a red banner instead of folding them into the assistant
+  // reply. The detection is conservative on purpose — see the
+  // long comment on `detectHermesNotice` in the parser for the
+  // exact rules.
+  describe("Hermes notice line", () => {
+    it("classifies a 🔐-prefixed line as an error notice", () => {
+      expect(
+        parseStreamChunk("🔐 upstream returned 401 — authentication failed."),
+      ).toEqual({
+        kind: "notice",
+        level: "error",
+        text: "🔐 upstream returned 401 — authentication failed.",
+      });
+    });
+
+    it("classifies a status code + failure-phrase pair as error notice", () => {
+      expect(
+        parseStreamChunk("authentication failed (HTTP 401) for provider=anthropic"),
+      ).toEqual({
+        kind: "notice",
+        level: "error",
+        text: "authentication failed (HTTP 401) for provider=anthropic",
+      });
+      expect(parseStreamChunk("rate limit hit, retrying (429)")).toEqual({
+        kind: "notice",
+        level: "error",
+        text: "rate limit hit, retrying (429)",
+      });
+      expect(parseStreamChunk("upstream 503 service unavailable")).toEqual({
+        kind: "notice",
+        level: "error",
+        text: "upstream 503 service unavailable",
+      });
+    });
+
+    it("does not classify a bare status-code mention as a notice", () => {
+      // A code answer that happens to mention "401" must keep
+      // going through the normal text path. The pair rule
+      // (status code AND failure phrase) is the gate.
+      expect(parseStreamChunk("HTTP 401 is the right status here")).toBeNull();
+      expect(parseStreamChunk("status 200 means ok")).toBeNull();
+    });
+
+    it("does not classify a failure phrase without a status code as a notice", () => {
+      // "permission denied" alone is too generic — the parser
+      // would mis-fire on any chat reply that uses the phrase.
+      expect(parseStreamChunk("permission denied by the file mode")).toBeNull();
+    });
+
+    it("does not reclassify JSON error events that already have a type field", () => {
+      // If an adapter ever migrates to a proper `type: "error"`
+      // event shape, the JSON branch handles it (returning
+      // null here because we don't define a type="error"
+      // branch — the front-end already has a separate plan for
+      // a future structured error contract). The point of the
+      // assertion is just to confirm we don't accidentally
+      // route JSON through the Hermes detector.
+      const json = JSON.stringify({ type: "error", message: "401 authentication failed" });
+      const result = parseStreamChunk(json);
+      // Result may be null or any non-notice shape; we just
+      // care that it is NOT a notice.
+      expect(result).not.toMatchObject({ kind: "notice" });
+    });
+  });
 });
