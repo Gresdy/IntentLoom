@@ -4,6 +4,8 @@ import { ArrowUp, Square, Zap, Hash, Lightbulb } from "lucide-react";
 import type { AppId } from "../../shared/types";
 import type { CliOption } from "../../lib/cliCapabilities";
 import { Menu } from "../ui/Menu";
+import { useOpenclawSessionStore } from "@/stores/useOpenclawSessionStore";
+import { isOpenclawSessionSet } from "@/stores/useOpenclawSessionStore";
 
 // 斜杠命令
 const SLASH_COMMANDS = [
@@ -16,6 +18,20 @@ interface ComposerProps {
   running: boolean;
   /** Current CLI selection; used to gate which dropdowns render. */
   cli: AppId;
+  /**
+   * Whether the active CLI is currently available on $PATH.
+   * When `false`, the composer is locked down: the send
+   * button is disabled and the textarea placeholder changes
+   * to point the user at the AI 助手 panel. The pre-flight
+   * check in `reasonixAdapter.send()` is the real source of
+   * truth (it short-circuits even if a click gets through),
+   * but disabling the button here is the first line of
+   * defence and removes the surprise of a click that does
+   * nothing. Mirrors the AionUi `useAgentReadinessCheck`
+   * `isReady` flag — the consumer is expected to translate
+   * it into a visible affordance.
+   */
+  isAvailable: boolean;
   /** Spec for the current CLI's permission/mode dropdown. Undefined = hidden. */
   modeSpec?: { flagTemplate: string; defaultId: string; options: CliOption[] };
   modeId: string | null;
@@ -31,6 +47,7 @@ interface ComposerProps {
 export function Composer({
   running,
   cli,
+  isAvailable,
   modeSpec,
   modeId,
   onModeChange,
@@ -164,17 +181,35 @@ export function Composer({
           </div>
         )}
 
-        {/* 输入框 */}
+      {/* 输入框 */}
         <textarea
           ref={taRef}
           className="composer__input"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="输入消息... (/ 查看命令)"
+          placeholder={
+            isAvailable
+              ? "输入消息... (/ 查看命令)"
+              : `${cli} 暂未安装或不可用 — 请在 “AI 助手” 面板安装或切换引擎`
+          }
           rows={1}
-          disabled={running}
+          disabled={running || !isAvailable}
         />
+
+        {/* OpenClaw headless-mode session picker — only when
+             the active CLI is OpenClaw. The adapter (see
+             `src-tauri/src/agents/openclaw.rs`) refuses to
+             run a turn without one of `--to` / `--session-id`
+             / `--agent`; the picker below forwards the
+             user's choice to the IPC. Three fields, one
+             per flag. The adapter picks them in priority
+             order (to > sessionId > agent) and ignores the
+             rest, so filling all three is harmless but
+             redundant — the hint label calls that out.
+             Persisted in localStorage via the zustand
+             store so the choice survives an app restart. */}
+        {cli === "openclaw" && <OpenclawSessionPicker />}
 
         {/* 操作按钮 */}
         <div className="composer__actions">
@@ -215,8 +250,12 @@ export function Composer({
               <button
                 className="composer__send"
                 onClick={handleSubmit}
-                disabled={!text.trim()}
-                title="发送 (Enter)"
+                disabled={!text.trim() || !isAvailable}
+                title={
+                  isAvailable
+                    ? "发送 (Enter)"
+                    : `${cli} 不可用 — 请先在 “AI 助手” 面板安装`
+                }
               >
                 <ArrowUp size={14} />
               </button>
@@ -227,3 +266,65 @@ export function Composer({
     </div>
   );
 }
+
+// OpenClaw session picker — three input fields (to /
+// session-id / agent) plus a clear button. Rendered as a
+// compact inline row above the composer's mode/send row;
+// only mounted when the active CLI is OpenClaw (see the
+// parent render). The fields bind directly to the
+// `useOpenclawSessionStore` so the same state is read by
+// `reasonixAdapter.send` on every send — no extra wiring
+// through props.
+function OpenclawSessionPicker() {
+  const session = useOpenclawSessionStore((s) => s.session);
+  const setSession = useOpenclawSessionStore((s) => s.setSession);
+  const clearSession = useOpenclawSessionStore((s) => s.clearSession);
+  const isSet = isOpenclawSessionSet(session);
+  return (
+    <div
+      className={"composer__openclaw" + (isSet ? " composer__openclaw--set" : "")}
+      data-testid="openclaw-session-picker"
+    >
+      <span className="composer__openclaw-label">会话</span>
+      <input
+        className="composer__openclaw-input"
+        type="text"
+        value={session.to ?? ""}
+        onChange={(e) => setSession({ ...session, to: e.target.value || undefined })}
+        placeholder="--to  E.164"
+        title="E.164 phone (e.g. +15555550123). Highest priority."
+        aria-label="OpenClaw session: phone"
+      />
+      <input
+        className="composer__openclaw-input"
+        type="text"
+        value={session.sessionId ?? ""}
+        onChange={(e) => setSession({ ...session, sessionId: e.target.value || undefined })}
+        placeholder="--session-id"
+        title="Session id to continue."
+        aria-label="OpenClaw session: id"
+      />
+      <input
+        className="composer__openclaw-input"
+        type="text"
+        value={session.agent ?? ""}
+        onChange={(e) => setSession({ ...session, agent: e.target.value || undefined })}
+        placeholder="--agent"
+        title="Agent id (e.g. ops). Lowest priority."
+        aria-label="OpenClaw session: agent"
+      />
+      {isSet && (
+        <button
+          type="button"
+          className="composer__openclaw-clear"
+          onClick={clearSession}
+          title="清空会话"
+          aria-label="清空 OpenClaw 会话"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
+

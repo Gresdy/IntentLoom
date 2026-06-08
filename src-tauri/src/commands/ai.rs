@@ -6,6 +6,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
 use crate::agents::{find_adapter, StreamOptions};
+use crate::agents::resolve_binary;
 
 /// Registry of in-flight AI CLI children, keyed by the session id
 /// emitted from `stream_ai`. The frontend calls
@@ -111,7 +112,95 @@ fn kill_process(pid: u32) -> bool {
 /// mode / reasoning flags make it onto the wire.
 fn build_command(cli: &str, prompt: &str, opts: &StreamOptions) -> Result<Command, String> {
     let adapter = find_adapter(cli).ok_or_else(|| format!("Unknown AI CLI: {cli}"))?;
-    Ok(adapter.build_stream_command(prompt, opts))
+    let adapter_cmd = adapter.build_stream_command(prompt, opts);
+
+    // The adapter's `build_stream_command` constructs
+    // `Command::new(self.binary())` with just the bare name (e.g.
+    // "claude"). On a Tauri `.app` bundle that inherits a minimal
+    // system PATH, that lookup fails with "No such file or
+    // directory" even when the user's shell PATH includes the
+    // binary at e.g. `~/.local/bin/claude`. The std/tokio Command
+    // type has no `set_program`, so we re-resolve via
+    // `resolve_binary` (which knows the user-local fallback list)
+    // and rebuild the Command with the absolute path. Args are
+    // copied across so the adapter's per-CLI flag layout is
+    // preserved verbatim. Stdio is reapplied when set. Env vars are
+    // NOT copied here because none of the current adapters set any
+    // on the Command (the CLI reads its env from the shell
+    // environment or `~/.claude/settings.json` at spawn time).
+    let Some(resolved) = resolve_binary(cli) else {
+        // No resolution; fall through with the adapter's original
+        // Command so the spawn error stays informative
+        // ("No such file or directory" against the bare name).
+        return Ok(adapter_cmd);
+    };
+
+    // Extract everything we need into owned values before dropping
+    // `adapter_cmd`. We have to give the local bindings names that
+    // don't shadow `std::io::stdin` / `stdout` / `stderr` (which
+    // would otherwise be resolved to those statics via name
+    // resolution and confuse the borrow checker).
+    let std_cmd = adapter_cmd.as_std();
+    let args: Vec<std::ffi::OsString> =
+        std_cmd.get_args().map(|a| a.to_os_string()).collect();
+    let adapter_current_dir = std_cmd.get_current_dir().map(|p| p.to_path_buf());
+    // `std_cmd` is a `&std::process::Command` borrowed from
+    // `adapter_cmd`; we just stop using it so the borrow can
+    // end. The explicit `let _ =` is the idiomatic
+    // "intentionally discard" pattern (the original code used
+    // `drop(std_cmd)` which `clippy` flagged as a no-op for
+    // references).
+    let _ = std_cmd;
+
+    // Re-construct a fresh Command targeting the resolved absolute
+    // path. The adapter's args + working dir are reapplied so the
+    // per-CLI flag layout is preserved verbatim. Stdio is hard-
+    // wired to piped because (a) every adapter's
+    // `build_stream_command` already sets piped stdout/stderr for
+    // the streaming protocol, and (b) `std::process::Command`
+    // does not expose stable per-stream getters on stable Rust
+    // (`get_stdio` is nightly-only), so we cannot faithfully copy
+    // the adapter's stdio config back into the new Command
+    // without depending on a nightly feature. Piped is the
+    // correct choice for the streaming case anyway — the
+    // reader task consumes stdout and the caller does not
+    // need to write to stdin.
+    let mut cmd = Command::new(resolved);
+    cmd.args(args);
+    cmd.stdin(std::process::Stdio::null());
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+    // CWD resolution priority:
+    //   1. `opts.cwd` from the frontend — the workspace the user
+    //      picked from the folder dialog. This is the common case
+    //      and the one the user actually expects (Claude's `Read`
+    //      / `Edit` / `Bash` should operate on the project shown
+    //      in the status bar, not on Tauri's launch directory).
+    //   2. The adapter's own `Command::current_dir` if it set one
+    //      (none of today's adapters do, but the path stays open
+    //      for a future adapter that wants to lock itself to a
+    //      sub-directory of the user's project).
+    //   3. Inherit the parent process's CWD — the right fallback
+    //      for `call_ai` / Skills callers that pass no cwd and
+    //      for unit tests.
+    //
+    // The frontend-supplied cwd is validated up front so a stale
+    // path (workspace folder was deleted between the picker and
+    // the next send) fails with the same "AI CLI error" wrapper
+    // the spawn path would have used, instead of a bare OS
+    // error that bypasses the friendlySendError mapping.
+    if let Some(cwd) = opts.cwd.as_deref().filter(|s| !s.is_empty()) {
+        let path = std::path::Path::new(cwd);
+        if !path.is_dir() {
+            return Err(format!(
+                "AI CLI error: 工作目录不可用: {cwd} (文件夹可能已被删除)"
+            ));
+        }
+        cmd.current_dir(path);
+    } else if let Some(d) = adapter_current_dir {
+        cmd.current_dir(d);
+    }
+    Ok(cmd)
 }
 
 /// Non-streaming call: waits for the whole output. The optional
@@ -124,8 +213,10 @@ pub async fn call_ai(
     prompt: String,
     mode: Option<String>,
     reasoning: Option<String>,
+    cwd: Option<String>,
+    openclaw_session: Option<crate::agents::OpenClawSession>,
 ) -> Result<String, String> {
-    let opts = StreamOptions { mode, reasoning };
+    let opts = StreamOptions { mode, reasoning, cwd, openclaw_session };
     let mut cmd = build_command(&cli, &prompt, &opts)?;
     let output = cmd
         .stdout(Stdio::piped())
@@ -158,6 +249,8 @@ pub async fn stream_ai(
     session_id: Option<String>,
     mode: Option<String>,
     reasoning: Option<String>,
+    cwd: Option<String>,
+    openclaw_session: Option<crate::agents::OpenClawSession>,
 ) -> Result<String, String> {
     // We need the registry both to register the spawned pid and to
     // unregister it on every exit branch. `app.state` is the cheap
@@ -183,7 +276,7 @@ pub async fn stream_ai(
         )
     });
 
-    let opts = StreamOptions { mode, reasoning };
+    let opts = StreamOptions { mode, reasoning, cwd, openclaw_session };
     let mut child = build_command(&cli, &prompt, &opts)?
         .spawn()
         .map_err(|e| format!("Failed to spawn {cli}: {e}"))?;
@@ -263,12 +356,21 @@ pub async fn stream_ai(
     result
 }
 
-/// Friendly wrapper used by the React chat surface (`useStreamingAI`,
-/// `useAcpChat`, `reasonixAdapter`). Forwards to [`stream_ai`] so the same
+/// Friendly wrapper used by the React chat surface
+/// (`reasonixAdapter`). Forwards to [`stream_ai`] so the same
 /// `ai-stream-chunk` / `ai-stream-end` event contract is honored end-to-end.
 /// The optional `project_path` is prepended as a `[cwd: ...]` hint that
 /// CLI tools can pick up if they want to scope the run. The `mode` and
 /// `reasoning` strings are read from the composer's per-CLI dropdowns.
+///
+/// `project_path` is also forwarded to [`stream_ai`] as the `cwd`
+/// option so the spawned CLI runs (and any tools it invokes —
+/// `Read`, `Edit`, `Bash`, …) operate on the workspace the user
+/// picked from the folder dialog. The `[cwd: ...]` prefix stays
+/// in the prompt as a redundant, model-visible hint: belt-and-
+/// braces for adapters that don't honour process CWD, and so the
+/// model can answer "what is the current directory?" without
+/// having to call a tool.
 #[command]
 pub async fn send_chat_message(
     app: AppHandle,
@@ -278,13 +380,24 @@ pub async fn send_chat_message(
     project_path: Option<String>,
     mode: Option<String>,
     reasoning: Option<String>,
+    openclaw_session: Option<crate::agents::OpenClawSession>,
 ) -> Result<String, String> {
     let prefix = project_path
         .as_deref()
         .map(|p| format!("[cwd: {p}]\n"))
         .unwrap_or_default();
     let prompt = format!("{prefix}{message}");
-    stream_ai(app, cli, prompt, Some(conversation_id), mode, reasoning).await
+    stream_ai(
+        app,
+        cli,
+        prompt,
+        Some(conversation_id),
+        mode,
+        reasoning,
+        project_path,
+        openclaw_session,
+    )
+    .await
 }
 
 #[command]
@@ -403,13 +516,116 @@ mod tests {
         // Claude's default build_stream_command is the canonical shape.
         // We assert on the std::process::Command that tokio wraps so we
         // can read back program + args.
+        //
+        // `build_command` re-resolves the binary through
+        // `resolve_binary` so the program field is the *absolute*
+        // path (e.g. `/Users/foo/.local/bin/claude`), not the
+        // bare `claude` the adapter requested. That re-resolution
+        // is what makes the streaming call survive a Tauri
+        // `.app` launch with a minimal inherited PATH — the
+        // adapter's `Command::new("claude")` would otherwise fail
+        // with "No such file or directory" on macOS Finder
+        // launches. We assert the resolved program is a path
+        // whose final segment is `claude` so the test stays
+        // accurate as the resolved location changes from
+        // machine to machine.
         let cmd = build_command("claude", "hello", &StreamOptions::default()).unwrap();
         let std_cmd = cmd.as_std();
-        assert_eq!(std_cmd.get_program(), "claude");
+        let program = std_cmd.get_program();
+        let program_name = std::path::Path::new(program)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+        assert_eq!(program_name, "claude", "resolved program should end in 'claude', got {program:?}");
         let args: Vec<&str> = std_cmd
             .get_args()
             .map(|a| a.to_str().expect("utf-8 arg"))
             .collect();
-        assert_eq!(args, vec!["--print-format-json", "--prompt", "hello"]);
+        // Updated 2026-06-08 to match the new Claude Code
+        // invocation shape verified against Claude v2.1.143:
+        //   claude -p <prompt> --output-format stream-json --verbose
+        // The old `--print-format-json --prompt` shape stopped
+        // being accepted in recent CLI releases.
+        assert_eq!(args, vec!["-p", "hello", "--output-format", "stream-json", "--verbose"]);
+    }
+
+    // -- cwd propagation --
+    //
+    // `build_command` is the single chokepoint for setting the
+    // child's working directory: it plumbs `opts.cwd` from the
+    // `send_chat_message` IPC into `Command::current_dir` and
+    // validates the path up front so a stale workspace (the user
+    // deleted the folder between the picker and the next send)
+    // surfaces a clean error instead of a confusing OS-level
+    // ENOENT. These tests pin the three branches — Some valid,
+    // Some stale, None — so a future refactor that drops the
+    // validation or silently ignores `cwd` will fail loudly.
+
+    #[test]
+    fn build_command_applies_frontend_cwd() {
+        // Use std::env::temp_dir() as the workspace — guaranteed
+        // to exist on every platform and trivially writable, so
+        // the test stays hermetic and CI-friendly.
+        let workspace = std::env::temp_dir();
+        let opts = StreamOptions {
+            cwd: Some(workspace.to_string_lossy().to_string()),
+            ..StreamOptions::default()
+        };
+        let cmd = build_command("claude", "hello", &opts).unwrap();
+        let cwd = cmd.as_std().get_current_dir().expect("cwd should be set");
+        // Compare canonical paths so a /tmp -> /private/tmp
+        // symlink resolution on macOS doesn't false-fail the
+        // assertion.
+        assert_eq!(
+            std::fs::canonicalize(cwd).unwrap(),
+            std::fs::canonicalize(&workspace).unwrap(),
+        );
+    }
+
+    #[test]
+    fn build_command_rejects_stale_cwd() {
+        // A path that almost certainly does not exist on the test
+        // runner. Using a sentinel under temp_dir is fine too,
+        // but a single-component name under root is simpler and
+        // still hermetic.
+        let stale = "/this/path/should/never/exist/on/the/test/runner";
+        let opts = StreamOptions {
+            cwd: Some(stale.to_string()),
+            ..StreamOptions::default()
+        };
+        let err = build_command("claude", "hello", &opts).unwrap_err();
+        // The wrapper mirrors the spawn-failure wrapper so the
+        // frontend's `friendlySendError` mapping picks it up and
+        // the user sees a single consistent error shape.
+        assert!(err.starts_with("AI CLI error:"), "got: {err}");
+        assert!(err.contains("工作目录不可用"), "got: {err}");
+        assert!(err.contains(stale), "stale path missing from error: {err}");
+    }
+
+    #[test]
+    fn build_command_ignores_empty_cwd() {
+        // An empty string from the frontend (e.g. a user
+        // deliberately clearing the workspace) must NOT fail
+        // validation. The contract is "empty == no cwd", not
+        // "empty == error".
+        let opts = StreamOptions {
+            cwd: Some(String::new()),
+            ..StreamOptions::default()
+        };
+        let cmd = build_command("claude", "hello", &opts).unwrap();
+        // No current_dir was set — the child inherits the
+        // parent's CWD, which is what the hook is asserting
+        // by passing empty.
+        assert!(cmd.as_std().get_current_dir().is_none());
+    }
+
+    #[test]
+    fn build_command_inherits_cwd_when_unset() {
+        // The default `StreamOptions` has `cwd: None`; the
+        // resulting Command must NOT have a current_dir, so
+        // the child runs in the parent's CWD. This is the
+        // path the bare `call_ai` and unit tests use.
+        let cmd = build_command("claude", "hello", &StreamOptions::default()).unwrap();
+        assert!(cmd.as_std().get_current_dir().is_none());
     }
 }

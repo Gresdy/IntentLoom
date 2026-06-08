@@ -4,7 +4,9 @@ import { invoke } from "./tauri";
 import { useConversationStore } from "@/stores/conversationStore";
 import { useMessageStore } from "@/stores/messageStore";
 import { useModelStore } from "@/stores/useModelStore";
+import { useAgentStore } from "@/lib/useAgents";
 import { resolveModeId, resolveReasoningId } from "@/stores/useComposerPrefsStore";
+import { resolveOpenclawSession } from "@/stores/useOpenclawSessionStore";
 import { buildArtifactSummary, hasAnyArtifact } from "@/lib/artifactTally";
 import type { ArtifactTally } from "@/lib/artifactTally";
 import { useProductChangesStore } from "@/lib/useProductChanges";
@@ -101,6 +103,60 @@ function toolCallToItem(tc: ToolCall, idSuffix: string): ReasonixItem {
   };
 }
 
+/**
+ * Translate a raw error from `send_chat_message` into a
+ * user-facing string. The Rust side (commands/ai.rs) bubbles
+ * up either a literal OS error ("No such file or directory"),
+ * a wrapper (`AI CLI error: <stderr>`), or a generic
+ * `AI CLI exited with N`. The user should never see a raw
+ * exit code in the toast — they want to know what to do
+ * next, not what the OS returned.
+ *
+ * Exported so the test suite can pin the exact mapping
+ * (these strings end up in user-visible toasts and notice
+ * banners, so a regression is a UX regression).
+ */
+export function friendlySendError(raw: string, cli: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return `${cli} 调用失败`;
+  const lower = trimmed.toLowerCase();
+  // OS-level "no such file" / "not found" — the CLI is not
+  // on $PATH. We just caught this in the pre-flight check,
+  // but it can still show up if the user removed the binary
+  // between the cache read and the spawn.
+  if (
+    lower.includes("no such file") ||
+    lower.includes("not found") ||
+    lower.includes("enoent")
+  ) {
+    return `${cli} 不可用：未在 PATH 中找到，请先安装或检查 cli_path 配置`;
+  }
+  // EACCES — binary exists but is not executable. Common
+  // when the user copies a CLI into ~/bin without chmod +x.
+  if (lower.includes("permission denied") || lower.includes("eacces")) {
+    return `${cli} 无法执行：权限不足，请检查可执行位 (chmod +x)`;
+  }
+  // Wrapper from commands::ai::call_ai — the CLI ran but
+  // produced stderr. Show the stderr tail if it's short
+  // enough to be informative; otherwise fall back to the
+  // generic CLI-failed message.
+  const wrapperMatch = /^AI CLI error:\s*(.+)$/i.exec(trimmed);
+  if (wrapperMatch) {
+    const detail = wrapperMatch[1].trim();
+    return `${cli} 调用失败：${detail.length > 120 ? detail.slice(0, 120) + "…" : detail}`;
+  }
+  // The exit-code wrapper from commands::ai::stream_ai.
+  // Convert "exited with 1" to a friendlier phrasing.
+  const exitMatch = /^AI CLI exited with (-?\d+)$/i.exec(trimmed);
+  if (exitMatch) {
+    const code = exitMatch[1];
+    return `${cli} 启动失败（退出码 ${code}）：请检查 CLI 是否已安装、已登录，或在 “AI 助手” 面板切换其他引擎`;
+  }
+  // Fallback — pass the raw text through but prefix with
+  // the CLI name so the user knows which engine failed.
+  return `${cli} 调用失败：${trimmed}`;
+}
+
 export function useReasonixController() {
   // Last workspace folder the user picked from the native dialog.
   // Initialized from localStorage so a freshly-mounted controller
@@ -144,6 +200,8 @@ export function useReasonixController() {
     setPermission,
     appendContent,
     appendThinking,
+    beginThinking,
+    finishThinking,
     addNotice,
     setSummary,
     resetCurrentStream,
@@ -269,13 +327,24 @@ export function useReasonixController() {
     const setupListeners = async () => {
       unlistenChunk = await listen<string>("ai-stream-chunk", (event) => {
         const raw = event.payload;
-        const parsed = parseStreamChunk(raw);
+        // `parseStreamChunk` returns an array — a single
+        // Claude Code assistant event with a mixed
+        // `content: [thinking, text, tool_use]` array
+        // produces three chunks in the right order, and
+        // the legacy single-chunk paths (Hermes, Codex,
+        // OpenCode, OpenClaw) produce one-element arrays.
+        // The per-chunk pipeline in this switch was
+        // already correct for one chunk; wrapping it in
+        // a for-loop is a no-op for the old adapters and
+        // the only change needed to support the new
+        // wire format.
+        const chunks = parseStreamChunk(raw);
 
         // Fallback: not JSON or unrecognized shape. The historical
         // behavior was to treat the whole line as text. Keep that
         // contract so adapters that haven't migrated to the new
         // event contract still render something visible.
-        if (!parsed) {
+        if (chunks.length === 0) {
           // T9: a stray `<thinking>...</thinking>` or
           // `<answer>...</answer>` block in a non-JSON line must
           // not leak into the transcript. The parser's structured
@@ -286,6 +355,7 @@ export function useReasonixController() {
           return;
         }
 
+        for (const parsed of chunks) {
         switch (parsed.kind) {
           case "text":
             // T9: same strip as the raw fallback above. The
@@ -297,9 +367,25 @@ export function useReasonixController() {
             // model emits `<answer>...</answer>` blocks inside
             // its text delta. Belt-and-braces: never trust the
             // wire to keep thinking and text on separate channels.
+            // The first text chunk also closes the live
+            // ThinkingDisplay card so the timer stops
+            // ticking — `appendThinking` opened it on the
+            // first `thinking_delta` and `finishThinking`
+            // stamps the final duration here. The card is
+            // kept around (status: "done") so the user can
+            // still re-open it to read the reasoning.
+            finishThinking();
             appendContent(stripThinkTags(parsed.text));
             break;
           case "thinking":
+            // Open the live ThinkingDisplay card on the
+            // first thinking chunk. `beginThinking` is
+            // idempotent (it does NOT reset `startTime` on
+            // re-entry) so a wire-protocol shape with
+            // multiple `content_block_start` events before
+            // the first delta does not double-count elapsed
+            // seconds.
+            beginThinking();
             appendThinking(parsed.text);
             break;
           case "tool_call":
@@ -311,8 +397,19 @@ export function useReasonixController() {
               status: "success",
               result: parsed.result,
             });
+            // Attach the result to the matching tool call so
+            // the ToolCard body can render the actual output
+            // (Codex `command_execution.aggregated_output`,
+            // Claude `tool_result` body, generic payloads).
+            // Without this, `updateToolCall` only flips the
+            // status, and the body section stays empty —
+            // a confusing "完成" chip with no payload
+            // underneath.
             if (parsed.id) {
-              updateToolCall(parsed.id, { status: "completed" });
+              updateToolCall(parsed.id, {
+                status: "completed",
+                result: parsed.result,
+              });
             }
             break;
           case "plan":
@@ -343,6 +440,7 @@ export function useReasonixController() {
             // in the dedicated `ai-stream-end` listener.
             break;
         }
+        }
       });
 
       unlistenEnd = await listen("ai-stream-end", () => {
@@ -361,7 +459,19 @@ export function useReasonixController() {
         if (conv && conv.messages.length > 0) {
           const lastMsg = conv.messages[conv.messages.length - 1];
           if (lastMsg.role === "assistant") {
+            // If the CLI produced no text content (e.g. it errored
+            // out before any text chunk landed, or its output
+            // stream was empty for some other reason), leave a
+            // visible placeholder in the transcript so the user
+            // never stares at a silent empty bubble. The notice
+            // channel above would have already shown the root
+            // cause; this is the "the assistant bubble is not
+            // actually empty" affordance.
+            const fallback = lastMsg.content && lastMsg.content.length > 0
+              ? lastMsg.content
+              : "_(no response from CLI — see the red notice above for details)_";
             updateLastMessage({
+              content: fallback,
               toolCalls: tcs.length > 0 ? tcs : lastMsg.toolCalls,
               plan: plan ?? lastMsg.plan,
             });
@@ -436,6 +546,40 @@ export function useReasonixController() {
         conv = createConversation();
       }
 
+      // Pre-flight check — if the active CLI is not available
+      // on $PATH, surface a clear, actionable error BEFORE we
+      // add the user / assistant messages to the transcript.
+      // The old behaviour let the bad request through to
+      // `send_chat_message`, which spawned the binary, the
+      // OS rejected the spawn, the user got a raw
+      // "AI CLI exited with 1" with no install hint, and
+      // then had to dig out the right tab / install command
+      // themselves. Mirrors the AionUi
+      // `useAgentReadinessCheck` flow which short-circuits
+      // the same way.
+      //
+      // The check is a pure read of the `useAgentStore`
+      // cache populated by `refreshAgentList` on mount;
+      // it never spawns a child or blocks the UI thread.
+      const cli = useModelStore.getState().currentApp;
+      const registry = useAgentStore.getState().agents;
+      const entry = registry.find((a) => a.id === cli);
+      if (entry && !entry.available) {
+        // Mirror the "no CLI" i18n string AionUi uses
+        // (aionui/src/renderer/services/i18n/locales/zh-CN/settings.json:
+        // `noCliDetected`). The Rust side never gets
+        // involved here — the user gets a clear, localised
+        // explanation without us having to spawn a child
+        // that we already know will fail.
+        const friendly = `${entry.display_name || cli} 不可用：请先在 “AI 助手” 面板安装并登录，或切换到其他引擎。`;
+        useToastStore.getState().addToast({
+          type: "error",
+          message: friendly,
+          duration: 6000,
+        });
+        return;
+      }
+
       // Wipe any per-turn state carried over from a previous
       // interrupted stream. Without this, LoomPanel's tool/plan
       // sections would briefly show the previous turn's leftovers
@@ -472,16 +616,42 @@ export function useReasonixController() {
         // -c model_reasoning_effort= etc. We send null when the CLI
         // doesn't expose a spec so the adapter can fall back to its
         // own default.
-        const cli = useModelStore.getState().currentApp;
+        //
+        // `projectPath` is the workspace the user picked from the
+        // folder dialog (or restored from localStorage on mount).
+        // The Rust side (commands/ai.rs::send_chat_message) uses
+        // it two ways:
+        //   1. real `Command::current_dir` on the spawned CLI, so
+        //      any tools the CLI invokes (`Read` / `Edit` / `Bash`)
+        //      actually operate on the project the user sees in
+        //      the status bar;
+        //   2. a `[cwd: ...]` line prepended to the prompt, as a
+        //      redundant, model-visible hint.
+        // Sending `null` here used to mean "let Claude run in
+        // Tauri's launch CWD" — which is almost never what the
+        // user wants and silently disabled Claude's ability to
+        // touch the project they just opened. Always forward the
+        // hook's `cwd` state, even if it is `undefined` (the Rust
+        // side treats that as "no override, inherit parent CWD").
+        // `openclawSession` is null for every non-OpenClaw
+        // CLI; the Rust side ignores the field unless
+        // `cli === "openclaw"`. The composer-side store
+        // returns `null` when the user has not picked a
+        // session yet, which the adapter translates into
+        // "no flag emitted" — the CLI's own missing-
+        // session error then surfaces through
+        // friendlySendError.
         await invoke("send_chat_message", {
           cli,
           message: text,
           conversationId: conv.id,
-          projectPath: null,
+          projectPath: cwd ?? null,
           mode: resolveModeId(cli as Parameters<typeof resolveModeId>[0]),
           reasoning: resolveReasoningId(cli as Parameters<typeof resolveReasoningId>[0]),
+          openclawSession:
+            cli === "openclaw" ? resolveOpenclawSession() : null,
         });
-  } catch (error) {
+      } catch (error) {
         // The old behaviour folded the error string into the
         // assistant message with `appendContent`, which then
         // mixed it into the chat transcript where users would
@@ -490,15 +660,41 @@ export function useReasonixController() {
         // signal, and a red notice banner inside the
         // transcript (T6's addNotice) so the failure stays
         // attached to the conversation when the toast fades.
-        const message =
+        // Map the raw Rust error to a user-friendly message.
+        // The Rust side returns either a raw OS error ("no
+        // such file or directory") or a wrapped
+        // `AI CLI exited with N` shape. Strip the wrapper
+        // and show only the actionable part so the user
+        // sees "<cli> 不可用 — ..." instead of a binary
+        // exit code.
+        const rawMessage =
           error instanceof Error ? error.message : String(error);
+        const friendlyMessage = friendlySendError(rawMessage, cli);
         console.error("send_chat_message failed:", error);
         useToastStore.getState().addToast({
           type: "error",
-          message: `发送消息失败: ${message}`,
+          message: `发送消息失败: ${friendlyMessage}`,
           duration: 5000,
         });
-        addNotice("error", `发送消息失败: ${message}`);
+        addNotice("error", `发送消息失败: ${friendlyMessage}`);
+        // Write the failure into the assistant message itself so
+        // it stays visible in the transcript even after the toast
+        // fades. The earlier pre-flight check used
+        // `useMessageStore.appendContent`, which writes to a
+        // different array than the transcript reads — the user
+        // would see an empty assistant bubble with the failure
+        // only on a transient toast. `updateLastMessage` targets
+        // `useConversationStore`, which is what the transcript
+        // actually renders.
+        const cur = getCurrentConversation();
+        if (cur && cur.messages.length > 0) {
+          const last = cur.messages[cur.messages.length - 1];
+          if (last.role === "assistant") {
+            updateLastMessage({
+              content: `⚠️ 发送失败: ${friendlyMessage}\n\n请检查 CLI 是否已安装并登录,或在 “AI 助手” 面板切换可用的引擎。`,
+            });
+          }
+        }
         setStreaming(false);
       }
     },
@@ -509,6 +705,7 @@ export function useReasonixController() {
       setStreaming,
       resetCurrentStream,
       addNotice,
+      cwd,
     ]
   );
 
