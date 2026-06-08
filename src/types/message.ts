@@ -23,8 +23,6 @@ export type MessageType =
   | 'error' 
   | 'agent_status'
   | 'thinking'
-  | 'acp_tool_call'
-  | 'acp_permission'
   | 'available_commands'
   | 'usage_update';
 

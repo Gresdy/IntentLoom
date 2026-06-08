@@ -70,14 +70,6 @@ pub fn init() {
             args TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
-
-        CREATE TABLE IF NOT EXISTS acp_sessions (
-            session_id TEXT PRIMARY KEY,
-            provider TEXT NOT NULL,
-            workspace TEXT NOT NULL,
-            cli_path TEXT,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
         ",
     )
     .expect("Failed to create database tables");

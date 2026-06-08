@@ -5,7 +5,6 @@ pub mod ai;
 pub mod fs;
 pub mod skills;
 pub mod agents;
-pub mod acp;
 pub mod permissions;
 pub mod proxy;
 pub mod experts;
