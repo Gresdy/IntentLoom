@@ -113,6 +113,7 @@ mod tests {
         let opts = StreamOptions {
             mode: Some("danger-full-access".to_string()),
             reasoning: None,
+            ..StreamOptions::default()
         };
         let cmd = CodexAdapter.build_stream_command("hi", &opts);
         let args: Vec<&str> = cmd
@@ -129,6 +130,7 @@ mod tests {
         let opts = StreamOptions {
             mode: None,
             reasoning: Some("high".to_string()),
+            ..StreamOptions::default()
         };
         let cmd = CodexAdapter.build_stream_command("hi", &opts);
         let args: Vec<&str> = cmd
