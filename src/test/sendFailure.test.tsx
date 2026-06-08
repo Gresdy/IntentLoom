@@ -152,3 +152,166 @@ describe("send() failure handling (T7)", () => {
     c.unmount();
   });
 });
+
+describe("send() pre-flight availability check", () => {
+  // These two tests cover the new "is the active CLI
+  // available?" short-circuit added on top of the
+  // existing T7 failure handling. The pre-flight
+  // consults `useAgentStore.agents` (populated by
+  // `refreshAgentList` on mount) and bails out BEFORE
+  // calling `send_chat_message` if the active id is
+  // marked unavailable — saves the user a useless
+  // spawn + a raw OS error toast.
+
+  beforeEach(() => {
+    localStorage.clear();
+    invokeMock.mockReset();
+    useMessageStore.setState({
+      messages: [],
+      isStreaming: false,
+      notices: [],
+      currentToolCalls: [],
+      currentToolResponses: [],
+      currentPermission: null,
+      currentPlan: null,
+      currentUsage: null,
+      currentThinking: "",
+    });
+    useToastStore.setState({ toasts: [] });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    invokeMock.mockReset();
+    useToastStore.setState({ toasts: [] });
+  });
+
+  it("short-circuits with a clear toast when the active CLI is unavailable", async () => {
+    // Wire up: the registry knows about Claude (it's
+    // registered) but reports `available: false` because
+    // the binary is not on $PATH. `currentApp` is Claude.
+    // The pre-flight check should catch this and toast
+    // BEFORE we ever call `send_chat_message`.
+    const { useModelStore } = await import("@/stores/useModelStore");
+    const { useAgentStore } = await import("@/lib/useAgents");
+    useModelStore.setState({ currentApp: "claude" });
+    useAgentStore.setState({
+      agents: [
+        {
+          id: "claude",
+          name: "claude",
+          display_name: "Claude Code",
+          available: false,
+          path: null,
+          version: null,
+          supports_streaming: true,
+          description: "Anthropic 出品的代码助手 CLI",
+          auth: { status: "logged_out", hint: null },
+          setup: { status: "needs_install", message: "未安装" },
+          env: {},
+        },
+      ],
+      loading: false,
+      error: null,
+      lastLoadedAt: Date.now(),
+    });
+
+    const c = mountController();
+    await c.send("hello");
+
+    // 1. `send_chat_message` was NEVER called — the
+    // pre-flight check is the real source of truth,
+    // not a fallback after a failed spawn.
+    const sendCall = invokeMock.mock.calls.find(
+      (call) => call[0] === "send_chat_message",
+    );
+    expect(sendCall).toBeUndefined();
+
+    // 2. A clear, friendly toast fired. The user
+    // should never see a raw exit code.
+    const toasts = useToastStore.getState().toasts;
+    const failToast = toasts.find((t) => t.type === "error");
+    expect(failToast).toBeDefined();
+    // The pre-flight check uses the agent's
+    // `display_name` (more user-friendly than the
+    // raw id), so the toast says "Claude Code" not
+    // "claude". We assert the user-visible display
+    // name AND the id substring so a future rename
+    // of the display name shows up as a test diff
+    // instead of silently passing.
+    expect(failToast?.message).toContain("Claude Code");
+    expect(failToast?.message.toLowerCase()).toContain("claude");
+    expect(failToast?.message).toContain("不可用");
+    // Mentions the next-step CTA so the user is not
+    // stranded at a "something failed" banner.
+    expect(failToast?.message).toMatch(/AI 助手|安装/);
+
+    // 3. The user message was NOT added to the
+    // transcript — there is nothing to respond to
+    // because we never tried. Without this guard,
+    // the user would see a user bubble followed by
+    // an empty assistant bubble and the red notice
+    // is the only signal that the send failed.
+    const messages = useMessageStore.getState().messages;
+    expect(messages).toHaveLength(0);
+
+    // 4. Streaming is not set — the controller never
+    // believed a turn was in flight.
+    expect(c.isStreaming()).toBe(false);
+
+    c.unmount();
+  });
+
+  it("proceeds to invoke send_chat_message when the active CLI is available", async () => {
+    // Sanity check the inverse case: when the registry
+    // reports `available: true`, the pre-flight is a
+    // no-op and the call goes through to the Rust
+    // side. This guards against a future refactor
+    // accidentally short-circuiting EVERY send.
+    const { useModelStore } = await import("@/stores/useModelStore");
+    const { useAgentStore } = await import("@/lib/useAgents");
+    useModelStore.setState({ currentApp: "claude" });
+    useAgentStore.setState({
+      agents: [
+        {
+          id: "claude",
+          name: "claude",
+          display_name: "Claude Code",
+          available: true,
+          path: "/usr/local/bin/claude",
+          version: "1.0.0",
+          supports_streaming: true,
+          description: "Anthropic 出品的代码助手 CLI",
+          auth: { status: "logged_in", hint: null },
+          setup: { status: "ready", message: "已就绪" },
+          env: {},
+        },
+      ],
+      loading: false,
+      error: null,
+      lastLoadedAt: Date.now(),
+    });
+    // Successful invoke → no error toast, streaming
+    // gets set to true (the T7 test path).
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "send_chat_message") return null;
+      return null;
+    });
+
+    const c = mountController();
+    await c.send("hello");
+
+    // The send DID reach the Rust side.
+    const sendCall = invokeMock.mock.calls.find(
+      (call) => call[0] === "send_chat_message",
+    );
+    expect(sendCall).toBeDefined();
+    // No error toast on the happy path.
+    const errorToasts = useToastStore
+      .getState()
+      .toasts.filter((t) => t.type === "error");
+    expect(errorToasts).toHaveLength(0);
+
+    c.unmount();
+  });
+});
