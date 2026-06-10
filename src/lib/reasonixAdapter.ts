@@ -335,10 +335,14 @@ export function useReasonixController() {
     [items, isStreaming, meta]
   );
 
-  useEffect(() => {
-    let unlistenChunk: (() => void) | undefined;
-    let unlistenEnd: (() => void) | undefined;
+  // Hoisted out of the useEffect so the catch block in
+  // `send` can unlisten the listeners after a failed send.
+  // The useEffect's cleanup function still owns the
+  // unsubscribe call on unmount.
+  let unlistenChunk: (() => void) | undefined;
+  let unlistenEnd: (() => void) | undefined;
 
+  useEffect(() => {
     const setupListeners = async () => {
       unlistenChunk = await listen<string>("ai-stream-chunk", (event) => {
         const raw = event.payload;
@@ -737,6 +741,18 @@ export function useReasonixController() {
             });
           }
         }
+        // Unlisten the ai-stream-end listener so a late event
+        // replay cannot clobber the error we just wrote. The
+        // listener still has its own `⚠️ 发送失败:` marker
+        // guard, so the unlisten is belt-and-braces — but it
+        // also stops the listener from running any of its
+        // other cleanup (setStreaming / resetCurrentStream) on
+        // a phantom event, which would otherwise race the
+        // catch block's own setStreaming(false).
+        unlistenEnd?.();
+        unlistenChunk?.();
+        unlistenEnd = undefined;
+        unlistenChunk = undefined;
         setStreaming(false);
       }
     },
