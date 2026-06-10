@@ -32,7 +32,8 @@ import type { AppId } from "./shared/types";
 import { invoke } from "./lib/tauri";
 import { useConversationStore, selectCurrentAgentId } from "./stores/conversationStore";
 import { useAgentStore, refreshAgentList } from "./lib/useAgents";
-import { getModeSpec, getReasoningSpec } from "./lib/cliCapabilities";
+import { getModeSpec, getEffectiveReasoningSpec } from "./lib/cliCapabilities";
+import { modelsForCli } from "./config/cliPresets";
 import {
   useComposerPrefsStore,
   resolveModeId,
@@ -198,7 +199,12 @@ export const ReasonixApp: React.FC = () => {
     isSidebarHovered || isSidebarPinned || rightPanelOpen;
   const settingsOpen = searchParams.get("view") === "settings";
   const { mode: themeMode, setMode: setThemeMode } = useThemeStore();
-  const { currentApp, setCurrentApp } = useModelStore();
+  const {
+    currentApp,
+    setCurrentApp,
+    currentModelByCli,
+    setCurrentModel,
+  } = useModelStore();
   // Phase 1.5: the adapter registry is loaded once on mount so the
   // TopBar can gate CLIs whose binary is missing on disk.
   const agentRegistry = useAgentStore((s) => s.agents);
@@ -692,9 +698,15 @@ export const ReasonixApp: React.FC = () => {
             modeSpec={getModeSpec(currentApp as AppId)}
             modeId={resolveModeId(currentApp as AppId)}
             onModeChange={(id: string) => setModeForCli(currentApp as AppId, id)}
-            reasoningSpec={getReasoningSpec(currentApp as AppId)}
+            reasoningSpec={getEffectiveReasoningSpec(
+              currentApp as AppId,
+              currentModelByCli[currentApp as AppId] ?? null,
+            )}
             reasoningId={resolveReasoningId(currentApp as AppId)}
             onReasoningChange={(id: string) => setReasoningForCli(currentApp as AppId, id)}
+            models={modelsForCli(currentApp as AppId)}
+            modelId={currentModelByCli[currentApp as AppId] ?? null}
+            onModelChange={(id: string) => setCurrentModel(currentApp as AppId, id)}
             onSend={send}
             onCancel={cancel}
           />

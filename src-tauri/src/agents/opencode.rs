@@ -1,20 +1,16 @@
 // OpenCode CLI adapter.
 //
-// PROTOCOL UNVERIFIED — the `opencode` binary is not installed on this
-// machine, so `which opencode` fails and the TopBar gates the tab as
-// "unavailable". When a user does install it, the default
-// `build_stream_command` (Claude shape) will be used as a placeholder,
-// which we expect to fail. Until the real flag layout is captured here,
-// the adapter stays honest: binary presence is checked, but invocation
-// is not promised.
+// PROTOCOL PARTIALLY VERIFIED — the `opencode` binary is not installed
+// on this machine so the TopBar gates the tab as "unavailable" until
+// the user installs it. The flag layout below mirrors the Claude shape
+// as a placeholder. We emit `-m <model>` so the composer's model
+// dropdown selection survives a future real-install verification.
 
 use super::AgentAdapter;
+use super::StreamOptions;
 use super::{AuthState, AuthStatus, AuthProbe, evaluate_probe, home_path};
-
-// `StreamOptions` is only referenced in the #[cfg(test)] module below;
-// importing it at module scope triggers an `unused_imports` warning
-// because the impl block inherits the default method. The test module's
-// `use super::*;` brings the type in scope for the test functions.
+use std::process::Stdio;
+use tokio::process::Command;
 
 pub struct OpenCodeAdapter;
 
@@ -32,13 +28,25 @@ impl AgentAdapter for OpenCodeAdapter {
         "Open-source AI coding assistant"
     }
 
+    fn build_stream_command(&self, prompt: &str, opts: &StreamOptions) -> Command {
+        let mut cmd = Command::new(self.binary());
+        cmd.arg("-p")
+            .arg(prompt)
+            .arg("--output-format")
+            .arg("stream-json")
+            .arg("--verbose")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        // `-m <MODEL>` is the common shape across the registry.
+        if let Some(model) = opts.model.as_deref() {
+            if !model.is_empty() {
+                cmd.arg("-m").arg(model);
+            }
+        }
+        cmd
+    }
+
     fn auth_state(&self) -> AuthState {
-        // OpenCode stores provider config in
-        // `~/.config/opencode/opencode.json`; the `provider` key, when
-        // present and non-empty, means the user has wired at least one
-        // inference provider. We cannot tell from this single file
-        // whether OAuth providers (e.g. copilot-acp) have a live token,
-        // so the fallback is `Unknown` rather than `LoggedOut`.
         let probe = evaluate_probe(&AuthProbe::JsonPath {
             path: home_path(".config/opencode/opencode.json"),
             dotted_path: "provider",
@@ -65,11 +73,7 @@ mod tests {
     }
 
     #[test]
-    fn build_stream_command_falls_back_to_default_until_verified() {
-        // Intentionally inherits the Claude-shape default. If a user
-        // installs opencode and clicks the tab, the call will fail in
-        // the way the README's "关键诚实声明 §五-1" promises: protocol
-        // is unverified, do not pretend otherwise.
+    fn build_stream_command_uses_placeholder_shape() {
         let cmd = OpenCodeAdapter.build_stream_command("hello", &StreamOptions::default());
         let std_cmd = cmd.as_std();
         assert_eq!(std_cmd.get_program(), "opencode");
@@ -77,6 +81,25 @@ mod tests {
             .get_args()
             .map(|a| a.to_str().expect("utf-8 arg"))
             .collect();
-        assert_eq!(args, vec!["--print-format-json", "--prompt", "hello"]);
+        assert_eq!(
+            args,
+            vec!["-p", "hello", "--output-format", "stream-json", "--verbose"]
+        );
+    }
+
+    #[test]
+    fn build_stream_command_passes_model_when_set() {
+        let mut opts = StreamOptions::default();
+        opts.model = Some("qwen-2.5-coder".to_string());
+        let cmd = OpenCodeAdapter.build_stream_command("hi", &opts);
+        let std_cmd = cmd.as_std();
+        let args: Vec<&str> = std_cmd
+            .get_args()
+            .map(|a| a.to_str().expect("utf-8 arg"))
+            .collect();
+        assert_eq!(
+            args,
+            vec!["-p", "hi", "--output-format", "stream-json", "--verbose", "-m", "qwen-2.5-coder"]
+        );
     }
 }

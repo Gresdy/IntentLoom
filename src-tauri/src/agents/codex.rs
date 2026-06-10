@@ -56,6 +56,13 @@ impl AgentAdapter for CodexAdapter {
                 cmd.arg(format!("-c model_reasoning_effort={effort}"));
             }
         }
+        // `-m <MODEL>` per `codex exec --help`. Forwarded verbatim so
+        // the upstream CLI's own "unknown model" error surfaces.
+        if let Some(model) = opts.model.as_deref() {
+            if !model.is_empty() {
+                cmd.arg("-m").arg(model);
+            }
+        }
         cmd
     }
 
@@ -146,4 +153,29 @@ mod tests {
             .expect("missing -c token in argv");
         assert_eq!(*token, "-c model_reasoning_effort=high");
     }
+
+    #[test]
+    fn build_stream_command_emits_model_flag_when_provided() {
+        let mut opts = StreamOptions::default();
+        opts.model = Some("gpt-5".to_string());
+        let cmd = CodexAdapter.build_stream_command("hi", &opts);
+        let args: Vec<&str> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_str().expect("utf-8 arg"))
+            .collect();
+        assert!(args.windows(2).any(|w| w[0] == "-m" && w[1] == "gpt-5"));
+    }
+
+    #[test]
+    fn build_stream_command_omits_model_flag_when_unset() {
+        let cmd = CodexAdapter.build_stream_command("hi", &StreamOptions::default());
+        let args: Vec<&str> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_str().expect("utf-8 arg"))
+            .collect();
+        assert!(!args.contains(&"-m"));
+    }
+
 }

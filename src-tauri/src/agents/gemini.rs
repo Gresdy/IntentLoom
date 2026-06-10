@@ -50,6 +50,13 @@ impl AgentAdapter for GeminiAdapter {
                 cmd.arg("--approval-mode").arg(mode);
             }
         }
+        // `-m <MODEL>` per `gemini --help`. Forwarded verbatim so
+        // the upstream CLI's own "unknown model" error surfaces.
+        if let Some(model) = opts.model.as_deref() {
+            if !model.is_empty() {
+                cmd.arg("-m").arg(model);
+            }
+        }
         cmd
     }
 
@@ -129,4 +136,29 @@ mod tests {
         assert!(!args.contains(&"--effort"));
         assert!(!args.contains(&"high"));
     }
+
+    #[test]
+    fn build_stream_command_emits_model_flag_when_provided() {
+        let mut opts = StreamOptions::default();
+        opts.model = Some("gemini-2.5-pro".to_string());
+        let cmd = GeminiAdapter.build_stream_command("hi", &opts);
+        let args: Vec<&str> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_str().expect("utf-8 arg"))
+            .collect();
+        assert!(args.windows(2).any(|w| w[0] == "-m" && w[1] == "gemini-2.5-pro"));
+    }
+
+    #[test]
+    fn build_stream_command_omits_model_flag_when_unset() {
+        let cmd = GeminiAdapter.build_stream_command("hi", &StreamOptions::default());
+        let args: Vec<&str> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_str().expect("utf-8 arg"))
+            .collect();
+        assert!(!args.contains(&"-m"));
+    }
+
 }

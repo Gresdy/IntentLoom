@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { ChevronDown, FolderOpen, Zap, Cpu, Clock } from "lucide-react";
-import { useModelStore } from "@/stores/useModelStore";
+import { useModelStore, effectiveModelForCli } from "@/stores/useModelStore";
+import { findModel } from "@/config/cliPresets";
 
 interface StatusBarProps {
   running: boolean;
@@ -47,6 +48,15 @@ export function StatusBar({
     return [{ id: currentApp, name: currentApp, provider: "default" }];
   }, [providers, currentApp]);
   const activeModelId = currentProviderId || currentApp;
+  // Surface the current CLI's model in the statusbar so the
+  // user can see at-a-glance what is about to run. Reads from
+  // `currentModelByCli[currentApp]` with the per-CLI default
+  // fallback (`effectiveModelForCli`) so the first render
+  // shows a real label, not "(未选)".
+  const state = useModelStore.getState();
+  const activeModel = effectiveModelForCli(state, currentApp);
+  const activeModelLabel =
+    findModel(currentApp as Parameters<typeof findModel>[0], activeModel)?.label ?? activeModel;
 
   useEffect(() => {
     if (!running || !turnStartAt) {
@@ -79,8 +89,8 @@ export function StatusBar({
           title={activeModelId}
         >
           <Zap size={11} />
-          <span className="modelsw__label">
-            {menuItems.find((m) => m.id === activeModelId)?.name ?? activeModelId}
+          <span className="modelsw__label" title={activeModelLabel}>
+            {activeModelLabel || activeModelId}
           </span>
           <ChevronDown size={11} />
         </button>
