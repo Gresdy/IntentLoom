@@ -1,16 +1,26 @@
 import { useRef, useEffect, useState } from "react";
 import type { ReasonixItem } from "../../lib/reasonixAdapter";
-import { ChevronRight, Loader2, FolderOpen, Bot, FileEdit, FilePlus2, Terminal } from "lucide-react";
+import { ChevronRight, Loader2, FolderOpen, Bot, FileEdit, FilePlus2, Terminal, Sparkles } from "lucide-react";
 import { ConversationSummary } from "../Loom/ConversationSummary";
+import { ThinkingDisplay } from "./ThinkingDisplay";
+import { useMessageStore } from "@/stores/messageStore";
 
 interface TranscriptProps {
   items: ReasonixItem[];
   onPrompt?: (text: string) => void;
   onNewChat?: () => void;
   onPickWorkspace?: () => void;
+  /**
+   * Drop a fully-rendered demo turn (user prompt → thinking →
+   * tool calls → assistant text) into the active conversation.
+   * Powers the “查看示例对话” affordance on the welcome screen
+   * so the user can see chat + thinking + tool rendering live in
+   * the browser, even without the Claude CLI installed.
+   */
+  onSeedDemo?: () => void;
 }
 
-export function Transcript({ items, onPrompt, onNewChat, onPickWorkspace }: TranscriptProps) {
+export function Transcript({ items, onPrompt, onNewChat, onPickWorkspace, onSeedDemo }: TranscriptProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -48,6 +58,16 @@ export function Transcript({ items, onPrompt, onNewChat, onPickWorkspace }: Tran
           {onNewChat && (
             <button className="chip" onClick={onNewChat} style={{ fontSize: 12, gap: 6 }}>
               <Bot size={13} /> 新建会话
+            </button>
+          )}
+          {onSeedDemo && (
+            <button
+              className="chip welcome__demo"
+              onClick={onSeedDemo}
+              style={{ fontSize: 12, gap: 6 }}
+              title="注入一条带思考 + 工具调用的示例对话，看看渲染效果"
+            >
+              <Sparkles size={13} /> 查看示例对话
             </button>
           )}
         </div>
@@ -110,10 +130,36 @@ function ItemRenderer({ item }: { item: ReasonixItem }) {
 
 function AssistantMessage({ text, streaming, reasoning }: { text: string; streaming?: boolean; reasoning?: string }) {
   const [showReasoning, setShowReasoning] = useState(false);
+  // The live ThinkingDisplay lifecycle (status, start time,
+  // final duration) lives in `messageStore.currentThinkingMeta`
+  // because the streaming controller is the only writer. The
+  // raw `reasoning` text is also passed in as a prop because
+  // the controller already snapshots it onto either the
+  // persisted message (history view) or the live `currentThinking`
+  // (active turn) — so the prop carries the right string in
+  // both render paths.
+  const thinkingMeta = useMessageStore((s) => s.currentThinkingMeta);
+
+  // The `ThinkingDisplay` is only meaningful for the LIVE
+  // streaming turn. For the persisted history view we keep
+  // the old collapsible "思考过程" affordance so a user
+  // scrolling back through yesterday's session still sees
+  // the reasoning (with no live timer) and can expand it
+  // for context. The two surfaces are different on purpose:
+  // live = animated card, history = static disclosure.
+  const isLiveTurn = Boolean(streaming);
 
   return (
     <div className="msg msg--assistant">
-      {reasoning && (
+      {isLiveTurn && thinkingMeta && (
+        <ThinkingDisplay
+          content={reasoning ?? ""}
+          status={thinkingMeta.status}
+          startTime={thinkingMeta.startTime}
+          duration={thinkingMeta.duration}
+        />
+      )}
+      {!isLiveTurn && reasoning && (
         <div className="reasoning">
           <button className="reasoning__toggle" onClick={() => setShowReasoning(!showReasoning)}>
             <ChevronRight size={12} className={`reasoning__chevron ${showReasoning ? "reasoning__chevron--open" : ""}`} />
@@ -133,11 +179,21 @@ function AssistantMessage({ text, streaming, reasoning }: { text: string; stream
 //   3. `execute` kind               → render the command in a monospace block
 //   4. everything else              → args summary + JSON on expand
 function ToolCard({ item }: { item: any }) {
-  const [expanded, setExpanded] = useState(false);
-  const kind: string | undefined = item.kind;
+  // AionUi-style: auto-expand on error so the user sees
+  // WHAT failed without having to click. Default
+  // collapsed on success / running.
+  const [expanded, setExpanded] = useState(item.status === "error");
+  // `kind2` carries the underlying tool kind (edit / execute / read);
+  // `kind` itself is the ReasonixItem discriminator and is always
+  // "tool" at this point. Fall through to `kind` for safety so an
+  // un-rewrapped item (e.g. test fixtures) still gets a sensible
+  // branch.
+  const kind: string | undefined =
+    item.kind === "tool" ? item.kind2 ?? undefined : item.kind;
   const diff: any[] | undefined = Array.isArray(item.diff) ? item.diff : undefined;
   const hasDiff = kind === "edit" && diff && diff.length > 0;
   const isExec = kind === "execute";
+  const isRead = kind === "read";
 
   const statusIcon: Record<string, React.ReactNode> = {
     running: <Loader2 size={12} className="spin ilo-fg-accent" />,
@@ -146,10 +202,38 @@ function ToolCard({ item }: { item: any }) {
     pending: <span className="ilo-fg-faint">○</span>,
   };
 
+  // AionUi-style status badge — text next to the icon,
+  // so the user can read the state at a glance without
+  // having to interpret the icon colour. Mirrors the
+  // `<Tag color="green">` / `<Tag color="red">` pattern
+  // but as plain text to avoid a `<Tag>` dependency.
+  const statusBadge: Record<string, { text: string; cls: string }> = {
+    running: { text: "进行中", cls: "tool__status--running" },
+    success: { text: "完成", cls: "tool__status--ok" },
+    error: { text: "失败", cls: "tool__status--err" },
+    pending: { text: "等待", cls: "tool__status--pending" },
+  };
+
+  // Per-tool-type friendly label — same as AionUi's
+  // `MessageCodexToolCall` `GenericDisplay` fallback.
+  // Falls back to the raw tool name when we don't
+  // recognise the kind.
+  const friendlyKind: Record<string, string> = {
+    read: "Read",
+    write: "Write",
+    edit: "Edit",
+    execute: "Bash",
+    search: "Search",
+    fetch: "Fetch",
+  };
+  const kindLabel = friendlyKind[kind ?? ""] ?? item.name;
+
   const subject = hasDiff
     ? fileSubject(item.args)
     : isExec
     ? commandSubject(item.args)
+    : isRead
+    ? fileSubject(item.args)
     : fileSubject(item.args) || JSON.stringify(item.args).slice(0, 50);
 
   const icon = hasDiff
@@ -158,6 +242,8 @@ function ToolCard({ item }: { item: any }) {
       : <FileEdit size={12} className="ilo-fg-accent" />
     : isExec
     ? <Terminal size={12} className="ilo-fg-accent" />
+    : isRead
+    ? <FileEdit size={12} className="ilo-fg-accent" />
     : null;
 
   return (
@@ -167,8 +253,13 @@ function ToolCard({ item }: { item: any }) {
           {expanded ? <ChevronRight size={12} /> : null}
         </span>
         <span className="tool__icon">{statusIcon[item.status]}</span>
+        {statusBadge[item.status] && (
+          <span className={`tool__status ${statusBadge[item.status].cls}`}>
+            {statusBadge[item.status].text}
+          </span>
+        )}
         {icon}
-        <span className="tool__name">{item.name}</span>
+        <span className="tool__name">{kindLabel}</span>
         <span className="tool__subject">{subject}</span>
       </button>
 
@@ -186,11 +277,46 @@ function ToolCard({ item }: { item: any }) {
         </div>
       )}
 
+      {/* AionUi-style: for `Read` / `Write` results, render
+       * the raw text (often a file body) without
+       * JSON.stringify — the previous version wrapped
+       * everything in a JSON object, which made file
+       * contents unreadable. For unknown tool kinds
+       * we still fall through to JSON so the user gets
+       * SOMETHING visible. */}
       {expanded && item.result && !hasDiff && (
-        <div className="tool__body"><pre className="code">{JSON.stringify(item.result, null, 2)}</pre></div>
-      )}
-      {expanded && item.result && hasDiff && (
-        <div className="tool__body"><pre className="code">{JSON.stringify(item.result, null, 2)}</pre></div>
+        isRead ? (
+          <div className="tool__body tool__body--read">
+            <pre className="code">{String(item.result)}</pre>
+          </div>
+        ) : isExec && item.result && typeof item.result === "object" && "exit_code" in item.result ? (
+          // Codex `command_execution` rich payload: the actual
+          // shell command, its aggregated stdout+stderr, the
+          // exit code, and the final status. Show the exit
+          // code as a small chip next to the body so a non-zero
+          // exit stands out, and render the aggregated output
+          // as a code block instead of a JSON dump. The raw
+          // JSON fallback below would render this as
+          // `{ command: ..., aggregated_output: ..., ... }`
+          // which is unreadable for a `cat` / `ls` result.
+          <div className="tool__body tool__body--exec">
+            <div className="tool__exec-header">
+              <span className="tool__exec-label">输出</span>
+              <span className={"tool__exec-exit" + (item.result.exit_code === 0 ? " tool__exec-exit--ok" : " tool__exec-exit--err")}>
+                exit {String(item.result.exit_code)}
+              </span>
+            </div>
+            <pre className="code">{String(item.result.aggregated_output ?? "")}</pre>
+          </div>
+        ) : typeof item.result === "string" ? (
+          <div className="tool__body">
+            <pre className="code">{item.result}</pre>
+          </div>
+        ) : (
+          <div className="tool__body">
+            <pre className="code">{JSON.stringify(item.result, null, 2)}</pre>
+          </div>
+        )
       )}
       {item.status === "error" && <div className="tool__err">{item.result}</div>}
     </div>

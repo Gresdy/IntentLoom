@@ -19,10 +19,32 @@ export interface ConversationNotice {
   text: string;
 }
 
+/**
+ * Lifecycle state for the live "thinking" card. The
+ * streaming controller in `reasonixAdapter` sets this
+ * when the first `thinking_delta` chunk arrives (status:
+ * "active", startTime: now) and again when the model
+ * starts streaming its text answer (status: "done",
+ * duration: elapsed). The `ThinkingDisplay` component
+ * reads these fields to render the AionUi-style card
+ * (elapsed timer, subject, collapsible body, gradient
+ * background). Cleared on every new turn by
+ * `resetCurrentStream`.
+ */
+export interface ThinkingMeta {
+  status: "active" | "done";
+  /** `Date.now()` at the moment the first `thinking_delta`
+   * chunk landed. */
+  startTime: number;
+  /** Wall-clock duration in ms; only set when
+   * `status === "done"`. */
+  duration?: number;
+}
+
 interface MessageState {
   messages: Message[];
   isStreaming: boolean;
-  
+
   // 流式输出状态
   currentThinking: string;
   currentThinkingProcess: ThinkingProcess | null;
@@ -31,6 +53,13 @@ interface MessageState {
   currentPermission: PermissionRequest | null;
   currentPlan: PlanState | null;
   currentUsage: TokenUsage | null;
+  /**
+   * Lifecycle state for the live ThinkingDisplay card
+   * (status + start time + final duration). `null` while
+   * the model has not started reasoning this turn.
+   * See {@link ThinkingMeta} for the per-field contract.
+   */
+  currentThinkingMeta: ThinkingMeta | null;
 
   // End-of-conversation artifact summary, keyed by conversation id.
   // Written by the streaming controller on `ai-stream-end`; read by
@@ -56,6 +85,22 @@ interface MessageState {
   setThinkingProcess: (process: ThinkingProcess | null) => void;
   updateThinkingContent: (content: string) => void;
   appendThinking: (content: string) => void;
+  /**
+   * Mark the live thinking card as active. Stamps
+   * `startTime` to `Date.now()` so the elapsed timer
+   * starts ticking. Idempotent — calling it twice in a
+   * turn does NOT reset the start time, so a brief
+   * `message_start` → `content_block_start` gap does
+   * not double-count the elapsed seconds.
+   */
+  beginThinking: () => void;
+  /**
+   * Mark the live thinking card as done. Computes
+   * `duration` from the start time so the card shows a
+   * stable "思考完成 (12s)" instead of an ever-ticking
+   * counter. No-op when there is no active card.
+   */
+  finishThinking: () => void;
   
   // Tool actions
   addToolCall: (toolCall: ToolCall) => void;
@@ -89,7 +134,7 @@ interface MessageState {
 export const useMessageStore = create<MessageState>((set, get) => ({
   messages: [],
   isStreaming: false,
-  
+
   currentThinking: '',
   currentThinkingProcess: null,
   currentToolCalls: [],
@@ -97,6 +142,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   currentPermission: null,
   currentPlan: null,
   currentUsage: null,
+  currentThinkingMeta: null,
   summaryByConversation: {},
   notices: [],
 
@@ -156,6 +202,40 @@ export const useMessageStore = create<MessageState>((set, get) => ({
             ? { ...msg, thinking: (msg.thinking || '') + content }
             : msg
         ),
+      };
+    });
+  },
+
+  beginThinking: () => {
+    set((state) => {
+      // Idempotent: a second `beginThinking` in the same
+      // turn does NOT reset the start time, so the
+      // elapsed counter stays continuous across the
+      // message_start / content_block_start / first
+      // thinking_delta dance that the wire protocol uses
+      // to open a reasoning turn.
+      if (state.currentThinkingMeta?.status === "active") {
+        return state;
+      }
+      return {
+        currentThinkingMeta: {
+          status: "active",
+          startTime: Date.now(),
+        },
+      };
+    });
+  },
+
+  finishThinking: () => {
+    set((state) => {
+      const meta = state.currentThinkingMeta;
+      if (!meta || meta.status === "done") return state;
+      return {
+        currentThinkingMeta: {
+          status: "done",
+          startTime: meta.startTime,
+          duration: Math.max(0, Date.now() - meta.startTime),
+        },
       };
     });
   },
@@ -253,6 +333,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
     set({
       currentThinking: '',
       currentThinkingProcess: null,
+      currentThinkingMeta: null,
       currentToolCalls: [],
       currentToolResponses: [],
       currentPermission: null,

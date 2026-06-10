@@ -18,7 +18,7 @@ export interface IMessageText {
 }
 
 export interface IMessageToolCall {
-  type: 'acp_tool_call';
+  type: 'tool_call';
   content: {
     update: {
       toolCallId: string;
@@ -41,7 +41,7 @@ export interface IMessagePlan {
 }
 
 export interface IMessagePermission {
-  type: 'acp_permission';
+  type: 'permission';
   content: {
     id: string;
     tool: string;

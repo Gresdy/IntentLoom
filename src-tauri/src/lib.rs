@@ -38,6 +38,9 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(commands::ai::AiProcessRegistry::default())
+    .manage(crate::agents::config::AgentConfigStore::load(
+        &dirs::data_local_dir().unwrap_or_else(|| std::path::PathBuf::from(".")),
+    ))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -62,18 +65,17 @@ pub fn run() {
             commands::ai::cancel_ai,
             // agents
             commands::agents::list_agents,
+            commands::agents::get_agent_config,
+            commands::agents::set_agent_config,
+            commands::agents::clear_agent_config,
             commands::agents::switch_agent,
             commands::agents::current_agent,
+            commands::agents::check_agent_health,
             // permissions
             commands::permissions::approve_permission,
             commands::permissions::deny_permission,
             commands::permissions::list_pending_permissions,
             commands::permissions::request_permission,
-            // ACP
-            commands::acp::acp_connect,
-            commands::acp::acp_disconnect,
-            commands::acp::acp_send_prompt,
-            commands::acp::acp_list_sessions,
             // proxy
             commands::proxy::get_proxy_status,
             commands::proxy::start_proxy,

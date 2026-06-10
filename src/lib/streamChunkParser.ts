@@ -1,26 +1,50 @@
 // Parser for `ai-stream-chunk` payloads. Each chunk is a single line
 // emitted by the backend's CLI process. We don't know in advance
 // which CLI is running (Claude Code / Gemini CLI / Codex / OpenCode /
-// OpenClaw), so the parser is deliberately tolerant: it tries JSON
-// first, then falls back to "treat the whole line as plain text".
+// OpenClaw / Hermes), so the parser is deliberately tolerant: it tries
+// JSON first, then falls back to "treat the whole line as plain text".
 //
-// Two protocol shapes are recognized:
+// Three protocol shapes are recognized:
 //
-//   1. Claude Code / Anthropic streaming protocol
-//      (`type: content_block_delta | content_block_start | message_start | ...`).
-//      See https://docs.anthropic.com/claude/reference/messages-streaming.
+//   1. Claude Code wire format (the current `claude -p` output).
+//      Each line is a top-level JSON object with a `type` field:
+//        - `system / init`     — session metadata (tools, model, etc.);
+//                               we ignore it on the front-end because
+//                               the controller already knows the model.
+//        - `assistant`         — a complete assistant message; the
+//                               `message.content` array can carry a
+//                               MIX of `thinking`, `text`, AND `tool_use`
+//                               blocks in a single line. We fan out to
+//                               one chunk per block (thinking first,
+//                               then text, then tool calls) so the
+//                               existing per-chunk pipeline in
+//                               `reasonixAdapter` still works without
+//                               stateful buffering.
+//        - `user`              — a tool result; `message.content[0].type`
+//                               is `tool_result` and the id is in
+//                               `tool_use_id`.
+//        - `result`            — end-of-turn summary (no payload to
+//                               render; we emit a control event so the
+//                               controller can stop the cursor).
 //
-//   2. A minimal generic shape (`{type: "text", text}` / `"tool_call"`
+//      Verified against `claude --output-format stream-json --verbose`
+//      on Claude Code v2.1.143 (2026-06-08).
+//
+//   2. Anthropic messages-streaming protocol (the older shape that
+//      some adapters still emit): `content_block_delta | start | stop`,
+//      `message_start | delta | stop`. Kept for backward compatibility —
+//      the tests in `streamChunkParser.test.ts` cover the
+//      `text_delta` / `thinking_delta` / `tool_use` start cases.
+//
+//   3. Generic minimal shapes (`{type: "text", text}` / `"tool_call"`
 //      / `"plan"` / `"tool_response"` / `"permission"`) that any CLI
-//      can emit. This is what `multi-agent-cockpit.md` §六 calls the
-//      "front-end event contract" and the way Gemini / Codex / the
-//      other adapters are expected to normalize their output.
+//      can emit. This is the "front-end event contract" for adapters
+//      that pre-normalize their output to a single chunk per line.
 //
-// Anything we don't recognize returns `null`; the caller treats the
-// raw line as a text chunk (the historical behavior). This makes the
-// parser safe to drop in even before the adapters are migrated to
-// the new event shapes — the worst case is exactly what we had before
-// (raw text appended to the assistant message).
+// Anything we don't recognize yields an empty array; the caller
+// treats the raw line as text (the historical behavior). This makes
+// the parser safe to drop in even before the adapters migrate to
+// the new event shapes.
 
 import { inferToolKind, parseDiff } from "@/utils/toolCallParser";
 import type { PlanState, ToolCall } from "@/types/message";
@@ -35,29 +59,38 @@ export type ParsedChunk =
   | { kind: "notice"; level: "info" | "warn" | "error"; text: string }
   | { kind: "control"; event: string };
 
-export function parseStreamChunk(raw: string | null | undefined): ParsedChunk | null {
-  if (!raw) return null;
+/**
+ * Parse one line of stream output into a list of chunks.
+ *
+ * Returns `[]` (NOT `null`) when nothing usable came out of the
+ * line — the caller treats `[]` exactly the same as a
+ * "raw line is text" fallback in the historical behavior. The
+ * list shape is the key API: a single Claude Code assistant
+ * event with `content: [thinking, text, tool_use]` produces
+ * THREE chunks in the order the controller should render them,
+ * so the per-chunk pipeline in `reasonixAdapter` still works
+ * without stateful re-parsing.
+ */
+export function parseStreamChunk(raw: string | null | undefined): ParsedChunk[] {
+  if (!raw) return [];
   const trimmed = raw.trim();
-  if (!trimmed) return null;
+  if (!trimmed) return [];
 
   // Hermes Agent (`src-tauri/src/agents/hermes.rs`) emits a
   // leading `session_id: <id>` line on stdout as its session
   // bootstrap, followed by the actual response. The backend
   // adapter deliberately forwards it to the front-end (it is
   // useful metadata for other consumers — see the comment in
-  // hermes.rs), so we filter it here: recognise the shape, emit
-  // a no-op control event so the controller's switch falls
-  // through (the existing `case "control": break` is exactly
-  // this), and do not let the historical "raw line is text"
-  // fallback append `session_id: 7c3a-...` to the transcript.
-  // We accept `session_id:`, `session-id:`, and a flexible amount
-  // of whitespace between the key, the colon, and the value.
+  // hermes.rs), so we filter it here and emit a no-op control
+  // event so the controller's switch falls through. We accept
+  // `session_id:`, `session-id:`, and a flexible amount of
+  // whitespace between the key, the colon, and the value.
   const sessionMatch = /^session[-_]id\s*:\s*\S+/i.exec(trimmed);
   if (sessionMatch) {
-    return { kind: "control", event: "session_started" };
+    return [{ kind: "control", event: "session_started" }];
   }
 
-  let event: unknown;
+  let event: any;
   try {
     event = JSON.parse(trimmed);
   } catch {
@@ -80,60 +113,267 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk | 
     // for the exact rules.
     const hermesNotice = detectHermesNotice(trimmed);
     if (hermesNotice) {
-      return hermesNotice;
+      return [hermesNotice];
     }
-    return null;
-  }
-  if ((event as any).type === "content_block_delta") {
-    return parseContentBlockDelta(event as any);
-  }
-  if ((event as any).type === "content_block_start") {
-    return parseContentBlockStart(event as any);
-  }
-  if ((event as any).type === "content_block_stop") {
-    return { kind: "control", event: "block_stop" };
-  }
-  if ((event as any).type === "message_start") {
-    return { kind: "control", event: "message_start" };
-  }
-  if ((event as any).type === "message_delta") {
-    return { kind: "control", event: "message_delta" };
-  }
-  if ((event as any).type === "message_stop") {
-    return { kind: "control", event: "message_stop" };
+    return [];
   }
 
-  // ----- Generic event shapes (Gemini + future adapters) -----
-  const t = (event as any).type;
-  if (t === "text" && typeof (event as any).text === "string") {
-    return { kind: "text", text: (event as any).text };
+  // ---- 1. Claude Code wire format (current `claude -p` output) ----
+  // Route FIRST so we do not collide with the generic
+  // `{type: "tool_call", ...}` shape from §3 below — Claude
+  // Code's `tool_use` block lives under `message.content[i]`
+  // and we want the content-array walk, not the generic
+  // top-level matcher.
+  if (event.type === "assistant" && event.message && Array.isArray(event.message.content)) {
+    const chunks = parseAssistantContent(event.message.content);
+    if (chunks.length > 0) return chunks;
+    // Fall through: an assistant event with no recognised
+    // content blocks should still be ignored (not surfaced as
+    // text), so we do NOT return `[{ kind: "text", text: trimmed }]`
+    // here. That keeps the historical "raw line is text"
+    // fallback for actual plain-text payloads.
+  }
+  if (event.type === "user" && event.message && Array.isArray(event.message.content)) {
+    const chunks = parseUserContent(event.message.content);
+    if (chunks.length > 0) return chunks;
+  }
+  if (event.type === "system") {
+    // Session metadata — model, tools, mcp_servers, etc. We
+    // surface a no-op control so the controller can record
+    // it (useful for the LoomPanel "last session at" line)
+    // but the transcript does not get a phantom bubble.
+    return [{ kind: "control", event: "system_init" }];
+  }
+  if (event.type === "result") {
+    // End-of-turn. The actual summary lives in `result` (cost,
+    // duration, num_turns) but we only forward a control event
+    // here — the dedicated `ai-stream-end` listener takes care
+    // of the rest. If the result is an error, we promote the
+    // control event to a `notice` so the user sees a red banner.
+    if (event.is_error) {
+      const errText = String(
+        event.errors?.[0] ?? event.subtype ?? "end of turn",
+      );
+      return [{ kind: "notice", level: "error", text: errText }];
+    }
+    return [{ kind: "control", event: "result" }];
+  }
+
+  // ---- 2. Anthropic messages-streaming protocol (legacy) ----
+  if (event.type === "content_block_delta") {
+    const c = parseContentBlockDelta(event);
+    return c ? [c] : [];
+  }
+  if (event.type === "content_block_start") {
+    const c = parseContentBlockStart(event);
+    return c ? [c] : [];
+  }
+  if (event.type === "content_block_stop") {
+    return [{ kind: "control", event: "block_stop" }];
+  }
+  if (event.type === "message_start") {
+    return [{ kind: "control", event: "message_start" }];
+  }
+  if (event.type === "message_delta") {
+    return [{ kind: "control", event: "message_delta" }];
+  }
+  if (event.type === "message_stop") {
+    return [{ kind: "control", event: "message_stop" }];
+  }
+
+  // ---- 3. Generic minimal shapes (any CLI) ----
+  // ---- 4. Codex CLI wire format (codex exec --json) ----
+  // Captured against codex-cli 0.137.0-alpha.4 on 2026-06-08.
+  // Each line is a top-level JSON object. We dispatch on
+  // `event.type`; `item.completed` events wrap the finished
+  // item under `event.item` and discriminate on `item.type`.
+  if (event.type === "thread.started" || event.type === "turn.started") {
+    return [{ kind: "control", event: event.type }];
+  }
+  if (event.type === "turn.completed") {
+    // The `usage` block carries token counts — surfaced as a
+    // control event so the controller can attach the totals
+    // to the assistant message without re-parsing. The Loom
+    // panel already reads the same hook for its usage line.
+    return [{ kind: "control", event: "turn_completed" }];
+  }
+  if (event.type === "item.started" && event.item && typeof event.item === "object") {
+    // Live "in progress" hook. Without this, the user only
+    // sees a Codex tool call when the corresponding
+    // `item.completed` lands — by which point the model has
+    // already finished executing. The thinking card, the
+    // running ToolCard spinner, and the Loom panel's
+    // activity feed all rely on getting the start event so
+    // the timer can begin; the `status: "in_progress"` is
+    // what the controller threads through to the UI.
+    const item = event.item;
+    if (item.type === "reasoning" && typeof item.text === "string") {
+      return [{ kind: "thinking", text: item.text }];
+    }
+    if (item.type === "agent_message" && typeof item.text === "string") {
+      return [{ kind: "text", text: item.text }];
+    }
+    // `command_execution` and other tool subtypes are
+    // forwarded as a `tool_call` with `status: "in_progress"`.
+    // The controller's `addToolCall` creates a live card; the
+    // matching `item.completed` (see below) routes a
+    // `tool_response` chunk through the controller's existing
+    // path, which calls `updateToolCall(id, { status:
+    // "completed" })` to mark the same card done.
+    const name = typeof item.type === "string" ? item.type : "unknown";
+    return [{
+      kind: "tool_call",
+      tool: {
+        id: String(item.id ?? cryptoRandomId()),
+        name,
+        kind: inferToolKind(name),
+        arguments: item,
+        status: "in_progress",
+      },
+    }];
+  }
+  if (event.type === "item.completed" && event.item && typeof event.item === "object") {
+    const item = event.item;
+    if (item.type === "reasoning" && typeof item.text === "string") {
+      return [{ kind: "thinking", text: item.text }];
+    }
+    if (item.type === "agent_message" && typeof item.text === "string") {
+      return [{ kind: "text", text: item.text }];
+    }
+    if (item.type === "command_execution") {
+      // `command_execution` carries a richer payload than the
+      // generic tool-call fallback: the actual shell command,
+      // its aggregated stdout+stderr, the exit code, and the
+      // final status. We surface a `tool_response` chunk so
+      // the controller's existing `tool_response` handler
+      // picks it up and marks the matching live ToolCard
+      // `status: "completed"`. The `id` is the same as the
+      // `item.started` we emitted moments earlier, so the
+      // controller's `updateToolCall` finds the right card.
+      return [{
+        kind: "tool_response",
+        id: String(item.id ?? ""),
+        result: {
+          command: item.command,
+          aggregated_output: item.aggregated_output,
+          exit_code: item.exit_code,
+          status: item.status,
+        },
+      }];
+    }
+    // Anything else (`function_call`, `web_search`, `file_edit`,
+    // …) is forwarded as a tool call with the full item payload
+    // so the controller renders it the same way it renders
+    // Claude's `tool_use` block. The kind / title mapping in
+    // `inferToolKind` already covers the common tool names.
+    const name = typeof item.type === "string" ? item.type : "unknown";
+    return [{
+      kind: "tool_call",
+      tool: {
+        id: String(item.id ?? cryptoRandomId()),
+        name,
+        kind: inferToolKind(name),
+        arguments: item,
+        status: "completed",
+      },
+    }];
+  }
+  const t = event.type;
+  if (t === "text" && typeof event.text === "string") {
+    return [{ kind: "text", text: event.text }];
   }
   if (t === "thinking") {
-    const text = (event as any).text ?? (event as any).thinking;
-    if (typeof text === "string") return { kind: "thinking", text };
+    const text = event.text ?? event.thinking;
+    if (typeof text === "string") return [{ kind: "thinking", text }];
   }
   if (t === "tool_call" || t === "tool_use") {
-    return parseGenericToolCall(event as any);
+    return [parseGenericToolCall(event)];
   }
   if (t === "tool_response" || t === "tool_result") {
-    return {
+    return [{
       kind: "tool_response",
-      id: String((event as any).id ?? ""),
-      result: (event as any).result ?? (event as any).content ?? null,
-    };
+      id: String(event.id ?? ""),
+      result: event.result ?? event.content ?? null,
+    }];
   }
   if (t === "plan") {
-    return { kind: "plan", plan: normalizePlan(event as any) };
+    return [{ kind: "plan", plan: normalizePlan(event) }];
   }
   if (t === "permission" || t === "approval_request") {
-    return {
+    return [{
       kind: "permission",
-      id: String((event as any).id ?? ""),
-      tool: String((event as any).tool ?? (event as any).tool_name ?? ""),
-    args: (event as any).args ?? (event as any).arguments ?? {},
-    };
+      id: String(event.id ?? ""),
+      tool: String(event.tool ?? event.tool_name ?? ""),
+      args: event.args ?? event.arguments ?? {},
+    }];
   }
-  return null;
+  return [];
+}
+
+// Walk a Claude Code `assistant` event's `message.content` array.
+// Blocks arrive in the order the model emitted them, and a single
+// event can carry all three kinds. We preserve that order so the
+// transcript renders thinking first, then text, then tool calls.
+function parseAssistantContent(content: any[]): ParsedChunk[] {
+  const out: ParsedChunk[] = [];
+  for (const block of content) {
+    if (!block || typeof block !== "object") continue;
+    if (block.type === "thinking" && typeof block.thinking === "string") {
+      out.push({ kind: "thinking", text: block.thinking });
+      continue;
+    }
+    if (block.type === "text" && typeof block.text === "string") {
+      out.push({ kind: "text", text: block.text });
+      continue;
+    }
+    if (block.type === "tool_use") {
+      const name = typeof block.name === "string" ? block.name : "unknown";
+      const tool: ToolCall = {
+        id: String(block.id ?? cryptoRandomId()),
+        name,
+        kind: inferToolKind(name),
+        arguments: block.input ?? {},
+        status: "in_progress",
+      };
+      out.push({ kind: "tool_call", tool });
+      continue;
+    }
+    // Unknown block type (e.g. server_tool_use, redacted_thinking).
+    // Skip rather than surface as text — those have their own
+    // forward-compat shapes that a future Phase can handle.
+  }
+  return out;
+}
+
+// Walk a Claude Code `user` event's `message.content` array. Today
+// every block is `tool_result`; the array form is what lets the
+// format extend to multi-tool results in one event.
+function parseUserContent(content: any[]): ParsedChunk[] {
+  const out: ParsedChunk[] = [];
+  for (const block of content) {
+    if (!block || typeof block !== "object") continue;
+    if (block.type !== "tool_result") continue;
+    // The tool result's `content` can be a string OR an array of
+    // `{type: "text", text: ...}` blocks (matches Anthropic's
+    // shape). Normalise both to a plain string for the front-end
+    // so the ToolCard body has something predictable to render.
+    const raw = block.content;
+    const result: unknown =
+      typeof raw === "string"
+        ? raw
+        : Array.isArray(raw)
+          ? raw
+              .filter((b: any) => b && typeof b === "object" && b.type === "text")
+              .map((b: any) => String(b.text ?? ""))
+              .join("\n")
+          : raw ?? null;
+    out.push({
+      kind: "tool_response",
+      id: String(block.tool_use_id ?? ""),
+      result,
+    });
+  }
+  return out;
 }
 
 function parseContentBlockDelta(event: any): ParsedChunk | null {

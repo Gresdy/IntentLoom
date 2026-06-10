@@ -99,6 +99,7 @@ mod tests {
         let opts = StreamOptions {
             mode: Some("yolo".to_string()),
             reasoning: None,
+            ..StreamOptions::default()
         };
         let cmd = GeminiAdapter.build_stream_command("hi", &opts);
         let args: Vec<&str> = cmd
@@ -117,6 +118,7 @@ mod tests {
         let opts = StreamOptions {
             mode: None,
             reasoning: Some("high".to_string()),
+            ..StreamOptions::default()
         };
         let cmd = GeminiAdapter.build_stream_command("hi", &opts);
         let args: Vec<&str> = cmd

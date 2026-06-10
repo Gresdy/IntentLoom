@@ -247,6 +247,170 @@ body {
 
 .sidebar.sidebar--expanded .sidebar__footer-label { opacity: 1; }
 
+/* ── Sidebar nav (white-pill rail) ── */
+/* Each item is a 1-line "icon" button when the rail is collapsed
+   and a white-background pill (icon + name) when it expands. The
+   expanded form is what the user sees on hover and on the active
+   item; the collapsed form is the resting state. The two states
+   share the same DOM and animate width, padding, margin, and label
+   opacity together so the transition feels like a single shape
+   morphing rather than two separate layouts. */
+.sidebar__nav {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar__nav-group {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 2px;
+}
+
+.sidebar__nav-group-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-faint);
+  padding: 10px 14px 4px;
+  user-select: none;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 1;
+  max-width: 100%;
+  transition: opacity 0.18s ease, max-height 0.18s ease;
+}
+
+/* Hide group labels when collapsed — they only make sense with the
+   pill layout. Using max-height + opacity gives a clean fade. */
+.sidebar:not(.sidebar--expanded) .sidebar__nav-group-label {
+  opacity: 0;
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+}
+
+.sidebar__nav-separator {
+  height: 1px;
+  background: var(--border-soft);
+  margin: 6px 14px;
+}
+
+/* Pill-shaped nav button. The collapsed variant centers the icon;
+   the expanded variant adds horizontal margin so the pill doesn't
+   touch the rail edge, and swaps the label from a 0-width hidden
+   span into a full-width one. */
+.sidebar__nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  position: relative;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    padding 0.18s ease,
+    margin 0.18s ease,
+    width 0.18s ease;
+}
+
+/* Collapsed: square-ish, icon centered. */
+.sidebar:not(.sidebar--expanded) .sidebar__nav-item {
+  justify-content: center;
+}
+
+/* Expanded: floating pill that breathes inside the rail. The 1px
+   top/bottom margin keeps the pills visually separated; the 8px
+   side margin is what makes them feel like floating chips
+   rather than a stacked list. */
+.sidebar.sidebar--expanded .sidebar__nav-item {
+  margin: 1px 8px;
+  width: calc(100% - 16px);
+  padding: 7px 10px;
+}
+
+/* Pill surface: the "white background" the user asked for. Using
+   --bg-elev resolves to #fff in the light theme (literally white)
+   and a slightly elevated dark grey in the dark theme, so the
+   pill reads as "a card on the rail" in both modes. */
+.sidebar__nav-item:hover {
+  background: var(--bg-elev);
+  color: var(--fg);
+}
+
+/* Active item: same pill, but the icon + text inherit the accent
+   color so the active selection pops without needing a louder
+   background (the pill already does the heavy lifting). */
+.sidebar__nav-item.active {
+  background: var(--bg-elev);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sidebar__nav-item.active .sidebar__nav-item-icon {
+  color: var(--accent);
+}
+
+.sidebar__nav-item-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: inherit;
+  transition: color 0.16s ease;
+}
+
+/* Label: 0-width when collapsed so the icon centers; auto-width
+   when expanded. Animating max-width + opacity keeps the icon
+   centered in the middle of the morph without snapping. */
+.sidebar__nav-item-label {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0;
+  max-width: 0;
+  margin-left: 0;
+  transition:
+    opacity 0.18s ease,
+    max-width 0.18s ease,
+    margin-left 0.18s ease;
+}
+
+.sidebar.sidebar--expanded .sidebar__nav-item-label {
+  opacity: 1;
+  max-width: 220px;
+  margin-left: 0;
+}
+
+/* Footer (settings button) shares the pill style. */
+.sidebar__footer {
+  border-top: 1px solid var(--border);
+  padding: 6px 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* ── Main Area ── */
 .main-area {
   flex: 1;
@@ -476,6 +640,72 @@ body {
   flex: 0 0 auto;
 }
 
+/* OpenClaw session picker — three small text fields with
+ * a leading "会话" label, a clear button when any field is
+ * set, and a subtle accent border when the session is
+ * active (vs. the placeholder-only "unset" state). The
+ * fields share the same compact input style as the
+ * composer textarea. */
+.composer__openclaw {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-top: 1px dashed var(--border, var(--ilo-border, #DDD6FE));
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+.composer__openclaw--set {
+  border-top-color: var(--accent, #7C3AED);
+  color: var(--accent, #7C3AED);
+}
+.composer__openclaw-label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+.composer__openclaw-input {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 3px 6px;
+  font-size: 12px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  background: transparent;
+  border: 1px solid var(--border, var(--ilo-border, #DDD6FE));
+  border-radius: 4px;
+  color: inherit;
+  outline: none;
+}
+.composer__openclaw-input:focus {
+  border-color: var(--accent, #7C3AED);
+}
+.composer__openclaw-input::placeholder {
+  opacity: 0.5;
+}
+.composer__openclaw-clear {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 50%;
+  opacity: 0.6;
+}
+.composer__openclaw-clear:hover {
+  opacity: 1;
+  background: rgba(124, 58, 237, 0.1);
+}
+
+
 /* Make sure the composer takes the full footer width — the wrap is
    100% but the textarea inside was inheriting the page's content
    max-width from .main-area, leaving a band of empty surface to the
@@ -641,6 +871,17 @@ body {
   overflow: hidden;
 }
 
+.sidebar:not(.sidebar--expanded) .sidebar__header {
+  justify-content: center;
+  padding: 0;
+}
+
+.sidebar.sidebar--expanded .sidebar__header {
+  justify-content: flex-start;
+  padding: 0 10px;
+  gap: 8px;
+}
+
 .sidebar__header .sidebar__toggle {
   margin-left: auto;
   width: 26px;
@@ -666,6 +907,13 @@ body {
 .sidebar__header .sidebar__toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
+}
+
+/* Pinned state: the toggle button is itself a "white pill" so it
+   reads as a sticky indicator that the rail is locked open. */
+.sidebar__header .sidebar__toggle[aria-pressed="true"] {
+  background: var(--bg-elev);
+  color: var(--accent);
 }
 
 .sidebar__toggle-icon {
@@ -863,6 +1111,108 @@ body {
   margin: 6px 0 0;
   font-family: var(--mono);
   font-size: 12px;
+}
+
+/* ── ThinkingDisplay (live AionUi-style reasoning card) ──
+ * References AionUi's `ThoughtDisplay` /
+ * `MessageThinking` (aionui/src/renderer/components/chat/ThoughtDisplay.tsx)
+ * for the gradient + status-icon + duration pattern. We
+ * apply the same visual hierarchy here so anyone familiar
+ * with AionUi immediately recognises the live "thinking
+ * process" card.
+ *
+ * `.thinking` carries the gradient background, set inline
+ * by the component so the dark / light variants can swap
+ * without a CSS variable dance. The class only owns the
+ * layout + typography; the colour comes from the inline
+ * style. The active vs done state is just an opacity hint
+ * — the gradient is preserved in both, so the user can still
+ * see the card after the model finishes.
+ */
+.thinking {
+  border-radius: var(--radius-sm);
+  margin: 8px 0;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow: hidden;
+  border: 1px solid transparent;
+  transition: opacity 200ms ease;
+}
+.thinking--active {
+  border-color: rgba(99, 102, 241, 0.25);
+}
+.thinking--done {
+  opacity: 0.85;
+}
+.thinking__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.thinking__header:hover .thinking__chevron {
+  color: var(--accent);
+}
+.thinking__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  transition: transform 150ms ease;
+  color: var(--fg-dim);
+}
+.thinking__chevron--open {
+  transform: rotate(90deg);
+}
+.thinking__status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+.thinking__subject {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--fg);
+}
+.thinking__preview {
+  font-size: 12px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+.thinking__duration {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--fg-dim);
+  flex-shrink: 0;
+  padding-left: 4px;
+}
+.thinking__body {
+  margin: 0;
+  padding: 0 12px 10px 32px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow-y: auto;
 }
 
 /* ── Streaming ── */
@@ -1610,37 +1960,91 @@ body {
   background: currentColor;
 }
 
-/* Agent tabs — the row of CLI buttons at the start of the topbar. */
+/* Agent tabs — a row of CLI buttons at the start of the topbar.
+   The look is a macOS-style segmented control: each tab is a flat
+   tile, separated from its neighbours by a thin divider, and the
+   active / hovered tile gets a white pill background with a soft
+   drop-shadow. Inactive tiles are icon-only; the full label appears
+   only on the active tile (matching the reference design). */
 .agent-tabs {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 999px;
-  background: var(--bg-soft);
-  border: 1px solid var(--border);
+  gap: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+.agent-tabs__divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--border);
+  flex: 0 0 auto;
 }
 .agent-tab {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
   border-radius: 999px;
   border: none;
   background: transparent;
   color: var(--fg-dim);
   font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
   font-family: inherit;
   white-space: nowrap;
-  transition: color 0.15s, background 0.15s;
+  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
-.agent-tab:hover { color: var(--fg); background: var(--bg-elev); }
+.agent-tab:hover {
+  color: var(--fg);
+  background: var(--bg-elev);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.10),
+    0 8px 20px rgba(0, 0, 0, 0.10);
+}
 .agent-tab.active {
-  background: var(--accent);
-  color: var(--accent-fg);
+  background: var(--bg-elev);
+  color: var(--fg);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.10),
+    0 8px 20px rgba(0, 0, 0, 0.10);
 }
-.agent-tab.active:hover { background: var(--accent); }
+.agent-tab.active:hover {
+  background: var(--bg-elev);
+}
+.agent-tab__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: inherit;
+  flex: 0 0 auto;
+}
+.agent-tab__label {
+  /* The label is hidden by default (collapsed) and only revealed
+     when the user hovers or when the tab is active. Width animates
+     so the pill grows smoothly rather than jumping. */
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 0;
+  margin-left: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  transition: max-width 0.18s ease, opacity 0.12s ease, margin-left 0.18s ease;
+}
+.agent-tab:hover .agent-tab__label,
+.agent-tab.active .agent-tab__label {
+  max-width: 140px;
+  opacity: 1;
+  margin-left: 6px;
+}
 .agent-tab--disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -1649,25 +2053,22 @@ body {
   /* Phase 1.5: a CLI is reported as missing by `list_agents`. Tabs in
      this state still render so the user can see the surface exists,
      but the click is rejected by `handleAgentSwitch`. Visually we
-     use a dotted underline rather than the heavy "disabled" treatment
-     reserved for not-yet-shipped agents (none today, see the
-     `disabled` field on `ALL_AGENTS` in `ReasonixApp.tsx`). */
-  opacity: 0.7;
-  text-decoration: line dotted var(--fg-faint);
-  text-underline-offset: 2px;
+     keep the same flat treatment but dim it slightly. */
+  opacity: 0.55;
 }
 .agent-tab--disabled:hover {
   /* Disabled tabs deliberately don't show the hover lift — they're
      not actionable, so the hover affordance would lie. */
   color: var(--fg-dim);
   background: transparent;
+  box-shadow: none;
   transform: none;
 }
 .agent-tab__badge {
   font-size: 9px;
   padding: 0 4px;
   border-radius: 3px;
-  background: var(--bg-elev);
+  background: var(--bg-soft);
   color: var(--fg-faint);
   font-weight: 500;
   letter-spacing: 0.04em;
@@ -1680,8 +2081,8 @@ body {
   border: 1px solid rgba(217, 119, 87, 0.3);
 }
 .agent-tab.active .agent-tab__badge {
-  background: rgba(255, 255, 255, 0.18);
-  color: var(--accent-fg);
+  background: var(--bg-soft);
+  color: var(--fg-faint);
 }
 
 /* ═══════════════════════════════════════════
@@ -2339,6 +2740,95 @@ body {
   background: rgba(229, 72, 77, 0.06);
 }
 
+/* ── ToolCard status badge (AionUi style) ──
+ * Text next to the status icon so the user can read
+ * the state at a glance. The colour follows the
+ * AionUi `<Tag>` palette so the four states are
+ * visually distinct: green for ok, red for err, blue
+ * for running, neutral for pending. */
+.tool__status {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.tool__status--ok {
+  background: rgba(74, 222, 128, 0.12);
+  color: #4ade80;
+}
+.tool__status--err {
+  background: rgba(248, 113, 113, 0.12);
+  color: #f87171;
+}
+.tool__status--running {
+  background: rgba(99, 102, 241, 0.12);
+  color: #818cf8;
+}
+.tool__status--pending {
+  background: var(--bg-soft);
+  color: var(--fg-dim);
+}
+
+/* Read tool result — a file body. AionUi renders
+ * this as a monospace block with no JSON wrapping. */
+.tool__body--read {
+  max-height: 400px;
+}
+.tool__body--read pre {
+  white-space: pre;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Codex `command_execution` rich-payload result — header
+ * with exit-code chip + the aggregated stdout/stderr as a
+ * plain code block. The chip colour flips for non-zero
+ * exits so the user spots a failed shell command at a
+ * glance without having to expand the card. */
+.tool__body--exec {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 400px;
+  overflow: auto;
+}
+.tool__body--exec pre {
+  white-space: pre-wrap;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+}
+.tool__exec-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+.tool__exec-label {
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.tool__exec-exit {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.tool__exec-exit--ok {
+  background: rgba(34, 197, 94, 0.12);
+  color: rgb(21, 128, 61);
+}
+.tool__exec-exit--err {
+  background: rgba(239, 68, 68, 0.12);
+  color: rgb(185, 28, 28);
+}
+
 /* Conversation summary (end-of-conversation artifact card) */
 .conv-summary {
   margin: 16px 0 24px;
@@ -2659,4 +3149,100 @@ body {
 @keyframes onboarding-pop {
   from { opacity: 0; transform: scale(0.92); }
   to   { opacity: 1; transform: scale(1); }
+}
+
+/* ── Top Usage Bar ──
+   Sits between the topbar (`.topbar`) and the transcript (`.main`'s
+   child). One row, ~30 px tall, no bottom border so the chat column
+   flows continuously. Background is a notch above `--bg-soft` to
+   read as a distinct surface without dominating the page.
+   The fill bar uses the same accent as the rest of the app; the
+   `data-fill` attribute on the inner div carries the severity
+   band so a near-full context window can turn amber/red without
+   the bar shifting height. */
+.top-usage {
+  height: 30px;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--fg-dim);
+  user-select: none;
+}
+
+.top-usage__model {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 200px;
+}
+
+.top-usage__icon {
+  flex: 0 0 auto;
+  color: var(--fg-faint);
+}
+
+.top-usage__model-name {
+  font-weight: 500;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.top-usage__bar {
+  flex: 1;
+  min-width: 80px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-elev);
+  overflow: hidden;
+  position: relative;
+}
+
+.top-usage__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.2s ease, background-color 0.2s ease;
+}
+
+.top-usage__fill[data-fill="mid"]  { background: var(--warn); }
+.top-usage__fill[data-fill="high"] { background: var(--err); }
+
+.top-usage__tokens {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+
+.top-usage__sep {
+  color: var(--fg-faint);
+  margin: 0 1px;
+}
+
+.top-usage__right {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.top-usage__cost,
+.top-usage__elapsed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--fg-dim);
 }

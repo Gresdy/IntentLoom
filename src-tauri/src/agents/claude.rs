@@ -1,8 +1,13 @@
 //! Claude Code adapter — the reference implementation. Protocol
-//! **verified** against `claude --help` on a real install (2026-06-05).
+//! **verified** against `claude --help` on a real install (2026-06-08,
+//! Claude Code v2.1.143).
 //!
 //! `claude --help` exposes:
-//!   * `--print-format-json --prompt <text>` — non-interactive streaming JSON
+//!   * `-p, --print` + `--output-format stream-json` + `--verbose` —
+//!     non-interactive per-event JSON line stream (the front-end
+//!     `parseStreamChunk` consumes each line as one event).
+//!     `--output-format stream-json` requires `--verbose`; without
+//!     it Claude falls back to a single-result JSON dump.
 //!   * `--permission-mode <default|plan|acceptEdits|dontAsk|bypassPermissions>`
 //!     — controls how file-editing / shell tools are approved. We honor
 //!     `StreamOptions::mode` and emit the flag verbatim; `"default"` is a
@@ -34,10 +39,33 @@ impl AgentAdapter for ClaudeAdapter {
     }
 
     fn build_stream_command(&self, prompt: &str, opts: &StreamOptions) -> Command {
+        // Verified against `claude --help` on 2026-06-08
+        // against Claude Code v2.1.143. The non-interactive
+        // streaming shape is:
+        //
+        //   claude -p "<prompt>" \
+        //         --output-format stream-json \
+        //         --verbose
+        //
+        // `--output-format stream-json` requires `--verbose`
+        // (without it Claude falls back to a single-result
+        // JSON dump, NOT the per-event line stream the
+        // front-end `parseStreamChunk` expects). Permission
+        // and effort flags stay verbatim from the earlier
+        // verification pass — those names did not change.
+        //
+        // We deliberately do NOT pass `--include-partial-messages`
+        // because the front-end `parseStreamChunk` already
+        // handles the full-message-per-line shape; partial
+        // deltas would just add round-trip overhead. A future
+        // Phase can opt into deltas if the UI needs to paint
+        // text before the model finishes the block.
         let mut cmd = Command::new(self.binary());
-        cmd.arg("--print-format-json")
-            .arg("--prompt")
+        cmd.arg("-p")
             .arg(prompt)
+            .arg("--output-format")
+            .arg("stream-json")
+            .arg("--verbose")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         // `--permission-mode <default|plan|acceptEdits|dontAsk|bypassPermissions>`
@@ -100,9 +128,11 @@ mod tests {
 
     #[test]
     fn build_stream_command_matches_verified_flags() {
-        // Verified against `claude --help` on 2026-06-05. The default
-        // `build_stream_command` in `super::AgentAdapter` is the canonical
-        // Claude invocation: `--print-format-json --prompt <msg>`.
+        // Verified against `claude --help` on 2026-06-08 against
+        // Claude Code v2.1.143. The non-interactive streaming
+        // invocation is `-p <prompt> --output-format stream-json
+        // --verbose`; without `--verbose` Claude refuses to emit
+        // per-event lines and falls back to a single JSON result.
         let cmd = ClaudeAdapter.build_stream_command("hello", &StreamOptions::default());
         let std_cmd = cmd.as_std();
         assert_eq!(std_cmd.get_program(), "claude");
@@ -110,7 +140,10 @@ mod tests {
             .get_args()
             .map(|a| a.to_str().expect("utf-8 arg"))
             .collect();
-        assert_eq!(args, vec!["--print-format-json", "--prompt", "hello"]);
+        assert_eq!(
+            args,
+            vec!["-p", "hello", "--output-format", "stream-json", "--verbose"]
+        );
     }
 
     #[test]
@@ -118,6 +151,7 @@ mod tests {
         let opts = StreamOptions {
             mode: Some("plan".to_string()),
             reasoning: None,
+            ..StreamOptions::default()
         };
         let cmd = ClaudeAdapter.build_stream_command("hi", &opts);
         let args: Vec<&str> = cmd
@@ -137,6 +171,7 @@ mod tests {
         let opts = StreamOptions {
             mode: None,
             reasoning: Some("xhigh".to_string()),
+            ..StreamOptions::default()
         };
         let cmd = ClaudeAdapter.build_stream_command("hi", &opts);
         let args: Vec<&str> = cmd
@@ -153,6 +188,7 @@ mod tests {
         let opts = StreamOptions {
             mode: Some("bypassPermissions".to_string()),
             reasoning: Some("max".to_string()),
+            ..StreamOptions::default()
         };
         let cmd = ClaudeAdapter.build_stream_command("hi", &opts);
         let args: Vec<&str> = cmd

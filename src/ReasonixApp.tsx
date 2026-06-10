@@ -1,17 +1,22 @@
-import { useCallback, useState, useEffect, lazy, Suspense } from "react";
+import { useCallback, useState, useEffect, useRef, lazy, Suspense, Fragment } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   SquarePen, History, Settings, Command, Moon, Sun, Bot, PanelLeftClose, PanelLeftOpen,
   FolderOpen, Search, Terminal, Code, Server,
   Logs, MessageSquare,
   ChartBar, Users, X,
-  Sparkles, MessageCircle,
+  Sparkles, MessageCircle, RefreshCw, Loader2,
   LayoutGrid,
 } from "lucide-react";
+import { AGENT_TAB_ICON } from "@/components/Topbar/AgentTabIcon";
 import { useReasonixController } from "./lib/reasonixAdapter";
+import { seedDemoConversation } from "./lib/demoConversation";
 import { Transcript } from "./components/Chat/ReasonixTranscript";
 import { Composer } from "./components/Chat/ReasonixComposer";
+import { TopUsage } from "./components/Chat/TopUsage";
 import { StatusBar } from "./components/layout/ReasonixStatusBar";
+import { useAgentReadinessCheck } from "./hooks/useAgentReadinessCheck";
+import { useToastStore } from "./lib/useToast";
 import { SettingsDrawer } from "./components/layout/SettingsDrawer";
 import { HistoryDrawer } from "./components/layout/HistoryDrawer";
 import { CommandPalette, useCommandPalette } from "./components/common/CommandPalette";
@@ -106,6 +111,10 @@ const ALL_AGENTS: { id: AppId; label: string; shortLabel: string; disabled?: boo
   { id: "hermes", label: "Hermes", shortLabel: "Hermes" },
 ];
 
+// (Per-agent icon lookup now lives in
+// @/components/Topbar/AgentTabIcon — swap any of those SVGs out for
+// the upstream brand mark without touching this file.)
+
 function isNavKey(value: string | null): value is NavKey {
   if (!value) return false;
   return [
@@ -149,7 +158,6 @@ export const ReasonixApp: React.FC = () => {
   const [histView, setHistView] = useState<any[] | null>(null);
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
-  const [sidebarExpanded, setSidebarExpanded] = useState(false);
   // Loom panel width lives in localStorage so the column stays at
   // the user's preferred size across reloads. 320 px matches the
   // default baked into globals.css; the [240, 520] range keeps the
@@ -180,6 +188,14 @@ export const ReasonixApp: React.FC = () => {
   const panelParam = searchParams.get("panel");
   const activeNav: NavKey = isNavKey(panelParam) ? panelParam : "chat";
   const rightPanelOpen = activeNav !== "chat";
+  // Sidebar expands on hover and stays expanded for the active item. A
+  // user-driven pin (Ctrl+B / Ctrl+/) keeps it open regardless of
+  // hover or active state — the three sources OR together so any one
+  // is enough to show the expanded form.
+  const [isSidebarHovered, setIsSidebarHovered] = useState(false);
+  const [isSidebarPinned, setIsSidebarPinned] = useState(false);
+  const isSidebarExpanded =
+    isSidebarHovered || isSidebarPinned || rightPanelOpen;
   const settingsOpen = searchParams.get("view") === "settings";
   const { mode: themeMode, setMode: setThemeMode } = useThemeStore();
   const { currentApp, setCurrentApp } = useModelStore();
@@ -204,6 +220,57 @@ export const ReasonixApp: React.FC = () => {
     },
     [agentRegistry, lastLoadedAt]
   );
+
+  // On-demand health probe for the currently-active agent —
+  // references AionUi's `useAgentReadinessCheck`. We only mount
+  // the hook for the active tab so the cost is bounded (a
+  // single version round-trip + at most one alternative scan
+  // when the user explicitly clicks "重新检测"), not one
+  // probe per registered CLI.
+  //
+  // The toast handler surfaces probe failures as a transient
+  // "Claude 不可用：<error>" banner and, when an alternative
+  // is found, the toast includes a "切换到 <bestAgent>" CTA
+  // that the user can click to auto-switch tabs. This is the
+  // one place where the alternative scan's value shows up in
+  // the user-visible flow — without it the failure toast
+  // would just be a passive error.
+  const addToast = useToastStore((s) => s.addToast);
+  const readiness = useAgentReadinessCheck({
+    id: currentApp,
+    onAgentReady: (alt) => {
+      addToast({
+        type: "info",
+        message: `检测到可用替代：${alt.display_name}（延迟 ${alt.health.latencyMs}ms）`,
+        duration: 6000,
+      });
+    },
+  });
+  // Mirror the last probe error into a toast when it changes
+  // (so the user sees the failure without having to open the
+  // agents panel). We compare by `error` + `currentAgent` to
+  // avoid re-toasting on every re-render.
+  const lastToastedErrorRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (readiness.isChecking) return;
+    if (!readiness.error) {
+      lastToastedErrorRef.current = null;
+      return;
+    }
+    const key = `${readiness.currentAgent}::${readiness.error}`;
+    if (lastToastedErrorRef.current === key) return;
+    lastToastedErrorRef.current = key;
+    addToast({
+      type: "error",
+      message: `${readiness.currentAgent} 健康检查失败：${readiness.error}`,
+      duration: 6000,
+    });
+  }, [
+    readiness.isChecking,
+    readiness.error,
+    readiness.currentAgent,
+    addToast,
+  ]);
 
   // Navigation: chat = close panel, others = open panel, settings = open drawer.
   // Each call writes the URL, so deep links and back/forward stay correct.
@@ -269,12 +336,12 @@ export const ReasonixApp: React.FC = () => {
         newSession();
       } else if (mod && e.key === "b") {
         e.preventDefault();
-        setSidebarExpanded((v) => !v);
+        setIsSidebarPinned((v) => !v);
       } else if (mod && e.key === "/") {
         // Alias for Ctrl+B — common in editors (e.g. VSCode's sidebar
         // toggle) so muscle memory carries over. Keep both bindings.
         e.preventDefault();
-        setSidebarExpanded((v) => !v);
+        setIsSidebarPinned((v) => !v);
       } else if (mod && e.shiftKey && e.key === "T") {
         e.preventDefault();
         setThemeMode(themeMode === "dark" ? "light" : "dark");
@@ -412,24 +479,31 @@ export const ReasonixApp: React.FC = () => {
   return (
     <div className="app">
       {/* ── Sidebar ── */}
-      <nav className={`sidebar${sidebarExpanded ? " sidebar--expanded" : ""}`} data-testid="sidebar" data-tour="sidebar">
+      <nav
+        className={`sidebar${isSidebarExpanded ? " sidebar--expanded" : ""}`}
+        data-testid="sidebar"
+        data-tour="sidebar"
+        onMouseEnter={() => setIsSidebarHovered(true)}
+        onMouseLeave={() => setIsSidebarHovered(false)}
+      >
         <div className="sidebar__header">
           <div className="sidebar__logo">I</div>
           <span className="sidebar__title">IntentLoom</span>
           <button
             className="sidebar__toggle"
-            onClick={() => setSidebarExpanded(!sidebarExpanded)}
-            title={sidebarExpanded ? "收起侧边栏 (Ctrl+B)" : "展开侧边栏 (Ctrl+B)"}
-            aria-label={sidebarExpanded ? "收起侧边栏" : "展开侧边栏"}
+            onClick={() => setIsSidebarPinned((v) => !v)}
+            title={isSidebarPinned ? "取消固定侧边栏 (Ctrl+B)" : "固定侧边栏 (Ctrl+B)"}
+            aria-label={isSidebarPinned ? "取消固定侧边栏" : "固定侧边栏"}
+            aria-pressed={isSidebarPinned}
           >
-            {sidebarExpanded ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
+            {isSidebarPinned ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
           </button>
         </div>
 
         <div className="sidebar__nav">
           {NAV_GROUPS.map((group, gi) => (
             <div key={gi} className="sidebar__nav-group">
-              {sidebarExpanded && group.label && (
+              {isSidebarExpanded && group.label && (
                 <div className="sidebar__nav-group-label">{group.label}</div>
               )}
               {group.items.map((item) => (
@@ -437,13 +511,13 @@ export const ReasonixApp: React.FC = () => {
                   key={item.key}
                   className={`sidebar__nav-item${activeNav === item.key && rightPanelOpen ? " active" : ""}`}
                   onClick={() => handleNavClick(item.key)}
-                  title={!sidebarExpanded ? item.label : undefined}
+                  title={!isSidebarExpanded ? item.label : undefined}
                 >
                   <span className="sidebar__nav-item-icon">{item.icon}</span>
                   <span className="sidebar__nav-item-label">{item.label}</span>
                 </button>
               ))}
-              {gi < NAV_GROUPS.length - 1 && (
+              {gi < NAV_GROUPS.length - 1 && isSidebarExpanded && (
                 <div className="sidebar__nav-separator" />
               )}
             </div>
@@ -454,7 +528,7 @@ export const ReasonixApp: React.FC = () => {
           <button
             className="sidebar__nav-item"
             onClick={() => handleNavClick("settings")}
-            title={!sidebarExpanded ? "设置" : undefined}
+            title={!isSidebarExpanded ? "设置" : undefined}
           >
             <span className="sidebar__nav-item-icon"><Settings size={18} /></span>
             <span className="sidebar__nav-item-label">设置</span>
@@ -468,32 +542,63 @@ export const ReasonixApp: React.FC = () => {
         <header className="topbar">
           {/* Agent Tabs */}
           <div className="agent-tabs">
-            {ALL_AGENTS.map((agent) => {
+            {ALL_AGENTS.map((agent, index) => {
               const unavailable = isUnavailable(agent.id);
+              const isActive = currentApp === agent.id;
+              // A tab is "checking" only when (a) it is the
+              // currently-active tab AND (b) the readiness
+              // hook has a probe in flight. Tabs for the
+              // other agents stay at rest — we only mount
+              // the hook for the active agent to keep the
+              // probe count bounded.
+              const isCheckingThis = isActive && readiness.isChecking;
+              // Brand-style SVG if we drew one, otherwise the generic
+              // lucide Bot glyph for ids the registry hasn't been
+              // customised for yet.
+              const Icon = AGENT_TAB_ICON[agent.id] ?? Bot;
+              // Compose a richer tooltip. When the readiness
+              // hook has surfaced a failure on the active
+              // tab, surface the error inline so the user
+              // does not have to open the agents panel to
+              // see why "click → nothing happens".
               const tooltip = agent.disabled
                 ? `${agent.label} (开发中)`
                 : unavailable
                 ? `${agent.label} (未安装)`
+                : isActive && readiness.error
+                ? `${agent.label} (${readiness.error})`
                 : agent.label;
               return (
-                <button
-                  key={agent.id}
-                  className={
-                    `agent-tab${currentApp === agent.id ? " active" : ""}` +
-                    (agent.disabled ? " agent-tab--disabled" : "") +
-                    (unavailable ? " agent-tab--unavailable" : "")
-                  }
-                  onClick={() => handleAgentSwitch(agent.id)}
-                  title={tooltip}
-                  aria-disabled={agent.disabled || unavailable ? "true" : undefined}
-                >
-                  <Bot size={12} />
-                  {sidebarExpanded ? agent.label : agent.shortLabel}
-                  {agent.disabled && <span className="agent-tab__badge">开发中</span>}
-                  {!agent.disabled && unavailable && (
-                    <span className="agent-tab__badge agent-tab__badge--missing">未安装</span>
+                <Fragment key={agent.id}>
+                  {index > 0 && (
+                    <span className="agent-tabs__divider" aria-hidden="true" />
                   )}
-                </button>
+                  <button
+                    className={
+                      `agent-tab${isActive ? " active" : ""}` +
+                      (agent.disabled ? " agent-tab--disabled" : "") +
+                      (unavailable ? " agent-tab--unavailable" : "") +
+                      (isCheckingThis ? " agent-tab--checking" : "")
+                    }
+                    onClick={() => handleAgentSwitch(agent.id)}
+                    title={tooltip}
+                    aria-pressed={isActive}
+                    aria-disabled={agent.disabled || unavailable ? "true" : undefined}
+                  >
+                    <span className="agent-tab__icon">
+                      {isCheckingThis ? (
+                        <Loader2 size={isActive ? 22 : 20} className="spin ilo-fg-accent" />
+                      ) : (
+                        <Icon size={isActive ? 22 : 20} />
+                      )}
+                    </span>
+                    <span className="agent-tab__label">{agent.label}</span>
+                    {agent.disabled && <span className="agent-tab__badge">开发中</span>}
+                    {!agent.disabled && unavailable && (
+                      <span className="agent-tab__badge agent-tab__badge--missing">未安装</span>
+                    )}
+                  </button>
+                </Fragment>
               );
             })}
           </div>
@@ -509,6 +614,38 @@ export const ReasonixApp: React.FC = () => {
 
           {/* Right controls */}
           <div className="topbar__right" data-tour="tools">
+            {/* 重新检测 — on-demand health probe for the
+             * currently-active agent. The icon swaps to a
+             * spinner while the probe is in flight so the
+             * user has a clear "正在检测…" affordance; the
+             * button is disabled while a chat turn is
+             * running to avoid re-probing mid-stream. The
+             * tooltip surfaces the last probe latency when
+             * one is available, mirroring the
+             * `check_agent_health` `latencyMs` field. */}
+            <button
+              className="chip chip--icon"
+              onClick={() => void readiness.performFullCheck()}
+              disabled={state.running || readiness.isChecking}
+              title={
+                readiness.isChecking
+                  ? "正在检测…"
+                  : `重新检测 ${currentApp}` +
+                    (readiness.isReady
+                      ? readiness.bestAgent
+                        ? ` (建议切换到 ${readiness.bestAgent.display_name})`
+                        : ""
+                      : readiness.error
+                      ? ` (上次失败：${readiness.error})`
+                      : " (未就绪)")
+              }
+            >
+              {readiness.isChecking ? (
+                <Loader2 size={13} className="spin ilo-fg-accent" />
+              ) : (
+                <RefreshCw size={13} />
+              )}
+            </button>
             <button className="chip chip--icon" onClick={() => setCmdPaletteOpen(true)} title="命令面板 (Ctrl+K)">
               <Command size={13} />
             </button>
@@ -537,7 +674,13 @@ export const ReasonixApp: React.FC = () => {
 
         {/* Main Content */}
         <main className="main">
-          <Transcript items={state.items} onNewChat={newSession} onPickWorkspace={pickWorkspace} />
+          {/* Top usage bar — aionui-style context-window signal.
+             Sits between the topbar and the transcript so it is
+             always visible during a conversation. The transcript
+             below scrolls inside the existing <main> flex column,
+             so adding this row does not change the chat layout. */}
+          <TopUsage />
+          <Transcript items={state.items} onNewChat={newSession} onPickWorkspace={pickWorkspace} onSeedDemo={seedDemoConversation} />
         </main>
 
         {/* Footer */}
@@ -545,6 +688,7 @@ export const ReasonixApp: React.FC = () => {
           <Composer
             running={state.running}
             cli={currentApp as AppId}
+            isAvailable={!isUnavailable(currentApp as AppId)}
             modeSpec={getModeSpec(currentApp as AppId)}
             modeId={resolveModeId(currentApp as AppId)}
             onModeChange={(id: string) => setModeForCli(currentApp as AppId, id)}

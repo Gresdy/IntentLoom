@@ -1,145 +1,124 @@
-import { useState, useEffect } from "react";
-import { invoke } from "../../lib/tauri";
-import { Check, Download, Link, RefreshCw, Terminal, X } from "lucide-react";
-
-interface AgentInfo {
-  id: string;
-  name: string;
-  display_name: string;
-  available: boolean;
-  path: string | null;
-  version: string | null;
-  supports_streaming: boolean;
-  description: string;
-  auth: {
-    status: "logged_in" | "logged_out" | "unknown" | "not_required";
-    hint: string | null;
-  };
-  install_url?: string;
-  install_command?: string;
-}
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { Check, Download, Link, RefreshCw, Terminal, X, Settings } from "lucide-react";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { useAgentStore, type AgentConfig } from "../../lib/useAgents";
+import type { AgentInfo } from "../../lib/useAgents";
 
 /**
- * Install hints keyed by adapter id. The key set is the source
- * of truth on the front-end for "which CLIs does IntentLoom
- * know about" and MUST stay in sync with the Rust adapter
- * registry in `src-tauri/src/agents/` — the `agentsPanel.test.ts`
- * vitest suite locks both lists to the same six ids. Adding a
- * new id here without wiring a matching adapter leaves a
- * "Install" button that points at a CLI the app will never
- * recognise, and the test catches that.
+ * Agents panel — the visual front of the local-CLI availability,
+ * install, and config feature. Reads straight from the shared
+ * `useAgentStore` so the TopBar's gating and this panel never
+ * disagree; the refresh button reuses the same `loadAgents`
+ * that ReasonixApp's mount effect calls.
+ *
+ * Each agent renders a status-driven CTA derived from the backend's
+ * `setup.status` field:
+ *   - `ready`           — nothing to do
+ *   - `needs_install`   — "安装指南" / "复制命令" buttons (url or
+ *                          shell command depending on the adapter)
+ *   - `needs_login`     — "复制登录命令" (the adapter's `binary`
+ *                          name, which the user runs to trigger OAuth)
+ *   - `misconfigured`   — inline warning text, no button
+ *
+ * Below that sits a small settings card with the user-configurable
+ * `cli_path` override. The override is persisted via
+ * `set_agent_config` and survives restart.
  */
-export const AGENT_INSTALL_INFO: Record<string, { url: string; command: string }> = {
-  claude: {
-    url: "https://docs.anthropic.com/en/docs/claude-code/overview",
-    command: "npm install -g @anthropic-ai/claude-code",
-  },
-  gemini: {
-    url: "https://ai.google.dev/gemini-code",
-    command: "gemini install",
-  },
-  codex: {
-    url: "https://openai.com/codex",
-    command: "安装 OpenAI Codex",
-  },
-  opencode: {
-    url: "https://github.com/opencode-ai/opencode",
-    command: "npm install -g opencode-ai",
-  },
-  openclaw: {
-    url: "https://github.com/openclaw/openclaw",
-    command: "npm install -g @openclaw/cli",
-  },
-  // Hermes is a Python project shipped from a CNB mirror (the user's
-  // install lives at ~/.hermes/hermes-agent, symlinked into ~/.local/bin).
-  // Generic one-liner — keep this in sync when the upstream URL changes.
-  hermes: {
-    url: "https://cnb.cool/hermesagent-cn",
-    command: "git clone https://cnb.cool/hermesagent-cn/hermes-agent-cn-mirror.git && cd hermes-agent && pip install -e .",
-  },
-};
-
 export const AgentsPanel: React.FC = () => {
-  const [agents, setAgents] = useState<AgentInfo[]>([]);
-  const [loading, setLoading] = useState(true);
+  const agents = useAgentStore((s) => s.agents);
+  const loading = useAgentStore((s) => s.loading);
+  const lastLoadedAt = useAgentStore((s) => s.lastLoadedAt);
+  const loadAgents = useAgentStore((s) => s.loadAgents);
+  const setAgentConfig = useAgentStore((s) => s.setAgentConfig);
+  const clearAgentConfig = useAgentStore((s) => s.clearAgentConfig);
   const [filter, setFilter] = useState<"all" | "available" | "unavailable">("all");
+  // The set of agent ids whose settings card is expanded. The card
+  // is closed by default to keep the panel scannable; users opt in
+  // per-adapter.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Polling timer — re-fetch every 30s so an agent the user
+  // installs in another terminal flips to "已安装" without a manual
+  // refresh. Toggled off when the tab is hidden so a backgrounded
+  // panel doesn't keep pinging the backend.
+  const pollRef = useRef<number | null>(null);
 
-  const loadAgents = async () => {
-    setLoading(true);
-    try {
-      const result = await invoke<AgentInfo[]>("list_agents");
-      const agentsWithInstall = result.map((agent) => {
-        // Older binaries may not have the `auth` field — keep the
-        // panel rendering with a safe "unknown" default so the
-        // chip still appears, just with a "状态未知" label.
-        const auth = agent.auth ?? { status: "unknown", hint: null };
-        return {
-          ...agent,
-          auth,
-          install_url: AGENT_INSTALL_INFO[agent.id]?.url,
-          install_command: AGENT_INSTALL_INFO[agent.id]?.command,
-        };
-      });
-      setAgents(agentsWithInstall);
-    } catch (e) {
-      console.error("Failed to load agents:", e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // First mount: kick off the load if the store is empty. Subsequent
+  // mounts reuse the cached list (the TopBar has already populated
+  // it on app start).
   useEffect(() => {
-    loadAgents();
+    if (lastLoadedAt === null && !loading) {
+      void loadAgents();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filteredAgents = agents.filter((agent) => {
-    if (filter === "available") return agent.available;
-    if (filter === "unavailable") return !agent.available;
-    return true;
-  });
+  // Light polling — only re-fetches if the user is still on the
+  // panel. Cheap; one `list_agents` per 30s.
+  useEffect(() => {
+    const start = () => {
+      if (pollRef.current !== null) return;
+      pollRef.current = window.setInterval(() => {
+        void loadAgents();
+      }, 30_000);
+    };
+    const stop = () => {
+      if (pollRef.current !== null) {
+        window.clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+    const onVis = () => {
+      if (document.visibilityState === "visible") {
+        void loadAgents();
+        start();
+      } else {
+        stop();
+      }
+    };
+    if (document.visibilityState === "visible") start();
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVis);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const filteredAgents = useMemo(
+    () =>
+      agents.filter((agent) => {
+        if (filter === "available") return agent.available;
+        if (filter === "unavailable") return !agent.available;
+        return true;
+      }),
+    [agents, filter],
+  );
 
   const availableCount = agents.filter((a) => a.available).length;
 
-  const handleInstall = async (agent: AgentInfo) => {
-    if (agent.install_url) {
-      window.open(agent.install_url, "_blank");
+  const handleOpenUrl = useCallback(async (url: string) => {
+    try {
+      await openExternal(url);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[AgentsPanel] failed to open install URL:", e);
     }
-  };
+  }, []);
 
-  const handleCopyCommand = (agent: AgentInfo) => {
-    if (agent.install_command) {
-      navigator.clipboard.writeText(agent.install_command);
+  const handleCopy = useCallback((text: string) => {
+    if (text) {
+      void navigator.clipboard.writeText(text);
     }
-  };
+  }, []);
 
-  const authChip = (agent: AgentInfo) => {
-    if (!agent.available) return null;
-    switch (agent.auth.status) {
-      case "logged_in":
-        return (
-          <span className="auth-chip auth-chip--ok">
-            <Check size={10} />
-            已登录
-          </span>
-        );
-      case "logged_out":
-        return (
-          <span className="auth-chip auth-chip--warn">
-            <X size={10} />
-            未登录
-          </span>
-        );
-      case "not_required":
-        return <span className="auth-chip auth-chip--muted">无需认证</span>;
-      case "unknown":
-      default:
-        return (
-          <span className="auth-chip auth-chip--muted" title={agent.auth.hint ?? undefined}>
-            状态未知
-          </span>
-        );
-    }
-  };
+  const toggleExpanded = useCallback((id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   return (
     <div className="h-full flex flex-col bg-[#FAF5FF]">
@@ -153,7 +132,7 @@ export const AgentsPanel: React.FC = () => {
             </p>
           </div>
           <button
-            onClick={loadAgents}
+            onClick={() => void loadAgents()}
             disabled={loading}
             className="p-2 text-[#6B7280] hover:text-[#7C3AED] hover:bg-[#EDE9FE] rounded-lg transition-colors disabled:opacity-50"
             title="刷新"
@@ -182,7 +161,7 @@ export const AgentsPanel: React.FC = () => {
 
       {/* Agent list */}
       <div className="flex-1 overflow-auto p-4 space-y-3">
-        {loading ? (
+        {loading && agents.length === 0 ? (
           <div className="flex justify-center py-12">
             <div className="w-8 h-8 border-2 border-[#7C3AED] border-t-transparent rounded-full animate-spin" />
           </div>
@@ -194,116 +173,16 @@ export const AgentsPanel: React.FC = () => {
         ) : (
           <div className="space-y-3">
             {filteredAgents.map((agent) => (
-              <div
+              <AgentCard
                 key={agent.id}
-                className={`p-4 rounded-xl border transition-all ${
-                  agent.available
-                    ? "ilo-bg-elev border-[#DDD6FE] hover:border-[#7C3AED]"
-                    : "bg-[#FAF5FF] border-[#E9E3F9] hover:border-[#A78BFA]"
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  {/* Status icon */}
-                  <div
-                    className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
-                      agent.available ? "bg-green-100" : "bg-[#EDE9FE]"
-                    }`}
-                  >
-                    <Terminal
-                      size={20}
-                      className={agent.available ? "text-green-600" : "text-[#7C3AED]"}
-                    />
-                  </div>
-
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-semibold text-[#1E1B4B]">
-                        {agent.display_name}
-                      </h3>
-                      {agent.available ? (
-                        <span className="px-2 py-0.5 text-xs rounded bg-green-100 text-green-700 flex items-center gap-1">
-                          <Check size={10} />
-                          已安装
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 text-xs rounded bg-[#EDE9FE] text-[#7C3AED] flex items-center gap-1">
-                          <X size={10} />
-                          未安装
-                        </span>
-                      )}
-                      {authChip(agent)}
-                      {agent.supports_streaming && agent.available && (
-                        <span className="px-2 py-0.5 text-xs rounded bg-[#CFFAFE] text-[#0891B2]">
-                          流式
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-[#6B7280] mb-2 line-clamp-2">
-                      {agent.description}
-                    </p>
-                    {agent.available && agent.auth.hint && agent.auth.status !== "logged_in" && (
-                      <p
-                        className={
-                          agent.auth.status === "logged_out"
-                            ? "auth-hint auth-hint--warn"
-                            : "auth-hint auth-hint--muted"
-                        }
-                      >
-                        <span className="auth-hint__label">
-                          {agent.auth.status === "logged_out" ? "需要登录：" : "提示："}
-                        </span>
-                        {agent.auth.hint}
-                      </p>
-                    )}
-
-                    {agent.available ? (
-                      <div className="space-y-1 text-xs text-[#9CA3AF]">
-                        {agent.version && (
-                          <div className="flex items-center gap-1">
-                            <span className="text-[#A3A3A6]">版本：</span>
-                            <span className="font-mono">{agent.version}</span>
-                          </div>
-                        )}
-                        {agent.path && (
-                          <div className="flex items-center gap-1">
-                            <span className="text-[#A3A3A6]">路径：</span>
-                            <span className="font-mono truncate flex-1">{agent.path}</span>
-                            <button
-                              onClick={() => navigator.clipboard.writeText(agent.path || "")}
-                              className="p-1 hover:ilo-bg-soft rounded"
-                              title="复制路径"
-                            >
-                              <Link size={12} />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 mt-2">
-                        {agent.install_url && (
-                          <button
-                            onClick={() => handleInstall(agent)}
-                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-[#7C3AED] ilo-fg-onaccent hover:bg-[#6D28D9] transition-colors"
-                          >
-                            <Download size={12} />
-                            安装指南
-                          </button>
-                        )}
-                        {agent.install_command && (
-                          <button
-                            onClick={() => handleCopyCommand(agent)}
-                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-[#EDE9FE] text-[#7C3AED] hover:bg-[#DDD6FE] transition-colors"
-                          >
-                            <Terminal size={12} />
-                            复制命令
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+                agent={agent}
+                isExpanded={expanded.has(agent.id)}
+                onToggleExpand={() => toggleExpanded(agent.id)}
+                onOpenUrl={handleOpenUrl}
+                onCopy={handleCopy}
+                onSaveConfig={setAgentConfig}
+                onClearConfig={clearAgentConfig}
+              />
             ))}
           </div>
         )}
@@ -320,3 +199,295 @@ export const AgentsPanel: React.FC = () => {
 };
 
 export default AgentsPanel;
+
+interface AgentCardProps {
+  agent: AgentInfo;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  onOpenUrl: (url: string) => void;
+  onCopy: (text: string) => void;
+  onSaveConfig: (id: string, config: AgentConfig) => Promise<void>;
+  onClearConfig: (id: string) => Promise<void>;
+}
+
+const AgentCard: React.FC<AgentCardProps> = ({
+  agent,
+  isExpanded,
+  onToggleExpand,
+  onOpenUrl,
+  onCopy,
+  onSaveConfig,
+  onClearConfig,
+}) => {
+  const [cliPath, setCliPath] = useState<string>(agent.env && agent.path ? agent.path : "");
+  const [envText, setEnvText] = useState<string>(() => {
+    const entries = Object.entries(agent.env ?? {});
+    return entries.map(([k, v]) => `${k}=${v}`).join("\n");
+  });
+
+  const ready = agent.setup.status === "ready";
+  const needsInstall = agent.setup.status === "needs_install";
+  const needsLogin = agent.setup.status === "needs_login";
+  const misconfigured = agent.setup.status === "misconfigured";
+
+  const installCta = agent.setup.cta?.kind === "install_url"
+    ? { kind: "install_url" as const, url: agent.setup.cta.url }
+    : agent.setup.cta?.kind === "install_command"
+    ? { kind: "install_command" as const, command: agent.setup.cta.command }
+    : null;
+  const loginCta = agent.setup.cta?.kind === "login_hint" ? agent.setup.cta.command : null;
+
+  const authChip = () => {
+    if (!agent.available) return null;
+    switch (agent.auth.status) {
+      case "logged_in":
+        return (
+          <span className="auth-chip auth-chip--ok">
+            <Check size={10} />
+            已登录
+          </span>
+        );
+      case "logged_out":
+        return (
+          <span className="auth-chip auth-chip--warn">
+            <X size={10} />
+            未登录
+          </span>
+        );
+      case "not_required":
+        return <span className="auth-chip auth-chip--muted">无需认证</span>;
+      case "unknown":
+      default:
+        return (
+          <span className="auth-chip auth-chip--muted" title={agent.auth.hint ?? undefined}>
+            状态未知
+          </span>
+        );
+    }
+  };
+
+  const handleSaveConfig = () => {
+    const env: Record<string, string> = {};
+    for (const line of envText.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const idx = trimmed.indexOf("=");
+      if (idx <= 0) continue;
+      env[trimmed.slice(0, idx).trim()] = trimmed.slice(idx + 1);
+    }
+    const cfg: AgentConfig = {
+      cli_path: cliPath.trim() || null,
+      env,
+    };
+    void onSaveConfig(agent.id, cfg);
+  };
+
+  return (
+    <div
+      className={`p-4 rounded-xl border transition-all ${
+        agent.available
+          ? "ilo-bg-elev border-[#DDD6FE] hover:border-[#7C3AED]"
+          : "bg-[#FAF5FF] border-[#E9E3F9] hover:border-[#A78BFA]"
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+            agent.available ? "bg-green-100" : "bg-[#EDE9FE]"
+          }`}
+        >
+          <Terminal
+            size={20}
+            className={agent.available ? "text-green-600" : "text-[#7C3AED]"}
+          />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <h3 className="font-semibold text-[#1E1B4B]">{agent.display_name}</h3>
+            {agent.available ? (
+              <span className="px-2 py-0.5 text-xs rounded bg-green-100 text-green-700 flex items-center gap-1">
+                <Check size={10} />
+                已安装
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 text-xs rounded bg-[#EDE9FE] text-[#7C3AED] flex items-center gap-1">
+                <X size={10} />
+                未安装
+              </span>
+            )}
+            {ready && (
+              <span className="px-2 py-0.5 text-xs rounded bg-green-100 text-green-700 flex items-center gap-1">
+                <Check size={10} />
+                就绪
+              </span>
+            )}
+            {authChip()}
+            {agent.supports_streaming && agent.available && (
+              <span className="px-2 py-0.5 text-xs rounded bg-[#CFFAFE] text-[#0891B2]">流式</span>
+            )}
+          </div>
+
+          <p className="text-sm text-[#6B7280] mb-2 line-clamp-2">
+            {agent.description}
+          </p>
+
+          {/* Setup CTA — driven by the backend's `setup.status`. We
+              deliberately do not show the install buttons when the
+              binary is already on disk, even if a stale `cli_path`
+              override used to make it look uninstalled: the panel
+              follows the resolved path, not the user's intent. */}
+          {needsInstall && installCta?.kind === "install_url" && (
+            <div className="flex items-center gap-2 mt-2">
+              <button
+                onClick={() => onOpenUrl(installCta.url)}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-[#7C3AED] ilo-fg-onaccent hover:bg-[#6D28D9] transition-colors"
+              >
+                <Download size={12} />
+                安装指南
+              </button>
+              {agent.install_command && (
+                <button
+                  onClick={() => onCopy(agent.install_command!)}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-[#EDE9FE] text-[#7C3AED] hover:bg-[#DDD6FE] transition-colors"
+                >
+                  <Terminal size={12} />
+                  复制命令
+                </button>
+              )}
+              <span className="text-xs text-[#9CA3AF]">{agent.setup.message}</span>
+            </div>
+          )}
+          {needsInstall && installCta?.kind === "install_command" && (
+            <div className="flex items-center gap-2 mt-2">
+              <button
+                onClick={() => onCopy(installCta.command)}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-[#7C3AED] ilo-fg-onaccent hover:bg-[#6D28D9] transition-colors"
+              >
+                <Terminal size={12} />
+                复制安装命令
+              </button>
+              {agent.install_url && (
+                <button
+                  onClick={() => onOpenUrl(agent.install_url!)}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-[#EDE9FE] text-[#7C3AED] hover:bg-[#DDD6FE] transition-colors"
+                >
+                  <Download size={12} />
+                  安装指南
+                </button>
+              )}
+              <span className="text-xs text-[#9CA3AF]">{agent.setup.message}</span>
+            </div>
+          )}
+          {needsLogin && (
+            <div className="flex items-center gap-2 mt-2">
+              {loginCta && (
+                <button
+                  onClick={() => onCopy(loginCta)}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-[#7C3AED] ilo-fg-onaccent hover:bg-[#6D28D9] transition-colors"
+                >
+                  <Terminal size={12} />
+                  复制登录命令
+                </button>
+              )}
+              <span className="text-xs text-[#9CA3AF]">{agent.setup.message}</span>
+            </div>
+          )}
+          {misconfigured && (
+            <p className="auth-hint auth-hint--warn mt-1">{agent.setup.message}</p>
+          )}
+
+          {/* Auth-hint row (e.g. "needs ANTHROPIC_API_KEY"). Reuse the
+              shape that pre-dates the `setup.status` field so the
+              "logged out" path still gets the actionable hint. */}
+          {agent.available && needsLogin && agent.auth.hint && (
+            <p className="auth-hint auth-hint--muted mt-1">
+              <span className="auth-hint__label">提示：</span>
+              {agent.auth.hint}
+            </p>
+          )}
+
+          {agent.available && (
+            <div className="space-y-1 text-xs text-[#9CA3AF] mt-2">
+              {agent.version && (
+                <div className="flex items-center gap-1">
+                  <span className="text-[#A3A3A6]">版本：</span>
+                  <span className="font-mono">{agent.version}</span>
+                </div>
+              )}
+              {agent.path && (
+                <div className="flex items-center gap-1">
+                  <span className="text-[#A3A3A6]">路径：</span>
+                  <span className="font-mono truncate flex-1">{agent.path}</span>
+                  <button
+                    onClick={() => onCopy(agent.path || "")}
+                    className="p-1 hover:ilo-bg-soft rounded"
+                    title="复制路径"
+                  >
+                    <Link size={12} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Settings card — user override of cli_path + env. Closed
+              by default. Empty state shows the message; populated
+              state shows a tiny "clear" affordance. */}
+          <div className="mt-3">
+            <button
+              onClick={onToggleExpand}
+              className="flex items-center gap-1 text-xs text-[#7C3AED] hover:text-[#6D28D9]"
+            >
+              <Settings size={12} />
+              {isExpanded ? "收起配置" : "设置"}
+            </button>
+            {isExpanded && (
+              <div className="mt-2 p-3 rounded-lg bg-white border border-[#DDD6FE] space-y-2">
+                <div>
+                  <label className="block text-xs text-[#6B7280] mb-1">CLI 路径覆盖</label>
+                  <input
+                    type="text"
+                    value={cliPath}
+                    onChange={(e) => setCliPath(e.target.value)}
+                    placeholder="留空则用 PATH 中找到的"
+                    className="w-full px-2 py-1.5 text-xs font-mono border border-[#DDD6FE] rounded focus:outline-none focus:border-[#7C3AED]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#6B7280] mb-1">
+                    环境变量 (每行 KEY=VALUE)
+                  </label>
+                  <textarea
+                    value={envText}
+                    onChange={(e) => setEnvText(e.target.value)}
+                    placeholder={"ANTHROPIC_BASE_URL=https://proxy\nANTHROPIC_API_KEY=sk-..."}
+                    rows={4}
+                    className="w-full px-2 py-1.5 text-xs font-mono border border-[#DDD6FE] rounded focus:outline-none focus:border-[#7C3AED]"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleSaveConfig}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[#7C3AED] ilo-fg-onaccent hover:bg-[#6D28D9]"
+                  >
+                    保存
+                  </button>
+                  <button
+                    onClick={() => void onClearConfig(agent.id)}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[#EDE9FE] text-[#7C3AED] hover:bg-[#DDD6FE]"
+                  >
+                    重置
+                  </button>
+                  {agent.env && Object.keys(agent.env).length > 0 && (
+                    <span className="text-xs text-[#9CA3AF]">已应用 {Object.keys(agent.env).length} 个环境变量</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
