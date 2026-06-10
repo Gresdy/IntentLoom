@@ -3,6 +3,7 @@ import type { KeyboardEvent } from "react";
 import { ArrowUp, Square, Zap, Hash, Lightbulb } from "lucide-react";
 import type { AppId } from "../../shared/types";
 import type { CliOption } from "../../lib/cliCapabilities";
+import type { ModelOption } from "../../config/cliPresets";
 import { Menu } from "../ui/Menu";
 import { useOpenclawSessionStore } from "@/stores/useOpenclawSessionStore";
 import { isOpenclawSessionSet } from "@/stores/useOpenclawSessionStore";
@@ -36,10 +37,21 @@ interface ComposerProps {
   modeSpec?: { flagTemplate: string; defaultId: string; options: CliOption[] };
   modeId: string | null;
   onModeChange: (id: string) => void;
-  /** Spec for the current CLI's reasoning dropdown. Undefined = hidden. */
+  /**
+   * Effective reasoning spec — already filtered against the
+   * current model's `supportsReasoning` flag. `undefined`
+   * means the dropdown should disappear entirely (the model
+   * does not have a reasoning knob). See
+   * `getEffectiveReasoningSpec` in `cliCapabilities.ts`.
+   */
   reasoningSpec?: { flagTemplate: string; defaultId: string; options: CliOption[] };
   reasoningId: string | null;
   onReasoningChange: (id: string) => void;
+  /** Models available for the current CLI. Empty = no picker. */
+  models: ModelOption[];
+  /** Currently selected model id. Null = "let the CLI default kick in". */
+  modelId: string | null;
+  onModelChange: (id: string) => void;
   onSend: (text: string) => void;
   onCancel: () => void;
 }
@@ -54,6 +66,9 @@ export function Composer({
   reasoningSpec,
   reasoningId,
   onReasoningChange,
+  models,
+  modelId,
+  onModelChange,
   onSend,
   onCancel,
 }: ComposerProps) {
@@ -221,6 +236,22 @@ export function Composer({
                 value={modeId}
                 options={modeSpec.options}
                 onChange={onModeChange}
+                downward={false}
+              />
+            )}
+            {/*
+              模型(左侧,在模式之后)。`models.length === 0` 时不渲染
+              下拉 — 这是 hermes / openclaw 等 "CLI 自己选模型"
+              的标识。`modelId` 为 null 时回退到 CLI 默认(由
+              `effectiveModelForCli` 在 send 时解析),所以下拉显示
+              永远从 `modelId` 读出,不会因为初始 null 闪烁。
+            */}
+            {models.length > 0 && (
+              <Menu
+                caption="模型"
+                value={modelId}
+                options={models}
+                onChange={onModelChange}
                 downward={false}
               />
             )}

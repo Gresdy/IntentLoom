@@ -226,6 +226,32 @@ pub struct StreamOptions {
     /// `-c model_reasoning_effort=<value>` (codex). Gemini does
     /// not expose a reasoning knob.
     pub reasoning: Option<String>,
+    /// Per-turn model override. Each adapter decides how to
+    /// translate it into argv / env:
+    ///   - claude  : `ANTHROPIC_MODEL=<model>` env var (Claude
+    ///     reads it from the environment, no CLI flag for this).
+    ///   - codex   : `-m <model>` flag.
+    ///   - gemini  : `-m <model>` flag.
+    ///   - opencode: `-m <model>` flag (placeholder; the binary
+    ///     is unverified — the flag is emitted so the next person
+    ///     who verifies it doesn't have to add a new option).
+    ///   - openclaw / hermes: ignored for now — both CLIs pick
+    ///     their own model from session / config.
+    ///
+    /// `None` means "do not pass any model hint" so the CLI
+    /// falls back to whatever is baked into its own config (the
+    /// common case for Anthropic / OpenAI OAuth sign-ins where
+    /// the user has not overridden the model). The front-end
+    /// also uses `None` when the composer dropdown is at its
+    /// default (i.e. the user hasn't picked a model yet).
+    ///
+    /// The string is forwarded verbatim — adapters do NOT
+    /// validate that the value is a real model id. Letting the
+    /// upstream CLI fail on an unknown model is the right
+    /// behaviour: surfacing the error through the existing
+    /// `friendlySendError` pipeline gives the user a much
+    /// clearer signal than a frontend-side validator would.
+    pub model: Option<String>,
     /// Working directory the CLI should run in. The frontend
     /// passes the workspace the user picked from the folder
     /// dialog so the spawned process (and any tools the CLI

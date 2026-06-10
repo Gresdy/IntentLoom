@@ -102,6 +102,28 @@ fn kill_process(pid: u32) -> bool {
     }
 }
 
+
+/// Re-emit `model` on the rebuilt Command so the per-CLI wire
+/// shape the adapter laid down survives the `resolve_binary`
+/// Command rewrite. Each adapter encodes model differently:
+///   - claude: ANTHROPIC_MODEL env var
+///   - codex / gemini / opencode: `-m <model>` flag
+/// `openclaw` / `hermes` own their own model config — this
+/// helper is a no-op for them.
+fn apply_model_to_command(cmd: &mut Command, cli: &str, model: Option<&str>) {
+    let Some(model) = model else { return };
+    if model.is_empty() { return; }
+    match cli {
+        "claude" | "claude-code" => {
+            cmd.env("ANTHROPIC_MODEL", model);
+        }
+        "codex" | "gemini" | "opencode" => {
+            cmd.arg("-m").arg(model);
+        }
+        _ => {} // openclaw / hermes — no flag yet
+    }
+}
+
 /// Build the [`Command`] used to invoke `cli` for streaming output.
 /// Every adapter owns its own flag layout (Claude uses
 /// `--print-format-json --prompt`, Gemini uses `-p --output-format
@@ -167,6 +189,15 @@ fn build_command(cli: &str, prompt: &str, opts: &StreamOptions) -> Result<Comman
     // need to write to stdin.
     let mut cmd = Command::new(resolved);
     cmd.args(args);
+    // Re-emit `opts.model` on the rebuilt Command — the adapter set
+    // `ANTHROPIC_MODEL` env or `-m <model>` flag on the original
+    // `adapter_cmd`, but `Command::new(resolved)` + `cmd.args(args)`
+    // does not copy envs or post-args flags across. We dispatch
+    // through the same adapter so the per-CLI wire shape stays
+    // in one place. The `resolve_binary` rewrite only fires on
+    // macOS `.app` PATH-mismatch; on a normal PATH lookup the
+    // adapter's command is returned unchanged so this is a no-op.
+    apply_model_to_command(&mut cmd, cli, opts.model.as_deref());
     cmd.stdin(std::process::Stdio::null());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
@@ -213,10 +244,18 @@ pub async fn call_ai(
     prompt: String,
     mode: Option<String>,
     reasoning: Option<String>,
+    // Per-turn model override; see StreamOptions::model.
+    model: Option<String>,
     cwd: Option<String>,
     openclaw_session: Option<crate::agents::OpenClawSession>,
 ) -> Result<String, String> {
-    let opts = StreamOptions { mode, reasoning, cwd, openclaw_session };
+    let opts = StreamOptions {
+        mode,
+        reasoning,
+        model,
+        cwd,
+        openclaw_session,
+    };
     let mut cmd = build_command(&cli, &prompt, &opts)?;
     let output = cmd
         .stdout(Stdio::piped())
@@ -249,6 +288,14 @@ pub async fn stream_ai(
     session_id: Option<String>,
     mode: Option<String>,
     reasoning: Option<String>,
+    // Per-turn model override; see StreamOptions::model.
+    // `None` means "do not pass any model hint" so the CLI
+    // falls back to whatever is baked into its own config.
+    // Forwarded verbatim — adapters do not validate the
+    // value against a real model list; the upstream CLI's
+    // "unknown model" error flows back through
+    // friendlySendError.
+    model: Option<String>,
     cwd: Option<String>,
     openclaw_session: Option<crate::agents::OpenClawSession>,
 ) -> Result<String, String> {
@@ -276,7 +323,13 @@ pub async fn stream_ai(
         )
     });
 
-    let opts = StreamOptions { mode, reasoning, cwd, openclaw_session };
+    let opts = StreamOptions {
+        mode,
+        reasoning,
+        model,
+        cwd,
+        openclaw_session,
+    };
     let mut child = build_command(&cli, &prompt, &opts)?
         .spawn()
         .map_err(|e| format!("Failed to spawn {cli}: {e}"))?;
@@ -380,6 +433,7 @@ pub async fn send_chat_message(
     project_path: Option<String>,
     mode: Option<String>,
     reasoning: Option<String>,
+    model: Option<String>,
     openclaw_session: Option<crate::agents::OpenClawSession>,
 ) -> Result<String, String> {
     let prefix = project_path
@@ -394,6 +448,7 @@ pub async fn send_chat_message(
         Some(conversation_id),
         mode,
         reasoning,
+        model,
         project_path,
         openclaw_session,
     )

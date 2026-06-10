@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "./tauri";
 import { useConversationStore } from "@/stores/conversationStore";
 import { useMessageStore } from "@/stores/messageStore";
-import { useModelStore } from "@/stores/useModelStore";
+import { useModelStore, effectiveModelForCli } from "@/stores/useModelStore";
 import { useAgentStore } from "@/lib/useAgents";
 import { resolveModeId, resolveReasoningId } from "@/stores/useComposerPrefsStore";
 import { resolveOpenclawSession } from "@/stores/useOpenclawSessionStore";
@@ -641,6 +641,14 @@ export function useReasonixController() {
         // "no flag emitted" — the CLI's own missing-
         // session error then surfaces through
         // friendlySendError.
+        // `model` is read from `useModelStore.currentModelByCli`
+        // (with per-CLI default fallback in
+        // `effectiveModelForCli`). Empty string becomes `null`
+        // on the wire so the Rust `StreamOptions::model` stays
+        // `None` for CLIs that do not have a picker
+        // (hermes / openclaw) — the adapters ignore the field
+        // in that case, so passing `null` is harmless.
+        const modelId = effectiveModelForCli(useModelStore.getState(), cli);
         await invoke("send_chat_message", {
           cli,
           message: text,
@@ -648,6 +656,7 @@ export function useReasonixController() {
           projectPath: cwd ?? null,
           mode: resolveModeId(cli as Parameters<typeof resolveModeId>[0]),
           reasoning: resolveReasoningId(cli as Parameters<typeof resolveReasoningId>[0]),
+          model: modelId && modelId.length > 0 ? modelId : null,
           openclawSession:
             cli === "openclaw" ? resolveOpenclawSession() : null,
         });

@@ -80,6 +80,13 @@ impl AgentAdapter for ClaudeAdapter {
                 cmd.arg("--effort").arg(effort);
             }
         }
+        // `ANTHROPIC_MODEL=<model>` env. Claude reads the model
+        // name from the environment; there is no `--model` flag.
+        if let Some(model) = opts.model.as_deref() {
+            if !model.is_empty() {
+                cmd.env("ANTHROPIC_MODEL", model);
+            }
+        }
         cmd
     }
 
@@ -202,4 +209,34 @@ mod tests {
         assert_eq!(args[mode_idx + 1], "bypassPermissions");
         assert_eq!(args[effort_idx + 1], "max");
     }
+
+    #[test]
+    fn build_stream_command_sets_anthropic_model_env_when_provided() {
+        let mut opts = StreamOptions::default();
+        opts.model = Some("claude-sonnet-4.5".to_string());
+        let cmd = ClaudeAdapter.build_stream_command("hi", &opts);
+        let std_cmd = cmd.as_std();
+        let envs: Vec<(&std::ffi::OsStr, &std::ffi::OsStr)> = std_cmd
+            .get_envs()
+            .filter_map(|(k, v)| v.map(|val| (k, val)))
+            .collect();
+        let anthropic = envs
+            .iter()
+            .find(|(k, _)| k.to_string_lossy() == "ANTHROPIC_MODEL");
+        assert!(anthropic.is_some(), "expected ANTHROPIC_MODEL env var");
+        assert_eq!(anthropic.unwrap().1.to_string_lossy(), "claude-sonnet-4.5");
+    }
+
+    #[test]
+    fn build_stream_command_omits_anthropic_model_when_unset() {
+        let cmd = ClaudeAdapter.build_stream_command("hi", &StreamOptions::default());
+        let std_cmd = cmd.as_std();
+        for (k, _) in std_cmd
+            .get_envs()
+            .filter_map(|(k, v)| v.map(|val| (k, val)))
+        {
+            assert_ne!(k.to_string_lossy(), "ANTHROPIC_MODEL");
+        }
+    }
+
 }
