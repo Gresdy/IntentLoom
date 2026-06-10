@@ -1,11 +1,12 @@
 import { useCallback, useMemo, useEffect, useState } from "react";
+import type { AppId } from "../shared/types";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "./tauri";
 import { useConversationStore } from "@/stores/conversationStore";
 import { useMessageStore } from "@/stores/messageStore";
 import { useModelStore, effectiveModelForCli } from "@/stores/useModelStore";
 import { useAgentStore } from "@/lib/useAgents";
-import { resolveModeId, resolveReasoningId } from "@/stores/useComposerPrefsStore";
+import { resolveModeId, resolveReasoningId, useComposerPrefsStore } from "@/stores/useComposerPrefsStore";
 import { resolveOpenclawSession } from "@/stores/useOpenclawSessionStore";
 import { buildArtifactSummary, hasAnyArtifact } from "@/lib/artifactTally";
 import type { ArtifactTally } from "@/lib/artifactTally";
@@ -649,13 +650,21 @@ export function useReasonixController() {
         // (hermes / openclaw) — the adapters ignore the field
         // in that case, so passing `null` is harmless.
         const modelId = effectiveModelForCli(useModelStore.getState(), cli);
+        // mode / reasoning / model are all read from the
+        // composer prefs + model stores at send time. We pull
+        // the maps once via `getState()` and hand them to the
+        // resolvers so the data flow stays explicit (no
+        // hidden `getState()` call inside the helper). The
+        // store update happened at click time and the maps
+        // are now in sync with the user's most recent pick.
+        const composerState = useComposerPrefsStore.getState();
         await invoke("send_chat_message", {
           cli,
           message: text,
           conversationId: conv.id,
           projectPath: cwd ?? null,
-          mode: resolveModeId(cli as Parameters<typeof resolveModeId>[0]),
-          reasoning: resolveReasoningId(cli as Parameters<typeof resolveReasoningId>[0]),
+          mode: resolveModeId(cli as AppId, composerState.modeByCli),
+          reasoning: resolveReasoningId(cli as AppId, composerState.reasoningByCli),
           model: modelId && modelId.length > 0 ? modelId : null,
           openclawSession:
             cli === "openclaw" ? resolveOpenclawSession() : null,

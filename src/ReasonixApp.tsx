@@ -32,7 +32,7 @@ import type { AppId } from "./shared/types";
 import { invoke } from "./lib/tauri";
 import { useConversationStore, selectCurrentAgentId } from "./stores/conversationStore";
 import { useAgentStore, refreshAgentList } from "./lib/useAgents";
-import { getModeSpec, getEffectiveReasoningSpec } from "./lib/cliCapabilities";
+import { getModeSpec, getReasoningSpec } from "./lib/cliCapabilities";
 import { modelsForCli } from "./config/cliPresets";
 import {
   useComposerPrefsStore,
@@ -148,7 +148,16 @@ export const ReasonixApp: React.FC = () => {
   } = useReasonixController();
 
   // Per-CLI mode + reasoning selection lives in its own store so it
-  // survives CLI switches and is read by reasonixAdapter at send time.
+  // The maps themselves MUST be subscribed here, otherwise the
+  // composer would only re-render when an unrelated store (the
+  // model picker, the agent list, ...) fires a render. With
+  // these subscriptions, picking a mode or reasoning value
+  // updates the composer in the same tick — the user sees
+  // immediate feedback. Each map is keyed by `AppId` so
+  // switching CLIs restores the right value rather than
+  // stomping it.
+  const modeByCli = useComposerPrefsStore((s) => s.modeByCli);
+  const reasoningByCli = useComposerPrefsStore((s) => s.reasoningByCli);
   const setModeForCli = useComposerPrefsStore(
     (s: ReturnType<typeof useComposerPrefsStore.getState>) => s.setMode,
   );
@@ -696,13 +705,10 @@ export const ReasonixApp: React.FC = () => {
             cli={currentApp as AppId}
             isAvailable={!isUnavailable(currentApp as AppId)}
             modeSpec={getModeSpec(currentApp as AppId)}
-            modeId={resolveModeId(currentApp as AppId)}
+            modeId={resolveModeId(currentApp as AppId, modeByCli)}
             onModeChange={(id: string) => setModeForCli(currentApp as AppId, id)}
-            reasoningSpec={getEffectiveReasoningSpec(
-              currentApp as AppId,
-              currentModelByCli[currentApp as AppId] ?? null,
-            )}
-            reasoningId={resolveReasoningId(currentApp as AppId)}
+            reasoningSpec={getReasoningSpec(currentApp as AppId)}
+            reasoningId={resolveReasoningId(currentApp as AppId, reasoningByCli)}
             onReasoningChange={(id: string) => setReasoningForCli(currentApp as AppId, id)}
             models={modelsForCli(currentApp as AppId)}
             modelId={currentModelByCli[currentApp as AppId] ?? null}

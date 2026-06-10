@@ -16,7 +16,6 @@
 // the call site falls back to the CLI's defaults.
 
 import type { AppId } from "../shared/types";
-import { modelSupportsReasoning } from "../config/cliPresets";
 
 export type CliOption = {
   /** Stable id used as the React `key` and as the persisted selection. */
@@ -133,36 +132,7 @@ export function getReasoningSpec(cli: AppId): ReasoningSpec | undefined {
   return CLI_CAPABILITIES[cli]?.reasoning;
 }
 
-/**
- * Resolve the reasoning spec the composer should actually
- * render, accounting for the current model's reasoning
- * support. Returns the spec only when both:
- *   1. the CLI exposes a reasoning knob (claude / codex), AND
- *   2. the selected model is in the `supportsReasoning` set
- *      (or the model id is unknown / unset, which we treat
- *      as "yes" for forward-compat).
- *
- * Used by the composer to keep the reasoning dropdown in
- * lockstep with the model dropdown — pick a no-reasoning
- * model and the reasoning dropdown disappears; pick a
- * reasoning-capable one and it comes back with the same
- * previously-selected effort level (the `useComposerPrefs`
- * store is keyed by CLI, so the choice survives the model
- * switch).
- *
- * Returning `undefined` is the composer's signal to hide the
- * dropdown entirely (rather than render a disabled one) so
- * the visual change matches the "联动" the user expects.
- */
-export function getEffectiveReasoningSpec(
-  cli: AppId,
-  modelId: string | null | undefined,
-): ReasoningSpec | undefined {
-  const spec = getReasoningSpec(cli);
-  if (!spec) return undefined;
-  if (!modelSupportsReasoning(cli, modelId)) return undefined;
-  return spec;
-}
+
 
 /**
  * Build the argv fragment for the selected option. Returns `[]` when

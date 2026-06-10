@@ -6,7 +6,7 @@ import {
   modelSupportsReasoning,
   modelsForCli,
 } from "../config/cliPresets";
-import { getEffectiveReasoningSpec, getModeSpec } from "../lib/cliCapabilities";
+import { getModeSpec, getReasoningSpec } from "../lib/cliCapabilities";
 
 describe("cliPresets: per-CLI model catalog", () => {
   it("returns a non-empty model list for the 4 main CLIs", () => {
@@ -79,53 +79,39 @@ describe("cliPresets: findModel", () => {
   });
 });
 
-describe("cliPresets ↔ cliCapabilities: reasoning / model linkage", () => {
-  it("claude-haiku-4 disables the reasoning dropdown", () => {
-    expect(modelSupportsReasoning("claude", "claude-haiku-4")).toBe(false);
-    expect(getEffectiveReasoningSpec("claude", "claude-haiku-4")).toBeUndefined();
+describe("cliCapabilities: mode / model / reasoning are independent", () => {
+  // The three composer dropdowns are deliberately not linked —
+  // the user explicitly asked for them to be independent
+  // selectors. Earlier code had a `getEffectiveReasoningSpec`
+  // that hid the reasoning dropdown when the chosen model
+  // lacked reasoning; that helper was removed in favour of a
+  // straight `getReasoningSpec(cli)` lookup so the user keeps
+  // the reasoning control no matter which model they pick.
+  it("reasoning spec is rendered whenever the CLI has one — no model gating", () => {
+    expect(getReasoningSpec("claude")).toBeDefined();
+    expect(getReasoningSpec("codex")).toBeDefined();
+    // gemini has no reasoning spec → spec is undefined regardless
+    // of the model.
+    expect(getReasoningSpec("gemini")).toBeUndefined();
+    expect(getReasoningSpec("hermes")).toBeUndefined();
+    expect(getReasoningSpec("openclaw")).toBeUndefined();
   });
 
-  it("claude-sonnet-4.5 keeps the reasoning dropdown", () => {
-    expect(modelSupportsReasoning("claude", "claude-sonnet-4.5")).toBe(true);
-    expect(getEffectiveReasoningSpec("claude", "claude-sonnet-4.5")).toBeDefined();
-  });
-
-  it("claude-opus-4 keeps the reasoning dropdown", () => {
-    expect(modelSupportsReasoning("claude", "claude-opus-4")).toBe(true);
-    expect(getEffectiveReasoningSpec("claude", "claude-opus-4")).toBeDefined();
-  });
-
-  it("gemini never exposes reasoning (no spec in CLI_CAPABILITIES)", () => {
-    // gemini has no reasoning spec on the CLI side, so the
-    // effective helper returns undefined regardless of model.
-    expect(getEffectiveReasoningSpec("gemini", "gemini-2.5-pro")).toBeUndefined();
-    expect(getEffectiveReasoningSpec("gemini", "gemini-2.5-flash")).toBeUndefined();
-  });
-
-  it("codex's reasoning spec is preserved for reasoning-capable models", () => {
-    expect(getEffectiveReasoningSpec("codex", "gpt-5")).toBeDefined();
-    expect(getEffectiveReasoningSpec("codex", "o3")).toBeDefined();
-    // gpt-5-nano has supportsReasoning=false in the catalog
-    expect(getEffectiveReasoningSpec("codex", "gpt-5-nano")).toBeUndefined();
-  });
-
-  it("unknown model ids fall open (treat as reasoning-capable)", () => {
-    // Forward-compat: a model the catalog does not list yet
-    // should NOT collapse the dropdown. The user might be on
-    // a CLI whose bundled `modelsForCli` lags behind the
-    // upstream release.
-    expect(getEffectiveReasoningSpec("claude", "unknown-model-xyz")).toBeDefined();
-    expect(getEffectiveReasoningSpec("codex", "future-gpt-6")).toBeDefined();
-  });
-
-  it("mode spec is unaffected by the model-selection gate", () => {
-    // Mode dropdown is independent — every CLI that has a
-    // mode spec keeps it regardless of which model is
-    // selected. The user complained about the model↔reasoning
-    // link, not model↔mode.
+  it("mode spec is rendered whenever the CLI has one", () => {
     expect(getModeSpec("claude")).toBeDefined();
     expect(getModeSpec("codex")).toBeDefined();
     expect(getModeSpec("gemini")).toBeDefined();
     expect(getModeSpec("hermes")).toBeUndefined();
+  });
+
+  it("modelSupportsReasoning still classifies correctly (used for future UI hints)", () => {
+    // The `supportsReasoning` flag on the model catalog stays
+    // as a *passive* signal — the user can still pick a no-
+    // reasoning model and the CLI's downstream behaviour
+    // (gemini: silently dropped; claude/codex: still emitted)
+    // owns whether the flag is honoured.
+    expect(modelSupportsReasoning("claude", "claude-haiku-4")).toBe(false);
+    expect(modelSupportsReasoning("claude", "claude-sonnet-4.5")).toBe(true);
+    expect(modelSupportsReasoning("claude", "claude-opus-4")).toBe(true);
   });
 });
