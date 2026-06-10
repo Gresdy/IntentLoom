@@ -198,6 +198,17 @@ fn build_command(cli: &str, prompt: &str, opts: &StreamOptions) -> Result<Comman
     // macOS `.app` PATH-mismatch; on a normal PATH lookup the
     // adapter's command is returned unchanged so this is a no-op.
     apply_model_to_command(&mut cmd, cli, opts.model.as_deref());
+    // Apply the frontend's provider env vars (ANTHROPIC_BASE_URL,
+    // ANTHROPIC_AUTH_TOKEN, OPENAI_BASE_URL, etc.) on the rebuilt
+    // Command. The `Command::new(resolved)` + `cmd.args(args)` path
+    // inherits the parent process' env by default; calling
+    // `cmd.envs(...)` merges the provider's overrides on top so
+    // a DeepSeek / Bailian / custom provider can redirect the
+    // CLI to a different endpoint without the user touching
+    // their shell profile. An empty map is a no-op.
+    if !opts.env.is_empty() {
+        cmd.envs(&opts.env);
+    }
     cmd.stdin(std::process::Stdio::null());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
@@ -254,6 +265,7 @@ pub async fn call_ai(
         reasoning,
         model,
         cwd,
+        env: HashMap::new(),
         openclaw_session,
     };
     let mut cmd = build_command(&cli, &prompt, &opts)?;
@@ -296,6 +308,7 @@ pub async fn stream_ai(
     // "unknown model" error flows back through
     // friendlySendError.
     model: Option<String>,
+    env: Option<HashMap<String, String>>,
     cwd: Option<String>,
     openclaw_session: Option<crate::agents::OpenClawSession>,
 ) -> Result<String, String> {
@@ -328,6 +341,7 @@ pub async fn stream_ai(
         reasoning,
         model,
         cwd,
+        env: env.unwrap_or_default(),
         openclaw_session,
     };
     let mut child = build_command(&cli, &prompt, &opts)?
@@ -506,6 +520,7 @@ pub async fn send_chat_message(
     mode: Option<String>,
     reasoning: Option<String>,
     model: Option<String>,
+    env: Option<HashMap<String, String>>,
     openclaw_session: Option<crate::agents::OpenClawSession>,
 ) -> Result<String, String> {
     let prefix = project_path
@@ -521,6 +536,7 @@ pub async fn send_chat_message(
         mode,
         reasoning,
         model,
+        env,
         project_path,
         openclaw_session,
     )

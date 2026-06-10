@@ -33,6 +33,7 @@ pub mod config;
 pub use config::{AgentConfig, AgentConfigStore};
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -283,6 +284,16 @@ pub struct StreamOptions {
     /// adapter emits the corresponding flag in its
     /// `build_stream_command`.
     pub openclaw_session: Option<OpenClawSession>,
+    /// Per-turn environment variable overrides. The frontend
+    /// populates this from the selected provider's
+    /// `settingsConfig.env` (e.g. `ANTHROPIC_BASE_URL`,
+    /// `ANTHROPIC_AUTH_TOKEN`, `OPENAI_BASE_URL`,
+    /// `OPENAI_API_KEY`). An empty map means "inherit the
+    /// parent process' environment", which is the correct
+    /// behaviour for a user who has not picked a provider
+    /// preset (the CLI reads the shell's env or its own
+    /// settings file at spawn time).
+    pub env: HashMap<String, String>,
 }
 
 /// OpenClaw session selector. Exactly ONE of the three fields

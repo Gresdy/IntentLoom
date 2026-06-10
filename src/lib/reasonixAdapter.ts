@@ -676,6 +676,41 @@ export function useReasonixController() {
         // store update happened at click time and the maps
         // are now in sync with the user's most recent pick.
         const composerState = useComposerPrefsStore.getState();
+        // Read the selected provider's env vars (api_key, api_base)
+        // from the model store. The provider preset system in
+        // providerPresets.ts bundles env vars per provider (e.g.
+        // DeepSeek's ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN);
+        // we forward them as `env` so the spawned CLI connects to
+        // the right endpoint. Empty when no provider is selected.
+        const providerId = useModelStore.getState().currentProviderId;
+        const provider = providerId
+          ? useModelStore.getState().providers[providerId]
+          : null;
+        const env: Record<string, string> = {};
+        if (provider) {
+          if (provider.api_base) {
+            // Map provider.api_base to the matching CLI env var.
+            // Claude uses ANTHROPIC_BASE_URL, Codex uses
+            // OPENAI_BASE_URL, Gemini uses GEMINI_BASE_URL.
+            // The `cli` string tells us which one to set.
+            if (cli === "claude" || cli === "claude-code") {
+              env["ANTHROPIC_BASE_URL"] = provider.api_base;
+            } else if (cli === "codex") {
+              env["OPENAI_BASE_URL"] = provider.api_base;
+            } else if (cli === "gemini") {
+              env["GEMINI_BASE_URL"] = provider.api_base;
+            }
+          }
+          if (provider.api_key) {
+            if (cli === "claude" || cli === "claude-code") {
+              env["ANTHROPIC_AUTH_TOKEN"] = provider.api_key;
+            } else if (cli === "codex") {
+              env["OPENAI_API_KEY"] = provider.api_key;
+            } else if (cli === "gemini") {
+              env["GEMINI_API_KEY"] = provider.api_key;
+            }
+          }
+        }
         await invoke("send_chat_message", {
           cli,
           message: text,
@@ -684,6 +719,7 @@ export function useReasonixController() {
           mode: resolveModeId(cli as AppId, composerState.modeByCli),
           reasoning: resolveReasoningId(cli as AppId, composerState.reasoningByCli),
           model: modelId && modelId.length > 0 ? modelId : null,
+          env: Object.keys(env).length > 0 ? env : null,
           openclawSession:
             cli === "openclaw" ? resolveOpenclawSession() : null,
         });
