@@ -7,11 +7,8 @@ import {
   Sparkles,
   FileCode,
   Server,
-  BarChart3,
-  ScrollText,
   Briefcase,
   History as HistoryIcon,
-  Cpu,
   Search as SearchIcon,
 } from "lucide-react";
 
@@ -28,6 +25,10 @@ type Tab = {
 // (so we don't have to lazy-import every panel here). The "ok" / "stub"
 // / "wip" badge is honest about which panels are real and which are
 // placeholders until their backend lands.
+// Note: "用量" / "日志" / "模型" moved to the Settings drawer (the user
+// wanted those administrative panels to live in one place). They are
+// still reachable from this list indirectly: opening a panel here
+// (via Cmd+Shift+T) now just lands on the closest sidebar item.
 const TABS: Tab[] = [
   // Hermes lives in ALL_AGENTS in the top tab as a peer of Claude /
   // Codex; the side panel was removed in favour of a chat-only path.
@@ -36,11 +37,8 @@ const TABS: Tab[] = [
   { key: "skills",   label: "Skills",    icon: <Sparkles size={14} />,    description: "可复用的 prompt 模板与工具集合(本项目最扎实的子系统)",           status: "ok" },
   { key: "prompts",  label: "Prompts",   icon: <FileCode size={14} />,    description: "系统提示词管理",                                                    status: "ok" },
   { key: "mcp",      label: "MCP",       icon: <Server size={14} />,      description: "MCP(Model Context Protocol)服务器配置",                            status: "ok" },
-  { key: "usage",    label: "用量统计",  icon: <BarChart3 size={14} />,   description: "token / cost 用量统计",                                            status: "ok" },
-  { key: "logs",     label: "日志",      icon: <ScrollText size={14} />,  description: "查看应用与 CLI 输出日志",                                          status: "ok" },
   { key: "expert",   label: "专家",      icon: <Briefcase size={14} />,   description: "领域专家配置(路由 / 提示词 / 工具集合)",                          status: "ok" },
   { key: "sessions", label: "会话",      icon: <HistoryIcon size={14} />, description: "历史会话管理(resume / delete / rename)",                           status: "ok" },
-  { key: "model",    label: "模型",      icon: <Cpu size={14} />,         description: "Provider / API key 配置",                                          status: "ok" },
   { key: "search",   label: "搜索",      icon: <SearchIcon size={14} />,  description: "代码搜索",                                                          status: "ok" },
 ];
 

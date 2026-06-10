@@ -1,19 +1,41 @@
-import { X, Sun, Moon, Monitor, Palette, Type, Keyboard, Info, Cpu } from "lucide-react";
-import { useState } from "react";
+import { X, Sun, Moon, Monitor, Palette, Type, Keyboard, Info, Cpu, ChartBar, ScrollText } from "lucide-react";
+import { lazy, Suspense, useState } from "react";
 import { useThemeStore, ACCENT_COLORS_LIST, FONT_SIZE_OPTIONS } from "../../stores/useThemeStore";
+import { ModelPanel } from "./ModelPanel";
+
+// Heavy panels (originally lazy-loaded behind the sidebar popup) are
+// re-used here so the Settings drawer doesn't pay their bundle cost up
+// front either.
+const UsageDashboard = lazy(() =>
+  import("../LeftPanel/UsageDashboard").then(m => ({ default: m.UsageDashboard })),
+);
+const LogsPanel = lazy(() =>
+  import("../LeftPanel/LogsPanel").then(m => ({ default: m.LogsPanel })),
+);
 
 interface SettingsDrawerProps {
   onClose: () => void;
 }
 
-type SettingsTab = "appearance" | "shortcuts" | "about";
+type SettingsTab =
+  | "appearance"
+  | "model"
+  | "usage"
+  | "logs"
+  | "shortcuts"
+  | "about";
 
 export function SettingsDrawer({ onClose }: SettingsDrawerProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("appearance");
   const { mode, setMode, accentColor, setAccentColor, fontSize, setFontSize } = useThemeStore();
 
+  // 六个分类：外观 / 模型 / 用量 / 日志 / 快捷键 / 关于。
+  // 三个辅助型面板（模型/用量/日志）从左侧菜单搬进来，跟外观/快捷键/关于并排。
   const tabs = [
     { id: "appearance" as const, label: "外观", icon: <Palette size={14} /> },
+    { id: "model" as const, label: "模型", icon: <Cpu size={14} /> },
+    { id: "usage" as const, label: "用量", icon: <ChartBar size={14} /> },
+    { id: "logs" as const, label: "日志", icon: <ScrollText size={14} /> },
     { id: "shortcuts" as const, label: "快捷键", icon: <Keyboard size={14} /> },
     { id: "about" as const, label: "关于", icon: <Info size={14} /> },
   ];
@@ -32,44 +54,72 @@ export function SettingsDrawer({ onClose }: SettingsDrawerProps) {
           </button>
         </header>
 
-        {/* Tab 导航 */}
-        <div className="flex border-b ilo-border-soft">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm transition-colors ${
-                activeTab === tab.id ? "border-b-2" : ""
-              }`}
-              style={{
-                borderColor: activeTab === tab.id ? "var(--accent)" : "transparent",
-                color: activeTab === tab.id ? "var(--accent)" : "var(--fg-dim)",
-              }}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {tab.icon}
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* 内容 */}
+        {/* 2-列布局：左侧纵向 nav，右侧内容 */}
         <div className="drawer__body">
-          {activeTab === "appearance" && (
-            <AppearanceSettings 
-              mode={mode} 
-              setMode={setMode}
-              accentColor={accentColor}
-              setAccentColor={setAccentColor}
-              fontSize={fontSize}
-              setFontSize={setFontSize}
-            />
-          )}
-          
-          {activeTab === "shortcuts" && <ShortcutsSettings />}
-          
-          {activeTab === "about" && <AboutSettings />}
+          <nav className="settings-nav" aria-label="设置分类">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                className={`settings-nav__item${
+                  activeTab === tab.id ? " active" : ""
+                }`}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                {tab.icon}
+                <span>{tab.label}</span>
+              </button>
+            ))}
+          </nav>
+
+          <div className="settings-content">
+            {activeTab === "appearance" && (
+              <AppearanceSettings
+                mode={mode}
+                setMode={setMode}
+                accentColor={accentColor}
+                setAccentColor={setAccentColor}
+                fontSize={fontSize}
+                setFontSize={setFontSize}
+              />
+            )}
+
+            {activeTab === "model" && <ModelPanel />}
+
+            {activeTab === "usage" && (
+              <Suspense fallback={<SettingsPanelFallback />}>
+                <UsageDashboard />
+              </Suspense>
+            )}
+
+            {activeTab === "logs" && (
+              <Suspense fallback={<SettingsPanelFallback />}>
+                <LogsPanel />
+              </Suspense>
+            )}
+
+            {activeTab === "shortcuts" && <ShortcutsSettings />}
+
+            {activeTab === "about" && <AboutSettings />}
+          </div>
         </div>
       </aside>
+    </div>
+  );
+}
+
+function SettingsPanelFallback() {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: 240,
+        color: "var(--fg-faint)",
+        fontSize: 13,
+      }}
+    >
+      加载中…
     </div>
   );
 }

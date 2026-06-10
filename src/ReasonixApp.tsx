@@ -2,9 +2,8 @@ import { useCallback, useState, useEffect, useRef, lazy, Suspense, Fragment } fr
 import { useSearchParams } from "react-router-dom";
 import {
   SquarePen, History, Settings, Command, Moon, Sun, Bot, PanelLeftClose, PanelLeftOpen,
-  FolderOpen, Search, Terminal, Code, Server,
-  Logs, MessageSquare,
-  ChartBar, Users, X,
+  FolderOpen, Code, Server, MessageSquare, Search,
+  Users, X, Zap,
   Sparkles, MessageCircle, RefreshCw, Loader2,
   LayoutGrid,
 } from "lucide-react";
@@ -40,19 +39,20 @@ import {
   resolveReasoningId,
 } from "./stores/useComposerPrefsStore";
 
-// Lazy load panels
-const AgentsPanel = lazy(() => import("./components/LeftPanel/AgentsPanel").then(m => ({ default: m.AgentsPanel })));
-const ProjectsPanel = lazy(() => import("./components/LeftPanel/ProjectsPanel").then(m => ({ default: m.ProjectsPanel })));
-const SkillsPanel = lazy(() => import("./components/LeftPanel/SkillsPanel").then(m => ({ default: m.SkillsPanel })));
-const PromptsPanel = lazy(() => import("./components/LeftPanel/PromptsPanel").then(m => ({ default: m.PromptsPanel })));
-const McpPanel = lazy(() => import("./components/LeftPanel/McpPanel").then(m => ({ default: m.McpPanel })));
-const UsageDashboard = lazy(() => import("./components/LeftPanel/UsageDashboard").then(m => ({ default: m.UsageDashboard })));
-const LogsPanel = lazy(() => import("./components/LeftPanel/LogsPanel").then(m => ({ default: m.LogsPanel })));
-const ExpertPanel = lazy(() => import("./components/LeftPanel/ExpertPanel").then(m => ({ default: m.ExpertPanel })));
+// 注意：AgentsPanel / ProjectsPanel / SkillsPanel / PromptsPanel /
+// McpPanel / ExpertPanel / SearchPanel / SessionsPanel 这些面板现在
+// 全部在 SettingsDrawer 里 lazy 加载（左侧 nav 点选后右侧渲染）。
+// 侧栏只保留 3 个一级入口，剩下的都进设置。这里不再声明任何 panel
+// lazy 加载，但仍然保留 ModelPanel 供 settings → 模型 tab 复用。
+import { ModelPanel } from "./components/layout/ModelPanel";
 
 // Hermes is intentionally absent: it lives in ALL_AGENTS as a top-tab
 // peer of Claude / Codex / Gemini, with no dedicated side panel.
-type NavKey = "chat" | "projects" | "agents" | "model" | "prompts" | "mcp" | "usage" | "skills" | "expert" | "sessions" | "logs" | "search" | "settings";
+// NavKey 只描述「左侧主侧栏」能直接打开的入口（聊天 / 自动化 / 项目管理），
+// 以及「点齿轮进设置」这一种 view。其余 10+ 个面板（agents / sessions / skills /
+// expert / prompts / mcp / model / usage / logs / search / shortcuts / about）
+// 都合并进 Settings 里的左侧 nav，对应的内容在 SettingsDrawer 里渲染。
+type NavKey = "chat" | "automation" | "projects" | "settings";
 
 interface NavItem {
   key: NavKey;
@@ -65,6 +65,7 @@ const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
   {
     items: [
       { key: "chat", icon: <MessageCircle size={18} />, label: "聊天" },
+      { key: "automation", icon: <Zap size={18} />, label: "自动化" },
       { key: "agents", icon: <Bot size={18} />, label: "AI 助手" },
       { key: "sessions", icon: <MessageSquare size={18} />, label: "会话管理" },
     ],
@@ -81,20 +82,17 @@ const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
   {
     label: "系统",
     items: [
-      { key: "model", icon: <Terminal size={18} />, label: "模型配置" },
       { key: "mcp", icon: <Server size={18} />, label: "MCP" },
-      { key: "usage", icon: <ChartBar size={18} />, label: "用量统计" },
-      { key: "logs", icon: <Logs size={18} />, label: "日志" },
     ],
   },
 ];
 
 // Flat view of NAV_GROUPS in display order. Used by the keyboard
 // shortcut handler to map Ctrl+1..9 onto the most-used navigation
-// targets. Usage / logs are intentionally excluded because nine is a
-// useful ceiling for chord-based navigation and those two have lower
-// daily hit rate. (Hermes used to live here too; it now lives in
-// ALL_AGENTS as a top-tab peer of Claude / Codex.)
+// targets. 自动化 / Skills are intentionally excluded because nine is
+// a useful ceiling for chord-based navigation and those two have
+// lower daily hit rate. (Hermes used to live here too; it now lives
+// in ALL_AGENTS as a top-tab peer of Claude / Codex.)
 const FLAT_NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
 // Agent tabs config
@@ -119,23 +117,21 @@ const ALL_AGENTS: { id: AppId; label: string; shortLabel: string; disabled?: boo
 function isNavKey(value: string | null): value is NavKey {
   if (!value) return false;
   return [
-    "chat", "projects", "agents", "model", "prompts", "mcp",
-    "usage", "skills", "expert", "sessions", "logs", "search", "settings",
+    "chat", "automation", "projects", "agents", "prompts", "mcp",
+    "skills", "expert", "sessions", "search", "settings",
   ].includes(value);
 }
 
 const PANEL_TITLES: Record<NavKey, string> = {
   chat: "聊天",
+  automation: "自动化",
   projects: "项目管理",
   agents: "AI 助手",
-  model: "模型配置",
   prompts: "Prompts",
   mcp: "MCP",
-  usage: "用量统计",
   skills: "Skills",
   expert: "专家",
   sessions: "会话管理",
-  logs: "日志",
   search: "搜索",
   settings: "设置",
 };
@@ -414,6 +410,16 @@ export const ReasonixApp: React.FC = () => {
   // Right panel content
   const renderRightPanel = () => {
     switch (activeNav) {
+      case "automation":
+        return (
+          <div className="panel-empty">
+            <Zap size={20} className="ilo-fg-dim" />
+            <div>自动化</div>
+            <div style={{ fontSize: 12, color: "var(--fg-faint)" }}>
+              自动化面板待接入。
+            </div>
+          </div>
+        );
       case "agents":
         return (
           <Suspense fallback={<PanelLoader />}>
@@ -444,18 +450,6 @@ export const ReasonixApp: React.FC = () => {
             <McpPanel />
           </Suspense>
         );
-      case "usage":
-        return (
-          <Suspense fallback={<PanelLoader />}>
-            <UsageDashboard />
-          </Suspense>
-        );
-      case "logs":
-        return (
-          <Suspense fallback={<PanelLoader />}>
-            <LogsPanel />
-          </Suspense>
-        );
       case "expert":
         return (
           <Suspense fallback={<PanelLoader />}>
@@ -478,8 +472,6 @@ export const ReasonixApp: React.FC = () => {
             />
           </Suspense>
       );
-      case "model":
-        return <ModelPanel />;
       case "search":
         return <SearchPanel />;
       default:
@@ -872,41 +864,6 @@ function SessionsPanel({ onResume, onDelete, onRename: _onRename }: {
           </button>
         </div>
       ))}
-    </div>
-  );
-}
-
-function ModelPanel() {
-  const { currentProviderId, providers, switchProvider } = useModelStore();
-  const providerList = Object.values(providers);
-
-  return (
-    <div className="model-panel">
-      <div className="model-panel__section">
-        <h3 className="model-panel__heading">当前模型</h3>
-        <select
-          className="model-panel__select"
-          value={currentProviderId}
-          onChange={(e) => switchProvider(e.target.value)}
-        >
-          {providerList.map((p) => (
-            <option key={p.id} value={p.id}>{p.name} {p.settingsConfig?.ANTHROPIC_MODEL ? "(" + p.settingsConfig.ANTHROPIC_MODEL + ")" : ""}</option>
-          ))}
-        </select>
-      </div>
-      <div>
-        <h3 className="model-panel__heading">可用模型</h3>
-        {providerList.map((p) => (
-          <div
-            key={p.id}
-            className={`model-card${currentProviderId === p.id ? " model-card--active" : ""}`}
-            onClick={() => switchProvider(p.id)}
-          >
-            <div className="model-card__name">{p.name}</div>
-            <div className="model-card__model">{p.settingsConfig?.ANTHROPIC_MODEL || p.name}</div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

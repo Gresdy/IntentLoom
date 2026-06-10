@@ -115,6 +115,18 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk[] 
     if (hermesNotice) {
       return [hermesNotice];
     }
+    // Hermes plain-text tool call detector. When Hermes uses
+    // a tool, it emits lines like:
+    //   🔧 Using tool: Read(file_path="...")
+    //   🔧 Using tool: Bash(command="...")
+    //   📝 Tool result: <content>
+    // We surface these as structured tool_call / tool_response
+    // chunks so the ToolCard renders them properly instead of
+    // dumping raw emoji-prefixed text into the message stream.
+    const toolMatch = detectHermesToolCall(trimmed);
+    if (toolMatch) {
+      return [toolMatch];
+    }
     return [];
   }
 
@@ -278,7 +290,134 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk[] 
       },
     }];
   }
-  const t = event.type;
+
+  // Short alias for the event type — used by all subsequent sections.
+  const t: string | undefined = event.type;
+
+  // ---- 5. Gemini CLI wire format (gemini --output-format stream-json) ----
+  // Gemini CLI emits a sequence of JSON objects. The streaming
+  // protocol uses `type` discriminators that differ from both
+  // Claude Code and the Anthropic streaming protocol:
+  //   - `gemini_start`     → session start (control)
+  //   - `gemini_thinking`  → thinking/reasoning text
+  //   - `gemini_text`      → main response text
+  //   - `gemini_tool_call` → tool invocation (with name + args)
+  //   - `gemini_tool_result` → tool execution result
+  //   - `gemini_end`       → end of turn (control)
+  //
+  // Fallback: if the event has a Gemini-specific `type` but is
+  // not one we explicitly handle, we still try to extract text
+  // content from `event.text` or `event.content` so the user
+  // sees SOMETHING instead of a blank transcript.
+  if (typeof t === "string" && t.startsWith("gemini_")) {
+    if (t === "gemini_start") {
+      return [{ kind: "control", event: "gemini_start" }];
+    }
+    if (t === "gemini_end") {
+      return [{ kind: "control", event: "gemini_end" }];
+    }
+    if (t === "gemini_thinking") {
+      const text = event.text ?? event.thinking ?? event.content ?? "";
+      if (typeof text === "string") return [{ kind: "thinking", text }];
+    }
+    if (t === "gemini_text") {
+      const text = event.text ?? event.content ?? "";
+      if (typeof text === "string") return [{ kind: "text", text }];
+    }
+    if (t === "gemini_tool_call") {
+      const name = typeof event.name === "string" ? event.name : "unknown";
+      return [{
+        kind: "tool_call",
+        tool: {
+          id: String(event.id ?? cryptoRandomId()),
+          name,
+          kind: inferToolKind(name),
+          arguments: event.args ?? event.arguments ?? event.input ?? {},
+          status: "in_progress",
+        },
+      }];
+    }
+    if (t === "gemini_tool_result") {
+      return [{
+        kind: "tool_response",
+        id: String(event.id ?? event.tool_use_id ?? ""),
+        result: event.result ?? event.content ?? null,
+      }];
+    }
+    // Unrecognised gemini_* event — try to extract text.
+    if (typeof event.text === "string" && event.text) {
+      return [{ kind: "text", text: event.text }];
+    }
+    return [{ kind: "control", event: t }];
+  }
+
+  // ---- 6. OpenClaw wire format (openclaw agent --local --json) ----
+  // OpenClaw with `--json` emits a single JSON result object
+  // (not streaming). The shape varies but common patterns are:
+  //   - `{ type: "response", content: "..." }` — simple text
+  //   - `{ type: "response", content: [...], tool_calls: [...] }`
+  //   - `{ type: "error", message: "..." }` — error response
+  // Since the CLI is not streaming, the entire output arrives as
+  // one chunk. We extract text and tool calls from the payload.
+  if (t === "response" || t === "openclaw_response") {
+    const chunks: ParsedChunk[] = [];
+    // Extract text content
+    const content = event.content ?? event.text ?? event.message;
+    if (typeof content === "string" && content) {
+      chunks.push({ kind: "text", text: content });
+    } else if (Array.isArray(content)) {
+      for (const block of content) {
+        if (typeof block === "string") {
+          chunks.push({ kind: "text", text: block });
+        } else if (block && typeof block === "object") {
+          if (block.type === "text" && typeof block.text === "string") {
+            chunks.push({ kind: "text", text: block.text });
+          } else if (block.type === "tool_use" || block.type === "tool_call") {
+            const name = typeof block.name === "string" ? block.name : "unknown";
+            chunks.push({
+              kind: "tool_call",
+              tool: {
+                id: String(block.id ?? cryptoRandomId()),
+                name,
+                kind: inferToolKind(name),
+                arguments: block.input ?? block.args ?? block.arguments ?? {},
+                status: "in_progress",
+              },
+            });
+          }
+        }
+      }
+    }
+    // Extract tool calls from top-level array
+    if (Array.isArray(event.tool_calls)) {
+      for (const tc of event.tool_calls) {
+        if (!tc || typeof tc !== "object") continue;
+        const name = typeof tc.name === "string" ? tc.name : "unknown";
+        chunks.push({
+          kind: "tool_call",
+          tool: {
+            id: String(tc.id ?? cryptoRandomId()),
+            name,
+            kind: inferToolKind(name),
+            arguments: tc.arguments ?? tc.input ?? {},
+            status: "in_progress",
+          },
+        });
+      }
+    }
+    if (chunks.length > 0) return chunks;
+  }
+  // OpenClaw error events use `openclaw_error` as the type
+  // discriminator — this is specific enough not to conflict
+  // with other adapters' `type: "error"` events (which we
+  // don't handle; see the test "does not reclassify JSON
+  // error events that already have a type field").
+  if (t === "openclaw_error") {
+    const msg = event.message ?? event.error ?? event.text ?? "Unknown error";
+    return [{ kind: "notice", level: "error", text: String(msg) }];
+  }
+
+  // ---- 7. Generic minimal shapes (fallback for any CLI) ----
   if (t === "text" && typeof event.text === "string") {
     return [{ kind: "text", text: event.text }];
   }
@@ -485,6 +624,85 @@ export function detectHermesNotice(
   if (statusCode.test(trimmed) && failurePhrase.test(trimmed)) {
     return { kind: "notice", level: "error", text: trimmed };
   }
+  return null;
+}
+
+/**
+ * Hermes plain-text tool call detector.
+ *
+ * Hermes in `-Q` (quiet) mode emits tool usage as plain-text
+ * lines prefixed with 🔧. Common patterns:
+ *   🔧 Using tool: Read(file_path="src/main.ts")
+ *   🔧 Using tool: Bash(command="npm test")
+ *   🔧 Using tool: Write(file_path="output.txt")
+ *   📝 Tool result: <content>
+ *
+ * We parse these into structured `tool_call` / `tool_response`
+ * chunks so the ToolCard renders them with the proper icon,
+ * status badge, and collapsible body — instead of dumping
+ * raw emoji-prefixed text into the message stream.
+ *
+ * Returns a `ParsedChunk` when the line matches, `null` otherwise.
+ */
+function detectHermesToolCall(
+  trimmed: string,
+): ParsedChunk | null {
+  if (!trimmed) return null;
+
+  // Tool invocation: 🔧 Using tool: ToolName(key="value", ...)
+  const toolMatch = /^🔧\s*(?:Using\s+tool:\s*)?(\w+)\(([^)]*)\)/.exec(trimmed);
+  if (toolMatch) {
+    const name = toolMatch[1];
+    const argsStr = toolMatch[2];
+    // Parse simple key="value" pairs from the argument string.
+    const args: Record<string, string> = {};
+    const pairRe = /(\w+)\s*=\s*"([^"]*)"/g;
+    let m;
+    while ((m = pairRe.exec(argsStr)) !== null) {
+      args[m[1]] = m[2];
+    }
+    return {
+      kind: "tool_call",
+      tool: {
+        id: cryptoRandomId(),
+        name,
+        kind: inferToolKind(name),
+        arguments: args,
+        status: "in_progress",
+      },
+    };
+  }
+
+  // Simpler pattern: 🔧 ToolName or 🔧 Running ToolName
+  const simpleToolMatch = /^🔧\s*(?:Running\s+)?(\w+)/.exec(trimmed);
+  if (simpleToolMatch) {
+    const name = simpleToolMatch[1];
+    // Don't match common English words that happen to follow 🔧
+    const knownTools = /^(Read|Write|Edit|Bash|Search|Fetch|Glob|Grep|MultiEdit|ListFiles|FileEdit|Command)$/i;
+    if (knownTools.test(name)) {
+      return {
+        kind: "tool_call",
+        tool: {
+          id: cryptoRandomId(),
+          name,
+          kind: inferToolKind(name),
+          arguments: {},
+          status: "in_progress",
+        },
+      };
+    }
+  }
+
+  // Tool result: 📝 Tool result: <content>
+  const resultMatch = /^📝\s*(?:Tool\s+result|Result):\s*(.*)$/.exec(trimmed);
+  if (resultMatch) {
+    return {
+      kind: "tool_response",
+      id: "", // Hermes doesn't carry tool_use_id in plain text
+      result: resultMatch[1],
+    };
+  }
+
   return null;
 }
 

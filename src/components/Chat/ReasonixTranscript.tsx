@@ -1,8 +1,30 @@
-import { useRef, useEffect, useState } from "react";
+/**
+ * ReasonixTranscript — chat message rendering, AionUI-style.
+ *
+ * The core rendering loop mirrors AionUI's `MessageList` pattern:
+ *   - Pre-process items to aggregate `file_summary` and `tool_summary`
+ *     virtual messages (AionUI's `processedList` pattern)
+ *   - Each item type rendered by a dedicated sub-component:
+ *     user, assistant, tool, tool_group, permission, phase, notice, summary
+ *   - `tool_group` items rendered by `ToolGroupCard` (AionUI's `MessageToolGroup`)
+ *   - `tool_summary` virtual items rendered by `ToolGroupSummary` (AionUI's `MessageToolGroupSummary`)
+ *   - `file_summary` virtual items rendered by `FileChangePreview` (AionUI's `MessageFileChanges`)
+ *   - `permission` items rendered by `PermissionCard` (AionUI's `MessagePermission`)
+ *
+ * AionUI reference:
+ *   packages/desktop/src/renderer/pages/conversation/Messages/MessageList.tsx
+ */
+
+import { useRef, useEffect, useState, useMemo } from "react";
 import type { ReasonixItem } from "../../lib/reasonixAdapter";
-import { ChevronRight, Loader2, FolderOpen, Bot, FileEdit, FilePlus2, Terminal, Sparkles } from "lucide-react";
+import { ChevronRight, Loader2, FolderOpen, Bot, FileEdit, Sparkles } from "lucide-react";
 import { ConversationSummary } from "../Loom/ConversationSummary";
 import { ThinkingDisplay } from "./ThinkingDisplay";
+import { ToolGroupCard } from "./ToolGroupCard";
+import { ToolGroupSummary } from "./ToolGroupSummary";
+import { FileChangePreview, type FileChange } from "./FileChangePreview";
+import { PermissionCard } from "./PermissionCard";
+import { AgentBadge, getAgentMeta } from "./AgentBadge";
 import { useMessageStore } from "@/stores/messageStore";
 
 interface TranscriptProps {
@@ -10,18 +32,123 @@ interface TranscriptProps {
   onPrompt?: (text: string) => void;
   onNewChat?: () => void;
   onPickWorkspace?: () => void;
-  /**
-   * Drop a fully-rendered demo turn (user prompt → thinking →
-   * tool calls → assistant text) into the active conversation.
-   * Powers the “查看示例对话” affordance on the welcome screen
-   * so the user can see chat + thinking + tool rendering live in
-   * the browser, even without the Claude CLI installed.
-   */
   onSeedDemo?: () => void;
+  onApprove?: (id: string, allow: boolean) => void;
 }
 
-export function Transcript({ items, onPrompt, onNewChat, onPickWorkspace, onSeedDemo }: TranscriptProps) {
+/**
+ * AionUI-style processed item type.
+ * Mirrors AionUI's `IMessageVO` / `IProcessedItem` pattern:
+ *   - Regular items pass through as-is
+ *   - `file_summary`: merged file changes from WriteFile/Edit tools
+ *   - `tool_summary`: aggregated tool steps with ToolGroupSummary rendering
+ */
+type ProcessedItem =
+  | { type: "item"; item: ReasonixItem }
+  | { type: "file_summary"; id: string; changes: FileChange[]; sourceIds: string[] }
+  | { type: "tool_summary"; id: string; tools: ReasonixItem[]; sourceIds: string[] };
+
+/**
+ * AionUI-style message pre-processing.
+ * Mirrors AionUI's `processedList` logic in MessageList.tsx:
+ *   - Consecutive tool/tool_group items with file edits → `file_summary`
+ *   - Consecutive tool/tool_group items → `tool_summary`
+ *   - Other items pass through unchanged
+ */
+function preprocessItems(items: ReasonixItem[]): ProcessedItem[] {
+  const result: ProcessedItem[] = [];
+  let fileChanges: FileChange[] = [];
+  let fileSourceIds: string[] = [];
+  let toolList: ReasonixItem[] = [];
+  let toolSourceIds: string[] = [];
+
+  const flushFileChanges = () => {
+    if (fileChanges.length > 0) {
+      result.push({
+        type: "file_summary",
+        id: `fs-${fileSourceIds[0] ?? Date.now()}`,
+        changes: fileChanges,
+        sourceIds: fileSourceIds,
+      });
+    }
+    fileChanges = [];
+    fileSourceIds = [];
+  };
+
+  const flushToolList = () => {
+    if (toolList.length > 0) {
+      result.push({
+        type: "tool_summary",
+        id: `ts-${toolSourceIds[0] ?? Date.now()}`,
+        tools: toolList,
+        sourceIds: toolSourceIds,
+      });
+    }
+    toolList = [];
+    toolSourceIds = [];
+  };
+
+  for (const item of items) {
+    // Extract file changes from tool items
+    if (item.kind === "tool") {
+      const isEdit = item.kind2 === "edit" || item.kind2 === "write" || /write|edit|replace/i.test(item.name ?? "");
+      const filePath = fileSubject(item.args);
+
+      if (isEdit && filePath) {
+        const added = Array.isArray(item.diff) ? item.diff.filter((d: any) => d.type === "add").length : 0;
+        const removed = Array.isArray(item.diff) ? item.diff.filter((d: any) => d.type === "remove").length : 0;
+        const isNew = /create|new/i.test(item.name ?? "");
+        fileChanges.push({
+          path: filePath,
+          added,
+          removed,
+          isNew,
+          diff: Array.isArray(item.diff) ? item.diff.map((d: any) => ({
+            type: d.type,
+            text: d.newText ?? d.oldText ?? "",
+          })) : undefined,
+        });
+        fileSourceIds.push(item.id);
+        // Also add to tool list so it appears in the tool summary
+        toolList.push(item);
+        toolSourceIds.push(item.id);
+        continue;
+      }
+
+      // Non-edit tool → add to tool list
+      flushFileChanges();
+      toolList.push(item);
+      toolSourceIds.push(item.id);
+      continue;
+    }
+
+    if (item.kind === "tool_group") {
+      // Flatten tool group items into the tool list
+      // AionUI pattern: tool groups become tool_summary entries
+      flushFileChanges();
+      toolList.push(item);
+      toolSourceIds.push(item.id);
+      continue;
+    }
+
+    // Non-tool item → flush both buffers
+    flushFileChanges();
+    flushToolList();
+    result.push({ type: "item", item });
+  }
+
+  flushFileChanges();
+  flushToolList();
+
+  return result;
+}
+
+export function Transcript({ items, onPrompt, onNewChat, onPickWorkspace, onSeedDemo, onApprove }: TranscriptProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // AionUI-style pre-processing: aggregate tool items into
+  // `file_summary` and `tool_summary` virtual messages
+  const processed = useMemo(() => preprocessItems(items), [items]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -77,13 +204,21 @@ export function Transcript({ items, onPrompt, onNewChat, onPickWorkspace, onSeed
 
   return (
     <div className="transcript">
-      {items.map((item) => <ItemRenderer key={item.id} item={item} />)}
+      {processed.map((p) => {
+        if (p.type === "file_summary") {
+          return <FileChangePreview key={p.id} changes={p.changes} />;
+        }
+        if (p.type === "tool_summary") {
+          return <ToolGroupSummary key={p.id} tools={p.tools} />;
+        }
+        return <ItemRenderer key={p.item.id} item={p.item} onApprove={onApprove} />;
+      })}
       <div ref={bottomRef} />
     </div>
   );
 }
 
-function ItemRenderer({ item }: { item: ReasonixItem }) {
+function ItemRenderer({ item, onApprove }: { item: ReasonixItem; onApprove?: (id: string, allow: boolean) => void }) {
   switch (item.kind) {
     case "user":
       return (
@@ -94,21 +229,36 @@ function ItemRenderer({ item }: { item: ReasonixItem }) {
       );
 
     case "assistant":
-      return <AssistantMessage text={item.text} streaming={item.streaming} reasoning={item.reasoning} />;
+      return <AssistantMessage text={item.text} streaming={item.streaming} reasoning={item.reasoning} agentId={item.agentId} />;
 
     case "tool":
       return <ToolCard item={item as any} />;
 
-    case "phase":
-      return <div className="phase">{item.text}</div>;
+    case "tool_group":
+      return <ToolGroupCard item={item} onApprove={onApprove} />;
 
-    case "notice":
-      // Map the streaming controller's `level` ("info" / "warn" /
-      // "error") to the matching CSS modifier so the banner picks
-      // up the right red / amber / neutral background. We only
-      // emit the modifier when the level is one we recognise —
-      // unknown values fall through to a plain `.notice` block
-      // rather than dumping a bogus class name into the DOM.
+    case "permission":
+      return (
+        <PermissionCard
+          id={item.id}
+          toolName={item.toolName}
+          args={item.args}
+          reason={item.reason}
+          status={item.status}
+          agentId={item.agentId}
+          onApprove={onApprove}
+        />
+      );
+
+    case "phase":
+      return (
+        <div className="phase">
+          {item.agentId && <AgentBadge agentId={item.agentId} />}
+          {item.text}
+        </div>
+      );
+
+    case "notice": {
       const lvl = item.level;
       const lvlClass =
         lvl === "error" || lvl === "warn" || lvl === "info"
@@ -116,9 +266,11 @@ function ItemRenderer({ item }: { item: ReasonixItem }) {
           : "";
       return (
         <div className={lvlClass ? `notice ${lvlClass}` : "notice"} role={lvl === "error" ? "alert" : "status"}>
+          {item.agentId && <AgentBadge agentId={item.agentId} />}
           {item.text}
         </div>
       );
+    }
 
     case "summary":
       return <ConversationSummary summary={item.tally} />;
@@ -128,29 +280,19 @@ function ItemRenderer({ item }: { item: ReasonixItem }) {
   }
 }
 
-function AssistantMessage({ text, streaming, reasoning }: { text: string; streaming?: boolean; reasoning?: string }) {
+function AssistantMessage({ text, streaming, reasoning, agentId }: { text: string; streaming?: boolean; reasoning?: string; agentId?: string }) {
   const [showReasoning, setShowReasoning] = useState(false);
-  // The live ThinkingDisplay lifecycle (status, start time,
-  // final duration) lives in `messageStore.currentThinkingMeta`
-  // because the streaming controller is the only writer. The
-  // raw `reasoning` text is also passed in as a prop because
-  // the controller already snapshots it onto either the
-  // persisted message (history view) or the live `currentThinking`
-  // (active turn) — so the prop carries the right string in
-  // both render paths.
   const thinkingMeta = useMessageStore((s) => s.currentThinkingMeta);
-
-  // The `ThinkingDisplay` is only meaningful for the LIVE
-  // streaming turn. For the persisted history view we keep
-  // the old collapsible "思考过程" affordance so a user
-  // scrolling back through yesterday's session still sees
-  // the reasoning (with no live timer) and can expand it
-  // for context. The two surfaces are different on purpose:
-  // live = animated card, history = static disclosure.
   const isLiveTurn = Boolean(streaming);
+  const meta = getAgentMeta(agentId);
 
   return (
-    <div className="msg msg--assistant">
+    <div className="msg msg--assistant" style={{ borderLeftColor: meta.color } as React.CSSProperties}>
+      {agentId && (
+        <div className="msg__agent">
+          <AgentBadge agentId={agentId} size="md" />
+        </div>
+      )}
       {isLiveTurn && thinkingMeta && (
         <ThinkingDisplay
           content={reasoning ?? ""}
@@ -173,160 +315,140 @@ function AssistantMessage({ text, streaming, reasoning }: { text: string; stream
   );
 }
 
-// ToolCard — three branches:
-//   1. `edit` kind + diff present   → render +/- diff inline (W3 of the loom plan)
-//   2. `edit` kind + no diff        → fall through to plain args
-//   3. `execute` kind               → render the command in a monospace block
-//   4. everything else              → args summary + JSON on expand
-function ToolCard({ item }: { item: any }) {
-  // AionUi-style: auto-expand on error so the user sees
-  // WHAT failed without having to click. Default
-  // collapsed on success / running.
+/**
+ * ToolCard — AionUI-style per-tool rendering.
+ *
+ * Mirrors AionUI's `MessageToolCall` pattern:
+ *   - `Edit`/`Replace` tools with diffs → ReplacePreview diff panel
+ *   - Other tools → Badge status + tool name + description + expandable input/output
+ *   - `badge-breathing` animation for running state
+ *
+ * AionUI reference:
+ *   packages/desktop/src/renderer/pages/conversation/Messages/components/MessageToolCall.tsx
+ */
+export function ToolCard({ item }: { item: any }) {
   const [expanded, setExpanded] = useState(item.status === "error");
-  // `kind2` carries the underlying tool kind (edit / execute / read);
-  // `kind` itself is the ReasonixItem discriminator and is always
-  // "tool" at this point. Fall through to `kind` for safety so an
-  // un-rewrapped item (e.g. test fixtures) still gets a sensible
-  // branch.
   const kind: string | undefined =
     item.kind === "tool" ? item.kind2 ?? undefined : item.kind;
   const diff: any[] | undefined = Array.isArray(item.diff) ? item.diff : undefined;
-  const hasDiff = kind === "edit" && diff && diff.length > 0;
-  const isExec = kind === "execute";
-  const isRead = kind === "read";
+  const hasDiff = (kind === "edit" || kind === "write" || /edit|write|replace/i.test(item.name ?? "")) && diff && diff.length > 0;
+  const isExec = kind === "execute" || /exec|bash|command/i.test(item.name ?? "");
+  // AionUI pattern: Edit/Replace tools with diffs get a ReplacePreview
+  if (hasDiff) {
+    return <ReplacePreview item={item} diff={diff!} />;
+  }
 
+  // AionUI pattern: Badge status + tool name + description
   const statusIcon: Record<string, React.ReactNode> = {
     running: <Loader2 size={12} className="spin ilo-fg-accent" />,
+    in_progress: <Loader2 size={12} className="spin ilo-fg-accent" />,
     success: <span className="ilo-fg-ok">✓</span>,
+    completed: <span className="ilo-fg-ok">✓</span>,
     error: <span className="ilo-fg-err">✗</span>,
     pending: <span className="ilo-fg-faint">○</span>,
   };
 
-  // AionUi-style status badge — text next to the icon,
-  // so the user can read the state at a glance without
-  // having to interpret the icon colour. Mirrors the
-  // `<Tag color="green">` / `<Tag color="red">` pattern
-  // but as plain text to avoid a `<Tag>` dependency.
-  const statusBadge: Record<string, { text: string; cls: string }> = {
-    running: { text: "进行中", cls: "tool__status--running" },
-    success: { text: "完成", cls: "tool__status--ok" },
-    error: { text: "失败", cls: "tool__status--err" },
-    pending: { text: "等待", cls: "tool__status--pending" },
-  };
-
-  // Per-tool-type friendly label — same as AionUi's
-  // `MessageCodexToolCall` `GenericDisplay` fallback.
-  // Falls back to the raw tool name when we don't
-  // recognise the kind.
   const friendlyKind: Record<string, string> = {
-    read: "Read",
-    write: "Write",
-    edit: "Edit",
-    execute: "Bash",
-    search: "Search",
-    fetch: "Fetch",
+    read: "Read", write: "Write", edit: "Edit", execute: "Bash",
+    search: "Search", fetch: "Fetch", command_execution: "Bash",
+    file_edit: "Edit", web_search: "Search", replace: "Edit",
   };
   const kindLabel = friendlyKind[kind ?? ""] ?? item.name;
 
-  const subject = hasDiff
-    ? fileSubject(item.args)
-    : isExec
+  const subject = isExec
     ? commandSubject(item.args)
-    : isRead
-    ? fileSubject(item.args)
-    : fileSubject(item.args) || JSON.stringify(item.args).slice(0, 50);
+    : fileSubject(item.args) || (typeof item.args === "object" ? JSON.stringify(item.args).slice(0, 50) : "");
 
-  const icon = hasDiff
-    ? item.args && fileSubject(item.args) && /create|write/i.test(item.name || "")
-      ? <FilePlus2 size={12} className="ilo-fg-accent" />
-      : <FileEdit size={12} className="ilo-fg-accent" />
-    : isExec
-    ? <Terminal size={12} className="ilo-fg-accent" />
-    : isRead
-    ? <FileEdit size={12} className="ilo-fg-accent" />
-    : null;
+  const hasDetail = item.args || item.result;
+  const agentMeta = getAgentMeta(item.agentId);
 
   return (
-    <div className={`tool ${item.status === "running" ? "tool--running" : ""} ${hasDiff ? "tool--has-diff" : ""} ${isExec ? "tool--exec" : ""}`}>
-      <button className="tool__row tool__row--clickable" onClick={() => setExpanded(!expanded)}>
+    <div className={`tool ${item.status === "running" || item.status === "in_progress" ? "tool--running" : ""}`} style={{ borderLeftColor: agentMeta.color } as React.CSSProperties}>
+      {/* AionUI pattern: Badge + tool name + description row */}
+      <div
+        className={`tool__row ${hasDetail ? "tool__row--clickable" : ""}`}
+        onClick={hasDetail ? () => setExpanded(!expanded) : undefined}
+      >
         <span className={`tool__chevron ${expanded ? "tool__chevron--open" : "tool__chevron--placeholder"}`}>
           {expanded ? <ChevronRight size={12} /> : null}
         </span>
-        <span className="tool__icon">{statusIcon[item.status]}</span>
-        {statusBadge[item.status] && (
-          <span className={`tool__status ${statusBadge[item.status].cls}`}>
-            {statusBadge[item.status].text}
+        <span className="tool__icon">{statusIcon[item.status] ?? statusIcon.pending}</span>
+        <span className="tool__name" style={{ color: agentMeta.color }}>{kindLabel}</span>
+        {subject && <span className="tool__subject">{expanded ? subject : truncate(subject, 80)}</span>}
+        {item.agentId && <AgentBadge agentId={item.agentId} />}
+        {hasDetail && (
+          <span className="tool__expand-hint">
+            {expanded ? <ChevronRight size={10} style={{ transform: "rotate(90deg)" }} /> : <ChevronRight size={10} />}
           </span>
         )}
-        {icon}
-        <span className="tool__name">{kindLabel}</span>
-        <span className="tool__subject">{subject}</span>
-      </button>
+      </div>
 
-      {hasDiff && (
-        <div className="tool__diff">
-          {diff!.map((d, i) => (
-            <DiffLine key={i} diff={d} />
-          ))}
-        </div>
-      )}
-
-      {isExec && subject && (
-        <div className="tool__cmd">
-          <pre className="code">{commandSubject(item.args)}</pre>
-        </div>
-      )}
-
-      {/* AionUi-style: for `Read` / `Write` results, render
-       * the raw text (often a file body) without
-       * JSON.stringify — the previous version wrapped
-       * everything in a JSON object, which made file
-       * contents unreadable. For unknown tool kinds
-       * we still fall through to JSON so the user gets
-       * SOMETHING visible. */}
-      {expanded && item.result && !hasDiff && (
-        isRead ? (
-          <div className="tool__body tool__body--read">
-            <pre className="code">{String(item.result)}</pre>
-          </div>
-        ) : isExec && item.result && typeof item.result === "object" && "exit_code" in item.result ? (
-          // Codex `command_execution` rich payload: the actual
-          // shell command, its aggregated stdout+stderr, the
-          // exit code, and the final status. Show the exit
-          // code as a small chip next to the body so a non-zero
-          // exit stands out, and render the aggregated output
-          // as a code block instead of a JSON dump. The raw
-          // JSON fallback below would render this as
-          // `{ command: ..., aggregated_output: ..., ... }`
-          // which is unreadable for a `cat` / `ls` result.
-          <div className="tool__body tool__body--exec">
-            <div className="tool__exec-header">
-              <span className="tool__exec-label">输出</span>
-              <span className={"tool__exec-exit" + (item.result.exit_code === 0 ? " tool__exec-exit--ok" : " tool__exec-exit--err")}>
-                exit {String(item.result.exit_code)}
-              </span>
+      {/* AionUI pattern: expandable detail panel */}
+      {expanded && hasDetail && (
+        <div className="tool__detail-panel">
+          {item.args && typeof item.args === "object" && Object.keys(item.args).length > 0 && (
+            <div className="tool__detail-section">
+              <div className="tool__detail-label">Input</div>
+              <pre className="tool__detail-content">
+                {isExec ? commandSubject(item.args) : JSON.stringify(item.args, null, 2)}
+              </pre>
             </div>
-            <pre className="code">{String(item.result.aggregated_output ?? "")}</pre>
-          </div>
-        ) : typeof item.result === "string" ? (
-          <div className="tool__body">
-            <pre className="code">{item.result}</pre>
-          </div>
-        ) : (
-          <div className="tool__body">
-            <pre className="code">{JSON.stringify(item.result, null, 2)}</pre>
-          </div>
-        )
+          )}
+          {item.result && (
+            <div className="tool__detail-section">
+              <div className="tool__detail-label">Output</div>
+              <pre className="tool__detail-content">
+                {typeof item.result === "string" ? item.result : JSON.stringify(item.result, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
       )}
-      {item.status === "error" && <div className="tool__err">{item.result}</div>}
+    </div>
+  );
+}
+
+/**
+ * ReplacePreview — AionUI-style diff preview for Edit/Replace tools.
+ * Mirrors AionUI's `ReplacePreview` component which uses `createTwoFilesPatch`.
+ */
+function ReplacePreview({ item, diff }: { item: any; diff: any[] }) {
+  const filePath = fileSubject(item.args) || "unknown";
+  const fileName = filePath.split(/[/\\]/).pop() || filePath;
+  const agentMeta = getAgentMeta(item.agentId);
+
+  // Collect add/remove counts from diff
+  let added = 0, removed = 0;
+  for (const d of diff) {
+    if (d.type === "add") added++;
+    else if (d.type === "remove") removed++;
+    else if (d.type === "diff" || d.type === "content") {
+      if (d.oldText) removed++;
+      if (d.newText) added++;
+    }
+  }
+
+  return (
+    <div className="tool tool--has-diff" style={{ borderLeftColor: agentMeta.color } as React.CSSProperties}>
+      <div className="tool__diff-header">
+        <FileEdit size={12} style={{ color: agentMeta.color }} />
+        <span className="tool__diff-filename">{fileName}</span>
+        <span className="tool__diff-stats">
+          <span className="ilo-fg-ok">+{added}</span>
+          <span className="ilo-fg-err">-{removed}</span>
+        </span>
+        {item.agentId && <AgentBadge agentId={item.agentId} />}
+      </div>
+      <div className="tool__diff">
+        {diff.map((d: any, i: number) => (
+          <DiffLine key={i} diff={d} />
+        ))}
+      </div>
     </div>
   );
 }
 
 function DiffLine({ diff }: { diff: any }) {
-  // `diff.type` is one of 'add' | 'remove' | 'diff' | 'content'.
-  // 'diff' and 'content' carry oldText/newText; for those we render
-  // both halves as paired lines so reviewers can scan them.
   if (diff.type === "diff" || diff.type === "content") {
     return (
       <>
@@ -352,6 +474,7 @@ function fileSubject(args: any): string {
   if (args && typeof args === "object") {
     if (typeof args.file_path === "string") return args.file_path;
     if (typeof args.path === "string") return args.path;
+    if (typeof args.command === "string") return "";
   }
   return "";
 }
@@ -361,4 +484,8 @@ function commandSubject(args: any): string {
     return args.command;
   }
   return "";
+}
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max) + "…" : s;
 }

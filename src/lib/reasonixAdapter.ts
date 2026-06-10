@@ -19,12 +19,14 @@ import type { ToolCall } from "@/types/message";
 export type Mode = "normal" | "plan" | "yolo";
 
 export type ReasonixItem =
-  | { kind: "user"; id: string; text: string }
-  | { kind: "assistant"; id: string; text: string; streaming?: boolean; reasoning?: string }
-  | { kind: "tool"; id: string; name: string; args: any; status: string; result?: any; diff?: any[]; kind2?: string }
-  | { kind: "phase"; id: string; text: string }
-  | { kind: "notice"; id: string; level: string; text: string }
-  | { kind: "summary"; id: string; tally: ArtifactTally };
+  | { kind: "user"; id: string; text: string; agentId?: string }
+  | { kind: "assistant"; id: string; text: string; streaming?: boolean; reasoning?: string; agentId?: string }
+  | { kind: "tool"; id: string; name: string; args: any; status: string; result?: any; diff?: any[]; kind2?: string; agentId?: string }
+  | { kind: "tool_group"; id: string; tools: ReasonixItem[]; agentId?: string }
+  | { kind: "phase"; id: string; text: string; agentId?: string }
+  | { kind: "notice"; id: string; level: string; text: string; agentId?: string }
+  | { kind: "summary"; id: string; tally: ArtifactTally; agentId?: string }
+  | { kind: "permission"; id: string; toolName: string; args: any; reason?: string; status: "pending" | "approved" | "denied"; agentId?: string };
 
 export interface ReasonixMeta {
   label: string;
@@ -91,7 +93,7 @@ function writePersistedCwd(cwd: string | undefined): void {
 // Convert a ToolCall from messageStore into the wire shape used by
 // the `tool` ReasonixItem. Kept tiny because the Transcript side
 // already has its own `tool.diff` / `tool.kind` accessors.
-function toolCallToItem(tc: ToolCall, idSuffix: string): ReasonixItem {
+function toolCallToItem(tc: ToolCall, idSuffix: string, agentId?: string): ReasonixItem {
   return {
     kind: "tool",
     id: idSuffix,
@@ -101,6 +103,7 @@ function toolCallToItem(tc: ToolCall, idSuffix: string): ReasonixItem {
     result: tc.result,
     diff: tc.diff,
     kind2: tc.kind,
+    agentId,
   };
 }
 
@@ -172,6 +175,45 @@ export function friendlySendError(raw: string, cli: string): string {
   return `${cli} 调用失败：${trimmed}`;
 }
 
+// AionUI-style grouping: consecutive `tool` items (2+) get
+// wrapped into a `tool_group` so the transcript renders them
+// as a collapsible group with a summary header. A single
+// tool call stays standalone — the visual weight of a group
+// header for one child is worse than just showing the card.
+function groupConsecutiveTools(items: ReasonixItem[]): ReasonixItem[] {
+  const out: ReasonixItem[] = [];
+  let buffer: ReasonixItem[] = [];
+
+  const flush = () => {
+    if (buffer.length === 0) return;
+    if (buffer.length === 1) {
+      out.push(buffer[0]);
+    } else {
+      // All tools in a group share the same agentId (they were
+      // produced by the same assistant message).
+      const agentId = buffer[0].agentId;
+      out.push({
+        kind: "tool_group",
+        id: `tg-${buffer[0].id}`,
+        tools: [...buffer],
+        agentId,
+      });
+    }
+    buffer = [];
+  };
+
+  for (const item of items) {
+    if (item.kind === "tool") {
+      buffer.push(item);
+    } else {
+      flush();
+      out.push(item);
+    }
+  }
+  flush();
+  return out;
+}
+
 export function useReasonixController() {
   // Last workspace folder the user picked from the native dialog.
   // Initialized from localStorage so a freshly-mounted controller
@@ -205,6 +247,7 @@ export function useReasonixController() {
     isStreaming,
     currentThinking,
     currentToolCalls,
+    currentPermission,
     setStreaming,
     summaryByConversation,
     notices,
@@ -230,10 +273,19 @@ export function useReasonixController() {
 
   const items: ReasonixItem[] = useMemo(() => {
     const result: ReasonixItem[] = [];
+    // The active agent for this conversation. Persisted
+    // conversations carry `metadata.agentId`; for the live
+    // stream we read from the model store so the current
+    // tab's agent identity is reflected even before the
+    // first message is sent.
+    const agentId =
+      currentConversation?.metadata?.agentId ??
+      useModelStore.getState().currentApp ??
+      "claude";
 
     for (const msg of conversationMessages) {
       if (msg.role === "user") {
-        result.push({ kind: "user", id: msg.id, text: msg.content });
+        result.push({ kind: "user", id: msg.id, text: msg.content, agentId });
       } else if (msg.role === "assistant") {
         result.push({
           kind: "assistant",
@@ -241,6 +293,7 @@ export function useReasonixController() {
           text: msg.content,
           streaming: false,
           reasoning: msg.thinking,
+          agentId,
         });
         // Persisted tool calls on the assistant message become ToolCards
         // in the transcript. W3 of the-loom-as-product.md: this is what
@@ -249,8 +302,21 @@ export function useReasonixController() {
         // the same content inline in chat history.
         if (msg.toolCalls && msg.toolCalls.length > 0) {
           for (const tc of msg.toolCalls) {
-            result.push(toolCallToItem(tc, `${msg.id}-tc-${tc.id}`));
+            result.push(toolCallToItem(tc, `${msg.id}-tc-${tc.id}`, agentId));
           }
+        }
+        // Persisted permission requests render as inline permission cards
+        // so the user can see what was approved / denied in history.
+        if (msg.permission && msg.permission.status === "pending") {
+          result.push({
+            kind: "permission",
+            id: `perm-${msg.id}`,
+            toolName: msg.permission.toolName,
+            args: msg.permission.args,
+            reason: msg.permission.reason,
+            status: msg.permission.status ?? "pending",
+            agentId,
+          });
         }
       }
     }
@@ -264,15 +330,29 @@ export function useReasonixController() {
           text: lastMsg.content,
           streaming: true,
           reasoning: currentThinking,
+          agentId,
         });
         // Live tool cards: the in-flight tool calls from messageStore.
         // After stream-end these get persisted onto the assistant
         // message (see ai-stream-end handler) and the live snapshot
         // resets, so we don't double-render.
         for (const tc of currentToolCalls) {
-          result.push(toolCallToItem(tc, `live-tc-${tc.id}`));
+          result.push(toolCallToItem(tc, `live-tc-${tc.id}`, agentId));
         }
       }
+    }
+
+    // Live permission request — show as an inline approval card.
+    if (isStreaming && currentPermission && currentPermission.status === "pending") {
+      result.push({
+        kind: "permission",
+        id: `perm-live-${currentPermission.id}`,
+        toolName: currentPermission.toolName,
+        args: currentPermission.args,
+        reason: currentPermission.reason,
+        status: "pending",
+        agentId,
+      });
     }
 
     if (currentConversationId) {
@@ -282,6 +362,7 @@ export function useReasonixController() {
           kind: "summary",
           id: `summary-${currentConversationId}`,
           tally,
+          agentId,
         });
       }
     }
@@ -293,15 +374,25 @@ export function useReasonixController() {
     // natural place to look. The Transcript already styles
     // the `notice` kind with a red border / soft background.
     for (const n of notices) {
-      result.push({ kind: "notice", id: n.id, level: n.level, text: n.text });
+      result.push({ kind: "notice", id: n.id, level: n.level, text: n.text, agentId });
     }
 
-    return result;
+    // AionUI-style grouping: consecutive `tool` items get
+    // wrapped into a `tool_group` so the transcript renders
+    // them as a collapsible group with a summary header
+    // ("3 次工具调用") instead of N separate cards. The
+    // grouping only applies to 2+ consecutive tools — a
+    // single tool call is rendered as a standalone card
+    // (the visual weight of a group header + single child
+    // would be worse than just showing the card directly).
+    const grouped = groupConsecutiveTools(result);
+    return grouped;
   }, [
     conversationMessages,
     isStreaming,
     currentThinking,
     currentToolCalls,
+    currentPermission,
     currentConversation,
     currentConversationId,
     summaryByConversation,
