@@ -364,6 +364,44 @@ pub async fn stream_ai(
         }
     });
 
+    // Drain stderr concurrently with stdout. The previous code
+    // piped stderr (Stdio::piped()) but never read it, which had
+    // two failure modes:
+    //   1. Successful-but-noisy CLIs (e.g. Claude writing a
+    //      deprecation warning to stderr) would block on write
+    //      once the OS pipe buffer (64 KB on linux) filled up,
+    //      stalling `child.wait()` indefinitely.
+    //   2. Failed CLIs write their error message to stderr
+    //      (auth 401, network error, "unknown model" etc.) but
+    //      the user only saw the bare exit code because we
+    //      never carried the diagnostic back. Now we collect
+    //      up to ~8 KB of stderr so the failure is actionable.
+    let stderr_handle = child
+        .stderr
+        .take()
+        .map(|stderr| {
+            tokio::spawn(async move {
+                let mut buf: Vec<u8> = Vec::with_capacity(4096);
+                let mut tmp = [0u8; 1024];
+                use tokio::io::AsyncReadExt;
+                let mut reader = stderr;
+                // Bound the read so a chatty CLI does not eat
+                // unbounded memory. 8 KB is enough for the
+                // 99% case (auth, model, network errors are
+                // all well under 1 KB).
+                while buf.len() < 8192 {
+                    match reader.read(&mut tmp).await {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            buf.extend_from_slice(&tmp[..n]);
+                        }
+                        Err(_) => break,
+                    }
+                }
+                buf
+            })
+        });
+
     // Wrap the wait + end event in a closure so every exit path
     // (Ok / Err / early return on stdin grab) unregisters the pid
     // exactly once. We use a block instead of a `?` early-return so
@@ -375,20 +413,54 @@ pub async fn stream_ai(
             .map_err(|e| format!("Process wait failed: {e}"))?;
 
         let _ = reader_handle.await;
+        // Collect stderr (bounded by the drain task above). On
+        // a non-zero exit, the stderr text is the most useful
+        // diagnostic Claude / Codex / Gemini ever produces —
+        // it carries the actual API error, model name
+        // typo, OAuth failure, etc. We surface it verbatim
+        // after the exit code so the frontend's
+        // `friendlySendError` can pick the right branch.
+        let stderr_text: String = match stderr_handle {
+            Some(h) => h
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|b: &u8| (0x21..=0x7e).contains(b) || matches!(b, b'\n' | b'\t' | b' '))
+                .map(|b: u8| b as char)
+                .collect(),
+            None => String::new(),
+        };
+        let stderr_trimmed = stderr_text.trim().to_string();
 
-        let _ = app.emit(
-            "ai-stream-end",
-            if status.success() {
-                "ok".to_string()
-            } else {
-                format!("exit: {}", status.code().unwrap_or(-1))
-            },
-        );
+        let end_event = if status.success() {
+            "ok".to_string()
+        } else {
+            format!(
+                "exit: {}",
+                status.code().unwrap_or(-1)
+            )
+        };
+        let _ = app.emit("ai-stream-end", end_event);
 
         if status.success() {
             Ok(sid.clone())
         } else {
-            Err(format!("AI CLI exited with {}", status.code().unwrap_or(-1)))
+            let code = status.code().unwrap_or(-1);
+            if stderr_trimmed.is_empty() {
+                Err(format!("AI CLI exited with {code}"))
+            } else {
+                // Cap stderr at 2 KB so the IPC error string
+                // stays reasonable; the Rust → JS bridge can
+                // carry that much without issue and the user
+                // gets the first ~30 lines of the diagnostic
+                // (usually the first line is enough).
+                let tail = if stderr_trimmed.len() > 2048 {
+                    format!("{}…", &stderr_trimmed[..2048])
+                } else {
+                    stderr_trimmed
+                };
+                Err(format!("AI CLI exited with {code}: {tail}"))
+            }
         }
     }
     .await;

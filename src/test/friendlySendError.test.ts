@@ -141,4 +141,49 @@ describe("friendlySendError", () => {
     expect(out).toContain("claude 调用失败");
     expect(out).toContain("/tmp/old-workspace");
   });
+
+  it("surfaces stderr tail when the new Rust side appends `: <stderr>` to the exit code", () => {
+    // The stream_ai fix drains stderr concurrently and
+    // appends the tail to the exit-code wrapper. The user
+    // should see Claude's real diagnostic (auth 401, model
+    // typo, network error, ...) in both the red notice and
+    // the assistant bubble.
+    const msg = friendlySendError(
+      "AI CLI exited with 1: 401 Unauthorized: please login via `claude login`",
+      "claude",
+    );
+    expect(msg).toContain("claude");
+    expect(msg).toContain("1");
+    expect(msg).toContain("401 Unauthorized");
+    expect(msg).toContain("claude login");
+  });
+
+  it("truncates very long stderr at 200 chars to keep the toast readable", () => {
+    const long = "x".repeat(500);
+    const msg = friendlySendError(`AI CLI exited with 1: ${long}`, "claude");
+    expect(msg).toContain("x".repeat(200));
+    expect(msg).toMatch(/…$/);
+  });
+
+  it("preserves the full multi-line stderr tail in the helper output", () => {
+    // The catch block in `send` takes the first line of
+    // `friendlyMessage` for the toast. The helper itself
+    // just returns the full multi-line string; the call site
+    // handles the toast truncation. This test pins the
+    // helper's contract.
+    const stderr =
+      "Error: 401\n  at /path/to/auth/middleware.js:42\n  at /path/to/router.js:17";
+    const msg = friendlySendError(`AI CLI exited with 1: ${stderr}`, "claude");
+    expect(msg).toContain("Error: 401");
+    expect(msg).toContain("auth/middleware.js:42");
+  });
+
+  it("recognizes the new shape even when stderr has no leading space", () => {
+    const msg = friendlySendError(
+      "AI CLI exited with 137:network unreachable: api.anthropic.com",
+      "claude",
+    );
+    expect(msg).toContain("137");
+    expect(msg).toContain("network unreachable");
+  });
 });

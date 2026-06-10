@@ -146,12 +146,26 @@ export function friendlySendError(raw: string, cli: string): string {
     const detail = wrapperMatch[1].trim();
     return `${cli} 调用失败：${detail.length > 120 ? detail.slice(0, 120) + "…" : detail}`;
   }
-  // The exit-code wrapper from commands::ai::stream_ai.
-  // Convert "exited with 1" to a friendlier phrasing.
-  const exitMatch = /^AI CLI exited with (-?\d+)$/i.exec(trimmed);
+  // The exit-code wrapper from commands::ai::stream_ai. The
+  // Rust side now ALSO appends the captured stderr tail after
+  // the exit code (`: <stderr>`) so the user sees the
+  // upstream CLI's diagnostic — auth 401, model-not-found,
+  // network error, etc. — instead of just an opaque exit
+  // code. The regex below matches both shapes:
+  //   - `AI CLI exited with 1`             (no stderr)
+  //   - `AI CLI exited with 1: <stderr...>`  (with stderr)
+  // so older server builds that still emit the bare code
+  // keep working while the new ones surface the real cause.
+  const exitMatch = /^AI CLI exited with (-?\d+)(?::\s*(.*))?$/i.exec(trimmed);
   if (exitMatch) {
     const code = exitMatch[1];
-    return `${cli} 启动失败（退出码 ${code}）：请检查 CLI 是否已安装、已登录，或在 “AI 助手” 面板切换其他引擎`;
+    const detail = (exitMatch[2] ?? "").trim();
+    const baseMsg = `${cli} 启动失败（退出码 ${code}）：请检查 CLI 是否已安装、已登录，或在 “AI 助手” 面板切换其他引擎`;
+    if (!detail) return baseMsg;
+    // Truncate at 200 chars so the toast stays readable; the
+    // red notice below carries the full detail.
+    const tail = detail.length > 200 ? detail.slice(0, 200) + "…" : detail;
+    return `${baseMsg}\n\n${tail}`;
   }
   // Fallback — pass the raw text through but prefix with
   // the CLI name so the user knows which engine failed.
@@ -687,11 +701,21 @@ export function useReasonixController() {
         // exit code.
         const rawMessage =
           error instanceof Error ? error.message : String(error);
+        // Two views of the same error: a short toast the user
+        // can dismiss, and a fuller notice + assistant bubble
+        // that carries Claude's actual stderr (auth / model /
+        // network diagnostics) so the user can act on it.
         const friendlyMessage = friendlySendError(rawMessage, cli);
-        console.error("send_chat_message failed:", error);
+        // The toast caps at ~120 chars to stay readable; we
+        // take the first line of the friendly message which
+        // strips the embedded stderr tail when the message
+        // is multi-line. The full detail stays in the notice
+        // and the assistant bubble.
+        const firstLine = friendlyMessage.split("\n")[0] ?? friendlyMessage;
+        console.error("send_chat_message failed:", error, "raw=", rawMessage);
         useToastStore.getState().addToast({
           type: "error",
-          message: `发送消息失败: ${friendlyMessage}`,
+          message: `发送消息失败: ${firstLine}`,
           duration: 5000,
         });
         addNotice("error", `发送消息失败: ${friendlyMessage}`);
