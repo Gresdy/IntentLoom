@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Message, ToolCall, ToolResponse, PermissionRequest, PlanState, TokenUsage } from '@/types/message';
 import type { ThinkingProcess } from '@/shared/thinking';
 import type { ArtifactTally } from '@/lib/artifactTally';
+import { useConversationStore } from './conversationStore';
 
 /**
  * In-conversation notice emitted by the streaming controller.
@@ -204,6 +205,13 @@ export const useMessageStore = create<MessageState>((set, get) => ({
         ),
       };
     });
+    // T12: write through to the conversation store (see
+    // appendContent for the rationale).
+    useConversationStore.getState().updateLastMessage({ thinking: (() => {
+      const s = useMessageStore.getState();
+      const last = s.messages[s.messages.length - 1];
+      return last?.thinking;
+    })() });
   },
 
   beginThinking: () => {
@@ -244,6 +252,12 @@ export const useMessageStore = create<MessageState>((set, get) => ({
     set((state) => ({
       currentToolCalls: [...state.currentToolCalls, toolCall],
     }));
+    // T12: write through to the conversation store so the
+    // ToolCard renders the call live (not only at
+    // ai-stream-end).
+    useConversationStore.getState().updateLastMessage({
+      toolCalls: useMessageStore.getState().currentToolCalls,
+    });
   },
   
   updateToolCall: (id, updates) => {
@@ -252,12 +266,20 @@ export const useMessageStore = create<MessageState>((set, get) => ({
         tc.id === id ? { ...tc, ...updates } : tc
       ),
     }));
+    // T12: write through (see addToolCall).
+    useConversationStore.getState().updateLastMessage({
+      toolCalls: useMessageStore.getState().currentToolCalls,
+    });
   },
   
   addToolResponse: (response) => {
     set((state) => ({
       currentToolResponses: [...state.currentToolResponses, response],
     }));
+    // T12: write through (see addToolCall).
+    useConversationStore.getState().updateLastMessage({
+      toolResponses: useMessageStore.getState().currentToolResponses,
+    });
   },
   
   setPermission: (permission) => {
@@ -274,6 +296,14 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   
   setPlan: (plan) => {
     set({ currentPlan: plan });
+    // T12: write through to the conversation store so
+    // the plan block renders live during the stream.
+    // T12: write through to the conversation store. The
+    // messageStore's `currentPlan` is `PlanState | null`
+    // (null = cleared), while the Message type's `plan`
+    // field is `PlanState | undefined` — coerce null →
+    // undefined so the union is happy.
+    useConversationStore.getState().updateLastMessage({ plan: plan ?? undefined });
   },
   
   updatePlanEntry: (entryId, status) => {
@@ -357,5 +387,19 @@ export const useMessageStore = create<MessageState>((set, get) => ({
           : msg
       ),
     }));
+    // T12: write through to the conversation store so the
+    // items derivation (which reads from useConversationStore,
+    // not from this messageStore) sees the live streamed
+    // content. Without this, the assistant message's
+    // `content` only updates at ai-stream-end, so during the
+    // stream the assistant bubble renders empty and the
+    // ai-stream-end fallback path triggers the
+    // "no response from CLI" message even when the CLI
+    // returned a perfectly good answer.
+    useConversationStore.getState().updateLastMessage({ content: (() => {
+      const s = useMessageStore.getState();
+      const last = s.messages[s.messages.length - 1];
+      return (last?.content ?? "");
+    })() });
   },
 }));

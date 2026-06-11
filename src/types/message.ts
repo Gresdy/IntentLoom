@@ -4,6 +4,15 @@ export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: number;
+  /**
+   * Per-message agentId (T11). Stamped by reasonixAdapter
+   * at send time so the transcript shows the right agent
+   * badge even when the user has switched agents
+   * mid-conversation. The conversation-level
+   * `metadata.agentId` stays as the fallback for messages
+   * that pre-date this fix.
+   */
+  agentId?: string;
   toolCalls?: ToolCall[];
   toolResponses?: ToolResponse[];
   thinking?: any;
