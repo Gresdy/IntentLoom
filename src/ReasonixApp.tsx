@@ -30,6 +30,12 @@ import { seedProvidersFromPresets } from "./config/providerPresets";
 import type { AppId } from "./shared/types";
 import { useConversationStore, selectCurrentAgentId, selectCurrentConversationId } from "./stores/conversationStore";
 import { useAutoTitle } from "./hooks/useAutoTitle";
+import {
+  buildConversationExportText,
+  getDefaultExportFileName,
+  DEFAULT_EXPORT_LABELS_ZH,
+} from "./chat/conversationExport";
+import { getLastAssistantText } from "./chat/getLastAssistantText";
 import { useAgentStore, refreshAgentList } from "./lib/useAgents";
 import { getModeSpec, getReasoningSpec } from "./lib/cliCapabilities";
 import { modelsForCli } from "./config/cliPresets";
@@ -781,23 +787,85 @@ export const ReasonixApp: React.FC = () => {
                   return true;
                 }
                 case "export": {
-                  addToast({
-                    type: "info",
-                    message: "导出 Markdown 即将在下一轮接入（占位）",
-                  });
+                  // T9 chat parity: real Markdown export via
+                  // buildConversationExportText. The AionUi
+                  // reference writes to a Tauri file-save dialog;
+                  // we copy to the system clipboard with a toast
+                  // so the user can paste into a real editor or
+                  // their own notes app. Either way the wire
+                  // format is identical (buildConversationExportText
+                  // matches the AionUi source).
+                  const exportConv = useConversationStore
+                    .getState()
+                    .getCurrentConversation();
+                  if (!exportConv) {
+                    addToast({ type: "error", message: "没有可导出的会话" });
+                    return true;
+                  }
+                  const exportBody = buildConversationExportText(
+                    exportConv,
+                    exportConv.messages,
+                    DEFAULT_EXPORT_LABELS_ZH,
+                  );
+                  const fileName = getDefaultExportFileName(exportConv);
+                  if (navigator.clipboard) {
+                    navigator.clipboard.writeText(exportBody).then(
+                      () =>
+                        addToast({
+                          type: "success",
+                          message: `已复制 Markdown 导出（${fileName}）`,
+                        }),
+                      () =>
+                        addToast({ type: "error", message: "复制失败" }),
+                    );
+                  } else {
+                    addToast({
+                      type: "info",
+                      message: "当前环境不支持剪贴板，无法导出",
+                    });
+                  }
                   return true;
                 }
                 case "share": {
-                  const summary = state.items
-                    .filter((it) => "text" in it && typeof (it as { text?: unknown }).text === "string")
-                    .slice(-6)
-                    .map((it) => "• " + (it as { text: string }).text)
-                    .join("\n");
+                  // T9 chat parity: real getLastAssistantText.
+                  // Walks the message list backwards to find the
+                  // most recent non-streaming, non-empty assistant
+                  // text and strips inline <thinking> +
+                  // [SKILL_SUGGEST] tags so the clipboard gets a
+                  // clean summary, not the raw streamed text.
+                  const shareConv = useConversationStore
+                    .getState()
+                    .getCurrentConversation();
+                  const messages = (shareConv?.messages ?? []).map((m) => ({
+                    type: m.type,
+                    position:
+                      m.position ??
+                      (m.role === "user"
+                        ? ("right" as const)
+                        : m.role === "assistant"
+                        ? ("left" as const)
+                        : ("center" as const)),
+                    hidden: false,
+                    content: m.content,
+                  }));
+                  const text = getLastAssistantText(messages, state.running);
+                  if (!text) {
+                    addToast({
+                      type: "info",
+                      message: "当前还没有可分享的助手回复",
+                    });
+                    return true;
+                  }
                   if (navigator.clipboard) {
-                    navigator.clipboard.writeText(summary).then(
-                      () => addToast({ type: "success", message: "摘要已复制" }),
+                    navigator.clipboard.writeText(text).then(
+                      () => addToast({ type: "success", message: "最近一条助手回复已复制" }),
                       () => addToast({ type: "error", message: "复制失败" }),
                     );
+                  } else {
+                    addToast({
+                      type: "info",
+                      message: "当前环境不支持剪贴板，无法分享",
+                    });
                   }
                   return true;
                 }
