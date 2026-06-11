@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useCompositionInput } from "@/hooks/useCompositionInput";
+import {
+  isCaretOnFirstLine,
+  isCaretOnLastLine,
+} from "@/chat/messageHistory";
 import type { KeyboardEvent } from "react";
 import { ArrowUp, Square, AtSign, Paperclip, X } from "lucide-react";
 import type { AppId } from "../../shared/types";
@@ -60,6 +64,12 @@ interface ComposerProps {
    * still paste unknown slash commands to the LLM.
    */
   onCommand?: (cmd: SlashCommand, args: string) => boolean | void;
+  /** Past user prompts (most-recent first) for the current
+   *  conversation. The composer uses this for ↑/↓ history
+   *  navigation: ↑ at the first line replaces the draft with
+   *  history[0]; ↓ at the last line moves the other way. AionUi
+   *  `getConversationInputHistory` port. */
+  history?: string[];
 }
 
 export function Composer({
@@ -78,10 +88,20 @@ export function Composer({
   onSend,
   onCancel,
   onCommand,
+  history,
 }: ComposerProps) {
   const [text, setText] = useState("");
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [slashActive, setSlashActive] = useState(0);
+  // T10 chat parity — prompt history navigation. `historyIndex`
+  // is -1 when the composer is showing the user's own draft;
+  // 0+ means the textarea is currently showing `history[i]`.
+  // `historyDraft` is the text the user had typed before they
+  // started walking history, so ↓ at historyIndex === -1 can
+  // restore it cleanly without losing the in-flight draft.
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [historyDraft, setHistoryDraft] = useState("");
+  const historyList: string[] = history ?? [];
   // Drag-and-drop attachments. The parent decides whether to read
   // them via Tauri's fs API, base64-embed them in the prompt, or
   // pass them to an MCP resource. We do NOT block typing while
@@ -229,6 +249,18 @@ export function Composer({
     [attachFiles]
   );
 
+  // T10: when the user sends, drop the history cursor so the
+  // next ↑ starts at the top of the new stack. Done before
+  // `handleSubmit` so the reset is visible to the consumer
+  // if they peek at the composer's state during onSend.
+  // (Inside the same callback to keep the lifecycle tied to
+  // send — no separate effect that could fire on unrelated
+  // state changes.)
+  const resetHistoryNav = useCallback(() => {
+    setHistoryIndex(-1);
+    setHistoryDraft("");
+  }, []);
+
   const handleSubmit = useCallback(() => {
     const trimmed = text.trim();
     if (!trimmed) return;
@@ -243,10 +275,11 @@ export function Composer({
         return;
       }
     }
+    resetHistoryNav();
     onSend(trimmed, attachedFiles.length > 0 ? attachedFiles : undefined);
     setText("");
     setAttachedFiles([]);
-  }, [text, onSend, onCommand, resolveSlashCommand, attachedFiles]);
+  }, [text, onSend, onCommand, resolveSlashCommand, attachedFiles, resetHistoryNav]);
 
   // T6 chat parity — IME composition guard. AionUi ports the
   // same hook so that Enter used to commit a pinyin / kana
@@ -293,6 +326,46 @@ export function Composer({
           e.preventDefault();
           setText("");
           setShowSlashMenu(false);
+          return;
+        }
+      }
+
+      // T10 chat parity — ↑/↓ prompt history navigation. Only
+      // fires when no menu is open (the slash / @-file menus
+      // consume the arrow keys above). ↑ at the first line of
+      // the textarea walks back through `history`; ↓ at the
+      // last line walks forward and restores the user's draft
+      // at the start of the stack.
+      if (!showSlashMenu && historyList.length > 0) {
+        if (e.key === "ArrowUp" && isCaretOnFirstLine(taRef.current)) {
+          e.preventDefault();
+          const nextIdx =
+            historyIndex < 0
+              ? 0
+              : Math.min(historyIndex + 1, historyList.length - 1);
+          if (nextIdx !== historyIndex) {
+            if (historyIndex === -1) {
+              // First ↑ — save what the user had so we can
+              // restore it when they ↓ past the start of the
+              // history.
+              setHistoryDraft(text);
+            }
+            setHistoryIndex(nextIdx);
+            setText(historyList[nextIdx]);
+          }
+          return;
+        }
+        if (e.key === "ArrowDown" && isCaretOnLastLine(taRef.current)) {
+          e.preventDefault();
+          if (historyIndex > 0) {
+            setHistoryIndex(historyIndex - 1);
+            setText(historyList[historyIndex - 1]);
+          } else if (historyIndex === 0) {
+            // Past the end of the stack — restore the draft
+            // the user had before they started walking.
+            setHistoryIndex(-1);
+            setText(historyDraft);
+          }
           return;
         }
       }

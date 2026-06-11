@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, useRef, Suspense, Fragment } from "react";
+import { useCallback, useState, useEffect, useMemo, useRef, Suspense, Fragment } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   SquarePen, History, Settings, Command, Moon, Sun, Bot, PanelLeftClose, PanelLeftOpen,
@@ -36,6 +36,7 @@ import {
   DEFAULT_EXPORT_LABELS_ZH,
 } from "./chat/conversationExport";
 import { getLastAssistantText } from "./chat/getLastAssistantText";
+import { getConversationInputHistory } from "./chat/messageHistory";
 import { useAgentStore, refreshAgentList } from "./lib/useAgents";
 import { getModeSpec, getReasoningSpec } from "./lib/cliCapabilities";
 import { modelsForCli } from "./config/cliPresets";
@@ -219,6 +220,20 @@ export const ReasonixApp: React.FC = () => {
   //  set a non-placeholder name. See useAutoTitle for the
   //  placeholder-detection rule.
   useAutoTitle(currentConversationId);
+  // T10 chat parity — derive the ↑/↓ history stack from the
+  // active conversation. Recomputed whenever the user
+  // switches conversations or sends a new prompt (the
+  // currentConversationId selector picks up both). The
+  // helper dedupes by exact content and filters to text /
+  // right-positioned messages of the current conversation.
+  const promptHistory = useMemo(
+    () => {
+      const conv = useConversationStore.getState().getCurrentConversation();
+      if (!conv) return [];
+      return getConversationInputHistory(conv.messages, conv.id);
+    },
+    [currentConversationId, state.items.length],
+  );
   // Phase 1.5: the adapter registry is loaded once on mount so the
   // TopBar can gate CLIs whose binary is missing on disk.
   const agentRegistry = useAgentStore((s) => s.agents);
@@ -744,6 +759,7 @@ export const ReasonixApp: React.FC = () => {
             onModelChange={(id: string) => setCurrentModel(currentApp as AppId, id)}
             onSend={send}
             onCancel={cancel}
+            history={promptHistory}
             onCommand={(cmd: SlashCommand, args: string) => {
               // AionUi port — slash commands now dispatch to real handlers
               // instead of being pasted back into the textarea. Unknown
@@ -841,10 +857,10 @@ export const ReasonixApp: React.FC = () => {
                     position:
                       m.position ??
                       (m.role === "user"
-                        ? ("right" as const)
+                        ? "right"
                         : m.role === "assistant"
-                        ? ("left" as const)
-                        : ("center" as const)),
+                        ? "left"
+                        : "center"),
                     hidden: false,
                     content: m.content,
                   }));
