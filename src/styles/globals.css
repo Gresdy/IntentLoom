@@ -4952,3 +4952,77 @@ body {
   justify-content: flex-end;
   gap: 6px;
 }
+
+/* === T8 chat parity: available_commands card === */
+.message-available-commands {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm, 6px);
+}
+
+.message-available-commands__header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font: inherit;
+  color: var(--fg-dim);
+  text-align: left;
+}
+
+.message-available-commands__title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.message-available-commands__chevron {
+  transition: transform 120ms ease;
+  color: var(--fg-faint);
+}
+
+.message-available-commands__chevron--open {
+  transform: rotate(90deg);
+}
+
+.message-available-commands__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.message-available-commands__item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.message-available-commands__name {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-soft);
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+.message-available-commands__desc {
+  color: var(--fg-dim);
+}
+
+.message-available-commands__hint {
+  color: var(--fg-faint);
+  font-style: italic;
+}

@@ -35,6 +35,7 @@ import { MessageTips } from "./MessageTips";
 import { MessagePlan } from "./MessagePlan";
 import { MessageSkillSuggest } from "./MessageSkillSuggest";
 import { MessageCronTrigger } from "./MessageCronTrigger";
+import { MessageAvailableCommands } from "./MessageAvailableCommands";
 import { SelectionReplyButton } from "./SelectionReplyButton";
 import { TeammateMessageAvatar, type TeammateSender } from "./TeammateMessageAvatar";
 
@@ -461,6 +462,15 @@ function ItemRenderer({
           cronJobId={item.cronJobId}
           cronJobName={item.cronJobName}
           triggeredAt={item.triggeredAt}
+          agentId={item.agentId}
+        />
+      );
+
+    case "available_commands":
+      return (
+        <MessageAvailableCommands
+          id={item.id}
+          commands={item.commands}
           agentId={item.agentId}
         />
       );

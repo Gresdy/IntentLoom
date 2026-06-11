@@ -15,6 +15,7 @@ import { parseStreamChunk } from "@/lib/streamChunkParser";
 import { useToastStore } from "@/lib/useToast";
 import { useTestItemsStore } from "@/lib/testItemsStore";
 import { stripThinkTags } from "@/utils/thinkTagFilter";
+import { stripSkillSuggest } from "@/utils/skillSuggestParser";
 import type { ToolCall } from "@/types/message";
 
 export type Mode = "normal" | "plan" | "yolo";
@@ -38,7 +39,9 @@ export type ReasonixItem =
   /** Skill suggestion card (e.g. "try /code-review"). */
   | { kind: "skill_suggest"; id: string; name: string; description: string; content?: string; agentId?: string; createdAt?: number }
   /** Cron / scheduled-task trigger card (e.g. "定时任务 #7 触发了"). */
-  | { kind: "cron_trigger"; id: string; cronJobId?: string; cronJobName?: string; triggeredAt?: number; agentId?: string; createdAt?: number };
+  | { kind: "cron_trigger"; id: string; cronJobId?: string; cronJobName?: string; triggeredAt?: number; agentId?: string; createdAt?: number }
+  /** Slash commands the active CLI natively supports (AionUi `available_commands` port). */
+  | { kind: "available_commands"; id: string; commands: Array<{ name: string; description: string; hint?: string }>; agentId?: string; createdAt?: number };
 
 export interface ReasonixMeta {
   label: string;
@@ -495,8 +498,8 @@ export function useReasonixController() {
           // path already routes `thinking_delta` chunks to
           // `appendThinking`, so this strip is a safety net for
           // adapters that emit thinking inline as text.
-          appendContent(stripThinkTags(raw));
-          return;
+        appendContent(stripSkillSuggest(stripThinkTags(raw)));
+        return;
         }
 
         for (const parsed of chunks) {
@@ -519,7 +522,7 @@ export function useReasonixController() {
             // kept around (status: "done") so the user can
             // still re-open it to read the reasoning.
             finishThinking();
-            appendContent(stripThinkTags(parsed.text));
+            appendContent(stripSkillSuggest(stripThinkTags(parsed.text)));
             break;
           case "thinking":
             // Open the live ThinkingDisplay card on the
