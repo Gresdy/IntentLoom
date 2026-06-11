@@ -29,6 +29,7 @@ import { useModelStore } from "./stores/useModelStore";
 import { seedProvidersFromPresets } from "./config/providerPresets";
 import type { AppId } from "./shared/types";
 import { useConversationStore, selectCurrentAgentId, selectCurrentConversationId } from "./stores/conversationStore";
+import { useAutoTitle } from "./hooks/useAutoTitle";
 import { useAgentStore, refreshAgentList } from "./lib/useAgents";
 import { getModeSpec, getReasoningSpec } from "./lib/cliCapabilities";
 import { modelsForCli } from "./config/cliPresets";
@@ -206,6 +207,12 @@ export const ReasonixApp: React.FC = () => {
     setCurrentModel,
   } = useModelStore();
   const currentConversationId = useConversationStore(selectCurrentConversationId);
+  // T6 chat parity — auto-title the active conversation from its
+  //  first user message. The hook is a no-op once the user has
+  //  renamed the conversation or a previous auto-title run has
+  //  set a non-placeholder name. See useAutoTitle for the
+  //  placeholder-detection rule.
+  useAutoTitle(currentConversationId);
   // Phase 1.5: the adapter registry is loaded once on mount so the
   // TopBar can gate CLIs whose binary is missing on disk.
   const agentRegistry = useAgentStore((s) => s.agents);

@@ -56,7 +56,7 @@ describe("useConversationStore", () => {
 
   // === T4 chat parity — edit + truncate ===
   it("editMessageById updates content in place and returns the new message", () => {
-    const c = useConversationStore.getState().createConversation();
+    useConversationStore.getState().createConversation();
     useConversationStore.getState().addMessageToCurrent(stubMsg("user", "hi"));
     const id = useConversationStore.getState().getCurrentConversation()!.messages[0].id;
     const updated = useConversationStore.getState().editMessageById(id, { content: "hello" });

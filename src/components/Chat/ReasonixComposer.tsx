@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useCompositionInput } from "@/hooks/useCompositionInput";
 import type { KeyboardEvent } from "react";
 import { ArrowUp, Square, AtSign, Paperclip, X } from "lucide-react";
 import type { AppId } from "../../shared/types";
@@ -247,6 +248,13 @@ export function Composer({
     setAttachedFiles([]);
   }, [text, onSend, onCommand, resolveSlashCommand, attachedFiles]);
 
+  // T6 chat parity — IME composition guard. AionUi ports the
+  // same hook so that Enter used to commit a pinyin / kana
+  // candidate does not also fire `handleSubmit`. See
+  // useCompositionInput for the 200 ms safety latch that
+  // catches the Enter some IMEs fire on the same tick as
+  // compositionend.
+  const { onCompositionStart, onCompositionEnd, guardKeyDown } = useCompositionInput();
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       // 斜杠菜单导航
@@ -360,7 +368,9 @@ export function Composer({
           className="composer__input"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
+          onKeyDown={guardKeyDown(handleKeyDown)}
+          onCompositionStart={onCompositionStart}
+          onCompositionEnd={onCompositionEnd}
           onPaste={handlePaste}
           placeholder={
             isAvailable
