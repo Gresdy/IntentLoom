@@ -1,35 +1,34 @@
-import { useCallback, useState, useEffect, useRef, lazy, Suspense, Fragment } from "react";
+import { useCallback, useState, useEffect, useRef, Suspense, Fragment } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   SquarePen, History, Settings, Command, Moon, Sun, Bot, PanelLeftClose, PanelLeftOpen,
-  FolderOpen, Code, Server, MessageSquare, Search,
-  Users, X, Zap,
-  Sparkles, MessageCircle, RefreshCw, Loader2,
+  FolderOpen, X, Zap, ShieldAlert,
+  MessageCircle, RefreshCw, Loader2,
   LayoutGrid,
 } from "lucide-react";
 import { AGENT_TAB_ICON } from "@/components/Topbar/AgentTabIcon";
 import { useReasonixController } from "./lib/reasonixAdapter";
-import { seedDemoConversation } from "./lib/demoConversation";
+import { seedTestDemo, clearTestDemo } from "./lib/testDemo";
 import { Transcript } from "./components/Chat/ReasonixTranscript";
+import { ConversationArtifactProvider } from "./chat/conversationArtifact";
 import { Composer } from "./components/Chat/ReasonixComposer";
+import type { SlashCommand } from "./components/Chat/SlashCommandMenu";
 import { TopUsage } from "./components/Chat/TopUsage";
 import { StatusBar } from "./components/layout/ReasonixStatusBar";
 import { useAgentReadinessCheck } from "./hooks/useAgentReadinessCheck";
 import { useToastStore } from "./lib/useToast";
-import { SettingsDrawer } from "./components/layout/SettingsDrawer";
+import { SettingsDrawer, isSettingsTab, type SettingsTab } from "./components/layout/SettingsDrawer";
 import { HistoryDrawer } from "./components/layout/HistoryDrawer";
 import { CommandPalette, useCommandPalette } from "./components/common/CommandPalette";
 import { ToastContainer } from "./components/common/ToastContainer";
 import { LoomPanel } from "./components/Loom/LoomPanel";
 import { Onboarding } from "./components/Onboarding";
 import { Resizer } from "./components/Resizer";
-import { ToolsModal } from "./components/layout/ToolsModal";
 import { useThemeStore } from "./stores/useThemeStore";
 import { useModelStore } from "./stores/useModelStore";
 import { seedProvidersFromPresets } from "./config/providerPresets";
 import type { AppId } from "./shared/types";
-import { invoke } from "./lib/tauri";
-import { useConversationStore, selectCurrentAgentId } from "./stores/conversationStore";
+import { useConversationStore, selectCurrentAgentId, selectCurrentConversationId } from "./stores/conversationStore";
 import { useAgentStore, refreshAgentList } from "./lib/useAgents";
 import { getModeSpec, getReasoningSpec } from "./lib/cliCapabilities";
 import { modelsForCli } from "./config/cliPresets";
@@ -41,10 +40,14 @@ import {
 
 // 注意：AgentsPanel / ProjectsPanel / SkillsPanel / PromptsPanel /
 // McpPanel / ExpertPanel / SearchPanel / SessionsPanel 这些面板现在
-// 全部在 SettingsDrawer 里 lazy 加载（左侧 nav 点选后右侧渲染）。
-// 侧栏只保留 3 个一级入口，剩下的都进设置。这里不再声明任何 panel
-// lazy 加载，但仍然保留 ModelPanel 供 settings → 模型 tab 复用。
-import { ModelPanel } from "./components/layout/ModelPanel";
+// 全部在 SettingsDrawer 里 lazy 加载（左侧 nav 点选后右侧渲染）。侧栏
+// 只保留 3 个一级入口（聊天 / 自动化 / 项目管理），剩下的都进设置。
+// 这里不再声明任何 panel lazy 加载,所有面板都在 SettingsDrawer 里
+// 渲染。ProjectsPanel 是唯一例外 —— 侧栏「项目管理」还会打开右侧
+// slide-in,所以在这里保留一份 import。PanelLoader 是 slide-in 的
+// 通用 Suspense fallback,统一在 common/ 下。
+import { ProjectsPanel } from "./components/LeftPanel/ProjectsPanel";
+import { PanelLoader } from "./components/common/PanelLoader";
 
 // Hermes is intentionally absent: it lives in ALL_AGENTS as a top-tab
 // peer of Claude / Codex / Gemini, with no dedicated side panel.
@@ -61,39 +64,18 @@ interface NavItem {
   badge?: number;
 }
 
-const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
-  {
-    items: [
-      { key: "chat", icon: <MessageCircle size={18} />, label: "聊天" },
-      { key: "automation", icon: <Zap size={18} />, label: "自动化" },
-      { key: "agents", icon: <Bot size={18} />, label: "AI 助手" },
-      { key: "sessions", icon: <MessageSquare size={18} />, label: "会话管理" },
-    ],
-  },
-  {
-    label: "项目",
-    items: [
-      { key: "projects", icon: <FolderOpen size={18} />, label: "项目管理" },
-      { key: "skills", icon: <Code size={18} />, label: "Skills" },
-      { key: "expert", icon: <Users size={18} />, label: "专家" },
-      { key: "prompts", icon: <Sparkles size={18} />, label: "Prompts" },
-    ],
-  },
-  {
-    label: "系统",
-    items: [
-      { key: "mcp", icon: <Server size={18} />, label: "MCP" },
-    ],
-  },
+// 侧栏精简后,只剩 3 个一级入口(聊天 / 自动化 / 项目管理),不再
+// 分组。其余 10+ 个面板(agents / sessions / skills / expert / prompts /
+// mcp / model / usage / logs / search / shortcuts / about)全部并入
+// Settings 里的左侧 nav,对应内容在 SettingsDrawer 里渲染。
+const NAV_ITEMS: NavItem[] = [
+  { key: "chat",       icon: <MessageCircle size={18} />, label: "聊天" },
+  { key: "automation", icon: <Zap size={18} />,          label: "自动化" },
+  { key: "projects",   icon: <FolderOpen size={18} />,   label: "项目管理" },
 ];
 
-// Flat view of NAV_GROUPS in display order. Used by the keyboard
-// shortcut handler to map Ctrl+1..9 onto the most-used navigation
-// targets. 自动化 / Skills are intentionally excluded because nine is
-// a useful ceiling for chord-based navigation and those two have
-// lower daily hit rate. (Hermes used to live here too; it now lives
-// in ALL_AGENTS as a top-tab peer of Claude / Codex.)
-const FLAT_NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
+// 仅用于键盘快捷键 Ctrl+1..3 跳转的扁平顺序。
+const FLAT_NAV_ITEMS: NavItem[] = NAV_ITEMS;
 
 // Agent tabs config
 // disabled: tab stays in the DOM but cannot be activated. Today the
@@ -116,23 +98,17 @@ const ALL_AGENTS: { id: AppId; label: string; shortLabel: string; disabled?: boo
 
 function isNavKey(value: string | null): value is NavKey {
   if (!value) return false;
-  return [
-    "chat", "automation", "projects", "agents", "prompts", "mcp",
-    "skills", "expert", "sessions", "search", "settings",
-  ].includes(value);
+  // 只接受侧栏 3 个一级入口和 settings 这 4 个 key。
+  // 其余所有面板(agents / sessions / skills / expert / prompts / mcp /
+  // search)都通过 ?view=settings&tab=... 走 Settings 弹框,不再有
+  // 独立的 panel 路由。
+  return value === "chat" || value === "automation" || value === "projects" || value === "settings";
 }
 
 const PANEL_TITLES: Record<NavKey, string> = {
   chat: "聊天",
   automation: "自动化",
   projects: "项目管理",
-  agents: "AI 助手",
-  prompts: "Prompts",
-  mcp: "MCP",
-  skills: "Skills",
-  expert: "专家",
-  sessions: "会话管理",
-  search: "搜索",
   settings: "设置",
 };
 
@@ -163,7 +139,6 @@ export const ReasonixApp: React.FC = () => {
 
   const [histView, setHistView] = useState<any[] | null>(null);
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
-  const [toolsOpen, setToolsOpen] = useState(false);
   // Loom panel width lives in localStorage so the column stays at
   // the user's preferred size across reloads. 320 px matches the
   // default baked into globals.css; the [240, 520] range keeps the
@@ -188,6 +163,18 @@ export const ReasonixApp: React.FC = () => {
   useEffect(() => {
     seedProvidersFromPresets(useModelStore.getState().registerProvider);
   }, []);
+  // === Dev/test injection: ?demo=1 in the URL auto-injects the
+  // synthetic demo conversation on mount, so screenshots /
+  // Playwright runs can verify message rendering without going
+  // through the real CLI streaming path. Reads window.location
+  // once on mount and never again (no re-runs on URL change).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("demo") === "1") {
+      try { clearTestDemo(); seedTestDemo(); } catch (e) { console.error("[demo inject]", e); }
+    }
+  }, []);
   // URL is the source of truth for navigation state: deep links,
   // browser back/forward, and reload all stay in sync.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -203,6 +190,14 @@ export const ReasonixApp: React.FC = () => {
   const isSidebarExpanded =
     isSidebarHovered || isSidebarPinned || rightPanelOpen;
   const settingsOpen = searchParams.get("view") === "settings";
+  // 设置弹框默认落点 tab。?view=settings&tab=agents 这样的 URL 会
+  // 同步在 SettingsDrawer 里高亮对应 tab,这样顶栏设置按钮、命令面板、
+  // 命令面板、未来的 deep-link 都能精确定位。
+  const settingsTabParam = searchParams.get("tab");
+  const initialSettingsTab: SettingsTab | undefined =
+    settingsOpen && isSettingsTab(settingsTabParam)
+      ? settingsTabParam
+      : undefined;
   const { mode: themeMode, setMode: setThemeMode } = useThemeStore();
   const {
     currentApp,
@@ -210,6 +205,7 @@ export const ReasonixApp: React.FC = () => {
     currentModelByCli,
     setCurrentModel,
   } = useModelStore();
+  const currentConversationId = useConversationStore(selectCurrentConversationId);
   // Phase 1.5: the adapter registry is loaded once on mount so the
   // TopBar can gate CLIs whose binary is missing on disk.
   const agentRegistry = useAgentStore((s) => s.agents);
@@ -335,6 +331,74 @@ export const ReasonixApp: React.FC = () => {
     setCurrentApp(appId);
   }, [setCurrentApp, isUnavailable]);
 
+  // === T4 chat parity: user-edit + assistant-regenerate ===
+  // Both flows end with `send(text)`, which appends a fresh user +
+  // assistant message pair and kicks off a live stream. Before we
+  // re-send we shape the conversation so the new assistant turn
+  // starts from the prompt the user actually wants.
+  //
+  // - Edit user message: keep the (now-edited) user message, drop
+  //   the assistant reply + any tool calls that came after.
+  // - Regenerate assistant: find the user prompt that produced the
+  //   assistant, drop the assistant + everything after, re-send the
+  //   same prompt to get a fresh assistant turn.
+  //
+  // Both are no-ops when a stream is already running (the composer
+  // and AssistantMessageRow already gate the UI, but we belt-and-
+  // brace here so a stale click cannot race the live stream).
+  const handleEditUserMessage = useCallback(
+    (messageId: string, newText: string) => {
+      if (state.running) return;
+      const trimmed = newText.trim();
+      if (!trimmed) return;
+      const store = useConversationStore.getState();
+      const removed = store.truncateAfterMessageId(messageId);
+      store.editMessageById(messageId, { content: trimmed });
+      if (removed > 0) {
+        addToast({ type: "info", message: `已删除 ${removed} 条后续消息，重新发送中…` });
+      }
+      void send(trimmed);
+    },
+    [state.running, send, addToast],
+  );
+
+  const handleRegenerateAssistant = useCallback(
+    (assistantMessageId: string) => {
+      if (state.running) return;
+      // Walk the conversation store to find the most recent user
+      // message that came BEFORE this assistant message. We use
+      // the persisted conversation (not the live `state.items`)
+      // because tool cards, phases, etc. are not user/assistant
+      // messages and we want the original prompt, not the rendered
+      // transcript.
+      const messages =
+        useConversationStore.getState().getCurrentConversation()?.messages ?? [];
+      const assistantIdx = messages.findIndex((m) => m.id === assistantMessageId);
+      if (assistantIdx === -1) return;
+      let userMsg: typeof messages[number] | undefined;
+      for (let i = assistantIdx - 1; i >= 0; i--) {
+        if (messages[i].role === "user") {
+          userMsg = messages[i];
+          break;
+        }
+      }
+      if (!userMsg || typeof userMsg.content !== "string" || !userMsg.content.trim()) {
+        addToast({ type: "error", message: "找不到该回答对应的用户消息，无法重新生成。" });
+        return;
+      }
+      // Drop the assistant + everything after, then re-send the
+      // original user prompt. We do NOT need to truncate up to the
+      // user message (the user message is already the boundary);
+      // we only need to drop the assistant onward.
+      const removed = useConversationStore.getState().truncateFromMessageId(assistantMessageId);
+      if (removed > 0) {
+        addToast({ type: "info", message: `已删除 ${removed} 条后续消息，重新生成中…` });
+      }
+      void send(userMsg.content);
+    },
+    [state.running, send, addToast],
+  );
+
   // Global shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -357,8 +421,17 @@ export const ReasonixApp: React.FC = () => {
         e.preventDefault();
         setThemeMode(themeMode === "dark" ? "light" : "dark");
       } else if (mod && e.shiftKey && e.key === "L") {
+        // Ctrl+Shift+L 直接打开统一的设置弹框(以前这里是 ToolsModal
+        // 的快捷入口,现在 ToolsModal 已经移除,统一走 Settings)。
         e.preventDefault();
-        setToolsOpen((v) => !v);
+        const nextL = new URLSearchParams(searchParams);
+        if (settingsOpen) {
+          nextL.delete("view");
+          nextL.delete("tab");
+        } else {
+          nextL.set("view", "settings");
+        }
+        setSearchParams(nextL, { replace: true });
       } else if (mod && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key)) {
         // Ctrl+1..9 jumps to the n-th nav item in display order. Only
         // fires when the index exists; users pressing Ctrl+5 when
@@ -372,8 +445,6 @@ export const ReasonixApp: React.FC = () => {
       } else if (e.key === "Escape") {
         if (cmdPaletteOpen) {
           setCmdPaletteOpen(false);
-        } else if (toolsOpen) {
-          setToolsOpen(false);
         } else if (settingsOpen) {
           const next = new URLSearchParams(searchParams);
           next.delete("view");
@@ -390,10 +461,6 @@ export const ReasonixApp: React.FC = () => {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [newSession, setThemeMode, themeMode, cmdPaletteOpen, rightPanelOpen, histView, settingsOpen, searchParams, setSearchParams]);
-  // toolsOpen is intentionally read from closure on each keystroke; we
-  // don't add it to deps to avoid rebinding the global listener on every
-  // modal open/close.
-
   // Command palette commands
   const commands = useCommandPalette({
     onNewChat: () => { newSession(); setCmdPaletteOpen(false); },
@@ -409,6 +476,8 @@ export const ReasonixApp: React.FC = () => {
 
   // Right panel content
   const renderRightPanel = () => {
+    // 侧栏精简后,只有 自动化 / 项目管理 会打开右侧 slide-in;聊天关闭它,
+    // 其余面板全部走 Settings 弹框,不在右侧 slide-in 里渲染。
     switch (activeNav) {
       case "automation":
         return (
@@ -420,60 +489,12 @@ export const ReasonixApp: React.FC = () => {
             </div>
           </div>
         );
-      case "agents":
-        return (
-          <Suspense fallback={<PanelLoader />}>
-            <AgentsPanel />
-          </Suspense>
-        );
       case "projects":
         return (
           <Suspense fallback={<PanelLoader />}>
             <ProjectsPanel />
           </Suspense>
         );
-      case "skills":
-        return (
-          <Suspense fallback={<PanelLoader />}>
-            <SkillsPanel />
-          </Suspense>
-        );
-      case "prompts":
-        return (
-          <Suspense fallback={<PanelLoader />}>
-            <PromptsPanel />
-          </Suspense>
-        );
-      case "mcp":
-        return (
-          <Suspense fallback={<PanelLoader />}>
-            <McpPanel />
-          </Suspense>
-        );
-      case "expert":
-        return (
-          <Suspense fallback={<PanelLoader />}>
-            <ExpertPanel />
-          </Suspense>
-        );
-      case "sessions":
-        return (
-          <Suspense fallback={<PanelLoader />}>
-            <SessionsPanel
-              onResume={(path) => {
-  setHistView(null);
-  resumeSession(path);
-  const next = new URLSearchParams(searchParams);
-  next.delete("panel");
-  setSearchParams(next, { replace: true });
-}}
-              onDelete={(path) => deleteSession(path)}
-              onRename={(path, title) => renameSession(path, title)}
-            />
-          </Suspense>
-      );
-      case "search":
-        return <SearchPanel />;
       default:
         return (
           <div style={{ padding: 24, color: "var(--fg-dim)", fontSize: 13 }}>
@@ -508,26 +529,16 @@ export const ReasonixApp: React.FC = () => {
         </div>
 
         <div className="sidebar__nav">
-          {NAV_GROUPS.map((group, gi) => (
-            <div key={gi} className="sidebar__nav-group">
-              {isSidebarExpanded && group.label && (
-                <div className="sidebar__nav-group-label">{group.label}</div>
-              )}
-              {group.items.map((item) => (
-                <button
-                  key={item.key}
-                  className={`sidebar__nav-item${activeNav === item.key && rightPanelOpen ? " active" : ""}`}
-                  onClick={() => handleNavClick(item.key)}
-                  title={!isSidebarExpanded ? item.label : undefined}
-                >
-                  <span className="sidebar__nav-item-icon">{item.icon}</span>
-                  <span className="sidebar__nav-item-label">{item.label}</span>
-                </button>
-              ))}
-              {gi < NAV_GROUPS.length - 1 && isSidebarExpanded && (
-                <div className="sidebar__nav-separator" />
-              )}
-            </div>
+          {NAV_ITEMS.map((item) => (
+            <button
+              key={item.key}
+              className={`sidebar__nav-item${activeNav === item.key && rightPanelOpen ? " active" : ""}`}
+              onClick={() => handleNavClick(item.key)}
+              title={!isSidebarExpanded ? item.label : undefined}
+            >
+              <span className="sidebar__nav-item-icon">{item.icon}</span>
+              <span className="sidebar__nav-item-label">{item.label}</span>
+            </button>
           ))}
         </div>
 
@@ -656,7 +667,11 @@ export const ReasonixApp: React.FC = () => {
             <button className="chip chip--icon" onClick={() => setCmdPaletteOpen(true)} title="命令面板 (Ctrl+K)">
               <Command size={13} />
             </button>
-            <button className="chip chip--icon" onClick={() => setToolsOpen(true)} title="工具面板 (Ctrl+Shift+T)">
+            <button
+              className="chip chip--icon"
+              onClick={() => handleNavClick("settings")}
+              title="设置 (Ctrl+Shift+L)"
+            >
               <LayoutGrid size={13} />
             </button>
             <button className="chip chip--icon" onClick={() => listSessions().then(setHistView)} disabled={state.running} title="历史记录">
@@ -687,7 +702,16 @@ export const ReasonixApp: React.FC = () => {
              below scrolls inside the existing <main> flex column,
              so adding this row does not change the chat layout. */}
           <TopUsage />
-          <Transcript items={state.items} onNewChat={newSession} onPickWorkspace={pickWorkspace} onSeedDemo={seedDemoConversation} />
+          <ConversationArtifactProvider conversationId={currentConversationId}>
+            <Transcript
+              items={state.items}
+              onNewChat={newSession}
+              onPickWorkspace={pickWorkspace}
+              onSeedDemo={() => { clearTestDemo(); seedTestDemo(); }}
+              onEditUserMessage={handleEditUserMessage}
+              onRegenerateAssistant={handleRegenerateAssistant}
+            />
+          </ConversationArtifactProvider>
         </main>
 
         {/* Footer */}
@@ -707,6 +731,136 @@ export const ReasonixApp: React.FC = () => {
             onModelChange={(id: string) => setCurrentModel(currentApp as AppId, id)}
             onSend={send}
             onCancel={cancel}
+            onCommand={(cmd: SlashCommand, args: string) => {
+              // AionUi port — slash commands now dispatch to real handlers
+              // instead of being pasted back into the textarea. Unknown
+              // commands fall through (return false) so the user can
+              // still type a literal "/foo" if they really want to.
+              const name = cmd.name;
+              switch (name) {
+                case "help": {
+                  const list = [
+                    "/help", "/clear", "/compact [n]", "/history",
+                    "/export", "/share", "/model [id]", "/memory",
+                    "/plan", "/tasks", "/agent [id]", "/agents",
+                    "/status", "/tools", "/init",
+                  ];
+                  addToast({
+                    type: "info",
+                    message: "可用命令：" + list.join(" · "),
+                    duration: 8000,
+                  });
+                  return true;
+                }
+                case "clear": {
+                  useConversationStore.getState().createConversation();
+                  addToast({ type: "success", message: "会话已清空" });
+                  return true;
+                }
+                case "compact": {
+                  // Backend "compact" is not wired yet; surface a clear
+                  // hint so the user knows the command was caught.
+                  addToast({
+                    type: "info",
+                    message: "压缩请求已捕获（" + (args || "全部") + "），后续接入。",
+                  });
+                  return true;
+                }
+                case "history": {
+                  const next = new URLSearchParams(searchParams);
+                  next.set("view", "settings");
+                  next.set("tab", "sessions");
+                  setSearchParams(next, { replace: false });
+                  return true;
+                }
+                case "export": {
+                  addToast({
+                    type: "info",
+                    message: "导出 Markdown 即将在下一轮接入（占位）",
+                  });
+                  return true;
+                }
+                case "share": {
+                  const summary = state.items
+                    .filter((it) => "text" in it && typeof (it as { text?: unknown }).text === "string")
+                    .slice(-6)
+                    .map((it) => "• " + (it as { text: string }).text)
+                    .join("\n");
+                  if (navigator.clipboard) {
+                    navigator.clipboard.writeText(summary).then(
+                      () => addToast({ type: "success", message: "摘要已复制" }),
+                      () => addToast({ type: "error", message: "复制失败" }),
+                    );
+                  }
+                  return true;
+                }
+                case "model": {
+                  // Cycle to next available model for the current CLI.
+                  const ms = modelsForCli(currentApp as AppId);
+                  if (!ms.length) return false;
+                  const idx = ms.findIndex((m) => m.id === currentModelByCli[currentApp as AppId]);
+                  const nextModel = ms[(idx + 1) % ms.length];
+                  setCurrentModel(currentApp as AppId, nextModel.id);
+                  addToast({ type: "success", message: "已切换到 " + nextModel.id });
+                  return true;
+                }
+                case "memory": {
+                  const next = new URLSearchParams(searchParams);
+                  next.set("view", "settings");
+                  next.set("tab", "expert");
+                  setSearchParams(next, { replace: false });
+                  return true;
+                }
+                case "plan": {
+                  const spec = getModeSpec(currentApp as AppId);
+                  if (!spec) return false;
+                  const idx = spec.options.findIndex((o) => o.id === resolveModeId(currentApp as AppId, modeByCli));
+                  const nextMode = spec.options[(idx + 1) % spec.options.length];
+                  setModeForCli(currentApp as AppId, nextMode.id);
+                  addToast({ type: "success", message: "已切换到 " + nextMode.id });
+                  return true;
+                }
+                case "tasks": {
+                  addToast({ type: "info", message: "任务列表即将在 LoomPanel 接入（占位）" });
+                  return true;
+                }
+                case "agent": {
+                  const idx = ALL_AGENTS.findIndex((a) => a.id === currentApp);
+                  const nextA = ALL_AGENTS[(idx + 1) % ALL_AGENTS.length];
+                  handleAgentSwitch(nextA.id);
+                  return true;
+                }
+                case "agents": {
+                  const list = ALL_AGENTS.map((a) => a.label + (isUnavailable(a.id) ? " (未安装)" : "")).join(" · ");
+                  addToast({ type: "info", message: list, duration: 8000 });
+                  return true;
+                }
+                case "status": {
+                  const cwd = state.meta?.cwd ?? "(未选工作目录)";
+                  const model = currentModelByCli[currentApp as AppId] ?? "(默认)";
+                  const tokens = state.turnTokens ?? 0;
+                  addToast({
+                    type: "info",
+                    message: currentApp + " · " + model + " · " + cwd + " · tokens " + tokens,
+                    duration: 6000,
+                  });
+                  return true;
+                }
+                case "tools": {
+                  addToast({ type: "info", message: "工具可用性切换即将接入（占位）" });
+                  return true;
+                }
+                case "init": {
+                  addToast({
+                    type: "info",
+                    message: "为当前目录生成 CLAUDE.md / AGENTS.md（占位）",
+                  });
+                  return true;
+                }
+                default:
+                  return false;
+              }
+            }}
           />
           <StatusBar
             running={state.running}
@@ -731,21 +885,27 @@ export const ReasonixApp: React.FC = () => {
         <LoomPanel />
       </div>
 
-      {/* ── Right Panel (modal — overlays loom-panel) ── */}
+      {/* ── Side Panel (drawer — overlays loom-panel) ──
+       *
+       * 共享 .drawer.drawer--wide chrome,与 Settings drawer 是同一套
+       * 视觉骨架(同样的 backdrop、圆角、阴影、header、关闭按钮)。这
+       * 一并解决了「同一个 App 里有 4 套弹框样式」的问题 —— 现在侧栏
+       * 「自动化」「项目管理」打开的面板与「设置」打开的面板视觉一致。 */}
       {rightPanelOpen && (
         <>
           <div
-            className="right-panel-backdrop right-panel-backdrop--modal"
+            className="drawer-backdrop"
             onClick={() => {
               const next = new URLSearchParams(searchParams);
               next.delete("panel");
               setSearchParams(next, { replace: true });
             }}
           />
-          <div className="right-panel right-panel--modal">
-            <div className="right-panel__head">
-              <div className="right-panel__title">
-                <Sparkles size={14} className="ilo-fg-accent" />
+          <aside className="drawer drawer--wide" data-side-panel={activeNav}>
+            <header className="drawer__head">
+              <div className="drawer__title">
+                {activeNav === "automation" && <Zap size={14} className="ilo-fg-accent" />}
+                {activeNav === "projects" && <FolderOpen size={14} className="ilo-fg-accent" />}
                 {PANEL_TITLES[activeNav]}
               </div>
               <button
@@ -755,14 +915,15 @@ export const ReasonixApp: React.FC = () => {
                   next.delete("panel");
                   setSearchParams(next, { replace: true });
                 }}
+                title="关闭"
               >
                 <X size={14} />
               </button>
-            </div>
-            <div className="right-panel__body">
+            </header>
+            <div className="drawer__body drawer__body--single">
               {renderRightPanel()}
             </div>
-          </div>
+          </aside>
         </>
       )}
 
@@ -773,28 +934,46 @@ export const ReasonixApp: React.FC = () => {
         commands={commands}
       />
 
-      {/* ── Tools Modal (quick launcher for the 12 side panels) ── */}
-      <ToolsModal isOpen={toolsOpen} onClose={() => setToolsOpen(false)} />
-
       {/* ── Toast ── */}
       <ToastContainer />
 
-      {/* ── Permission Modal ── */}
+      {/* ── Permission Modal ──
+       *
+       * CLI 子代理在执行工具前会发起权限请求。视觉上与 Settings / 项
+       * 目管理 / 子级确认弹框完全一致 —— 同一个 backdrop、同一个
+       * header、同一个圆角阴影,允许/拒绝按钮落在 .drawer__actions
+       * 区域。弹框宽度走 .drawer--narrow,因为内容只是工具名 + 参数。 */}
       {state.approval && (
-        <div className="modal-backdrop">
-          <div className="modal animate-fadeIn">
-            <div className="modal__head">
-              <div className="modal__title">⚠️ 权限请求</div>
-            </div>
-            <div className="approval">
-              <div className="approval__tool">{state.approval.tool}</div>
-              <div className="approval__args">{state.approval.args}</div>
-              <div className="approval__actions">
-                <button className="approval__btn" onClick={() => approve(state.approval!.id, false)}>拒绝</button>
-                <button className="approval__btn approval__btn--allow" onClick={() => approve(state.approval!.id, true)}>允许</button>
+        <div className="drawer-backdrop">
+          <aside className="drawer drawer--narrow">
+            <header className="drawer__head">
+              <div className="drawer__title">
+                <ShieldAlert size={14} className="ilo-fg-warn" />
+                权限请求
+              </div>
+              <span className="chip" title="等待你的确认">待确认</span>
+            </header>
+            <div className="drawer__body drawer__body--single">
+              <div className="approval">
+                <div className="approval__tool">{state.approval.tool}</div>
+                <div className="approval__args">{state.approval.args}</div>
               </div>
             </div>
-          </div>
+            <footer className="drawer__actions">
+              <button
+                className="chip"
+                onClick={() => approve(state.approval!.id, false)}
+              >
+                拒绝
+              </button>
+              <button
+                className="chip chip--on"
+                onClick={() => approve(state.approval!.id, true)}
+              >
+                允许
+              </button>
+            </footer>
+          </aside>
         </div>
       )}
 
@@ -809,106 +988,34 @@ export const ReasonixApp: React.FC = () => {
         />
       )}
 
-      {/* ── Settings Drawer ── */}
-      {settingsOpen && <SettingsDrawer onClose={() => {
-  const next = new URLSearchParams(searchParams);
-  next.delete("view");
-  setSearchParams(next, { replace: true });
-}} />}
+      {/* ── Settings Drawer(统一的设置弹框:左侧 nav 分组,右侧内容) ── */}
+      {settingsOpen && (
+        <SettingsDrawer
+          initialTab={initialSettingsTab}
+          onClose={() => {
+            const next = new URLSearchParams(searchParams);
+            next.delete("view");
+            next.delete("tab");
+            setSearchParams(next, { replace: true });
+          }}
+          onResumeSession={(path) => {
+            // 从设置里的「会话管理」tab 唤起历史会话后,顺手清掉
+            // panel URL(切回聊天)以及 view URL(关闭设置),与旧 slide-in
+            // 行为对齐。
+            setHistView(null);
+            resumeSession(path);
+            const next = new URLSearchParams(searchParams);
+            next.delete("view");
+            next.delete("tab");
+            next.delete("panel");
+            setSearchParams(next, { replace: true });
+          }}
+          onDeleteSession={(path) => {
+            deleteSession(path);
+          }}
+        />
+      )}
       <Onboarding />
     </div>
   );
 };
-
-// ── Supporting Components ─────────────────────────────────────────────────────
-
-function PanelLoader() {
-  return (
-    <div className="panel-loader">
-      <div className="panel-loader__spinner" />
-    </div>
-  );
-}
-
-function SessionsPanel({ onResume, onDelete, onRename: _onRename }: {
-  onResume: (path: string) => void;
-  onDelete: (path: string) => void;
-  onRename: (path: string, title: string) => void;
-}) {
-  const [sessions, setSessions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    invoke<any[]>("list_sessions").then(setSessions).catch(() => setSessions([])).finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <PanelLoader />;
-  if (!sessions.length) return (
-    <div className="panel-empty">暂无会话记录</div>
-  );
-
-  return (
-    <div className="session-list">
-      {sessions.map((s) => (
-        <div key={s.id || s.path} className="session-row" onClick={() => onResume(s.path)}>
-          <MessageSquare size={14} className="ilo-fg-dim session-row__icon" />
-          <div className="session-row__body">
-            <div className="session-row__title">
-              {s.agentId && <span className="session-row__agent" data-agent={s.agentId}>{s.agentId}</span>}
-              {s.title || "无标题会话"}
-            </div>
-            {s.preview && <div className="session-row__preview">{s.preview}</div>}
-          </div>
-          <button className="chip chip--icon session-row__delete" onClick={(e) => { e.stopPropagation(); onDelete(s.path); }}>
-            <X size={12} />
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function SearchPanel() {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<any[]>([]);
-  const [searching, setSearching] = useState(false);
-
-  const handleSearch = useCallback(async () => {
-    if (!query.trim()) return;
-    setSearching(true);
-    try {
-      const res = await invoke<any[]>("search_code", { query, cwd: "" });
-      setResults(res);
-    } catch {
-      setResults([]);
-    } finally {
-      setSearching(false);
-    }
-  }, [query]);
-
-  return (
-    <div className="search-panel">
-      <div className="search-panel__bar">
-        <input
-          className="search-panel__input"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-          placeholder="搜索代码..."
-        />
-        <button onClick={handleSearch} disabled={searching} className="chip chip--on">
-          <Search size={13} />
-        </button>
-      </div>
-      {results.map((r, i) => (
-        <div key={i} className="search-panel__row">
-          <div className="search-panel__file">{r.file}</div>
-          <div className="search-panel__line">{r.line}</div>
-        </div>
-      ))}
-      {!results.length && query && !searching && (
-        <div className="search-panel__empty">无结果</div>
-      )}
-    </div>
-  );
-}

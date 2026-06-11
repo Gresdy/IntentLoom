@@ -12,6 +12,7 @@
  *   packages/desktop/src/renderer/pages/conversation/Messages/components/MessageToolGroup.tsx
  */
 
+import { ImageGenerationCard } from "./ImageGenerationCard";
 import { useState, useMemo } from "react";
 import { Loader2 } from "lucide-react";
 import { AgentBadge, getAgentMeta } from "./AgentBadge";
@@ -275,11 +276,11 @@ export function ToolGroupCard({ item, onApprove }: ToolGroupCardProps) {
 
         if (/image/i.test(tool.name) && tool.result && typeof tool.result === "object" && "img_url" in tool.result) {
           return (
-            <div key={tool.id} className="tool-group__image">
-              <img
+            <div key={tool.id} className="tool-group__image" data-testid="tool-group-image">
+              <ImageGenerationCard
                 src={String((tool.result as any).img_url)}
-                alt="Generated image"
-                style={{ maxHeight: 320, borderRadius: 8, objectFit: "contain" }}
+                alt={(tool.result as any).relative_path ?? "Generated image"}
+                fileName={(tool.result as any).relative_path}
               />
             </div>
           );

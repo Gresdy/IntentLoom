@@ -4,7 +4,7 @@ import { useAgencyExpertStore } from "../../stores/agencyExpertStore";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { Expert } from "../../shared/types";
 import type { AgencyExpert, ExpertDepartment } from "../../shared/agencyExpert";
-import { BookOpen, Box, Check, ChevronDown, ChevronRight, Code2, Download, ExternalLink, FolderOpen, Gamepad2, MoreHorizontal, Pencil, Plus, Radio, Search, Server, Star, Trash2, TrendingUp, User, Zap, FlaskConical } from "lucide-react";
+import { Briefcase, BookOpen, Box, Check, ChevronDown, ChevronRight, Code2, Download, ExternalLink, FolderOpen, Gamepad2, MoreHorizontal, Pencil, Plus, Radio, Search, Server, Star, Trash2, TrendingUp, User, X, Zap, FlaskConical } from "lucide-react";
 import {
   DEPARTMENTS,
   getColorHex,
@@ -1177,30 +1177,29 @@ function ExpertFormModal({
   canSubmit: boolean;
 }) {
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="ilo-bg-elev rounded-xl w-[480px] max-h-[80vh] overflow-hidden">
-        <div className="px-5 py-4 border-b ilo-border-soft flex items-center justify-between">
-          <h3 className="font-semibold ilo-fg-faint">
+    <div className="drawer-backdrop" onClick={onClose}>
+      <aside className="drawer drawer--narrow">
+        <header className="drawer__head">
+          <div className="drawer__title">
+            <Briefcase size={14} className="ilo-fg-accent" />
             {editing ? "编辑专家" : "新建专家"}
-          </h3>
-          <button
-            onClick={onClose}
-            className="ilo-fg-dim hover:ilo-fg-faint"
-          >
-            ✕
+          </div>
+          <button className="chip chip--icon" onClick={onClose} title="关闭">
+            <X size={14} />
           </button>
-        </div>
+        </header>
 
-        <div className="p-5 space-y-4 overflow-y-auto max-h-[60vh]">
+        <div className="drawer__body drawer__body--single" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div>
             <label className="block text-sm font-medium ilo-fg-faint mb-1.5">
-              名称 <span className="text-red-500">*</span>
+              名称 <span style={{ color: "var(--err)" }}>*</span>
             </label>
             <input
               value={name}
               onChange={(e) => onNameChange(e.target.value)}
               placeholder="专家名称，如：前端专家"
               className="w-full px-3 py-2 border ilo-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              style={{ background: "var(--bg)", color: "var(--fg)" }}
             />
           </div>
 
@@ -1213,12 +1212,13 @@ function ExpertFormModal({
               onChange={(e) => onDescriptionChange(e.target.value)}
               placeholder="简短描述专家的职责范围"
               className="w-full px-3 py-2 border ilo-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              style={{ background: "var(--bg)", color: "var(--fg)" }}
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium ilo-fg-faint mb-1.5">
-              System Prompt <span className="text-red-500">*</span>
+              System Prompt <span style={{ color: "var(--err)" }}>*</span>
             </label>
             <textarea
               value={systemPrompt}
@@ -1226,6 +1226,7 @@ function ExpertFormModal({
               placeholder="定义专家角色的核心指令..."
               rows={4}
               className="w-full px-3 py-2 border ilo-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+              style={{ background: "var(--bg)", color: "var(--fg)" }}
             />
           </div>
 
@@ -1256,6 +1257,7 @@ function ExpertFormModal({
               onChange={(e) => onSkillsChange(e.target.value)}
               placeholder="python, rust, react"
               className="w-full px-3 py-2 border ilo-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              style={{ background: "var(--bg)", color: "var(--fg)" }}
             />
           </div>
 
@@ -1268,26 +1270,27 @@ function ExpertFormModal({
               onChange={(e) => onMcpServersChange(e.target.value)}
               placeholder="mcp-server-1, mcp-server-2"
               className="w-full px-3 py-2 border ilo-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              style={{ background: "var(--bg)", color: "var(--fg)" }}
             />
           </div>
         </div>
 
-        <div className="px-5 py-4 border-t ilo-border-soft flex justify-end gap-2">
+        <footer className="drawer__actions">
           <button
+            className="btn"
             onClick={onClose}
-            className="px-4 py-2 text-sm ilo-fg-faint hover:ilo-bg-soft rounded-lg transition-colors"
           >
             取消
           </button>
           <button
+            className="btn btn--primary"
             onClick={onSubmit}
             disabled={!canSubmit}
-            className="px-4 py-2 text-sm bg-indigo-600 ilo-fg-onaccent rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {editing ? "保存" : "创建"}
           </button>
-        </div>
-      </div>
+        </footer>
+      </aside>
     </div>
   );
 }

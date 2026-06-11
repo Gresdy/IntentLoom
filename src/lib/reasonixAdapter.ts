@@ -13,6 +13,7 @@ import type { ArtifactTally } from "@/lib/artifactTally";
 import { useProductChangesStore } from "@/lib/useProductChanges";
 import { parseStreamChunk } from "@/lib/streamChunkParser";
 import { useToastStore } from "@/lib/useToast";
+import { useTestItemsStore } from "@/lib/testItemsStore";
 import { stripThinkTags } from "@/utils/thinkTagFilter";
 import type { ToolCall } from "@/types/message";
 
@@ -26,7 +27,18 @@ export type ReasonixItem =
   | { kind: "phase"; id: string; text: string; agentId?: string }
   | { kind: "notice"; id: string; level: string; text: string; agentId?: string }
   | { kind: "summary"; id: string; tally: ArtifactTally; agentId?: string }
-  | { kind: "permission"; id: string; toolName: string; args: any; reason?: string; status: "pending" | "approved" | "denied"; agentId?: string };
+  | { kind: "permission"; id: string; toolName: string; args: any; reason?: string; status: "pending" | "approved" | "denied"; agentId?: string }
+  // === AionUi port (Phase 2) — new message kinds ===
+  /** Agent session lifecycle badge: connecting / connected / authenticated / session_active / error. */
+  | { kind: "agent_status"; id: string; backend: string; status: "connecting" | "connected" | "authenticated" | "session_active" | "error"; agentName?: string; agentId?: string; createdAt?: number }
+  /** Structured tip / error / warning / success with optional JSON body. */
+  | { kind: "tips"; id: string; level: "info" | "success" | "warning" | "error"; text: string; code?: string; structuredError?: { message: string; code?: string; ownership?: "aionui" | "user_agent" | "user_llm_provider" | "unknown_upstream"; retryable?: boolean; detail?: string; resolution?: string; workspacePath?: string }; agentId?: string; createdAt?: number }
+  /** Inline plan / todo list rendered in the transcript. */
+  | { kind: "plan"; id: string; title?: string; entries: Array<{ id: string; content: string; status: "pending" | "in_progress" | "completed" | "skipped" }>; agentId?: string; createdAt?: number }
+  /** Skill suggestion card (e.g. "try /code-review"). */
+  | { kind: "skill_suggest"; id: string; name: string; description: string; content?: string; agentId?: string; createdAt?: number }
+  /** Cron / scheduled-task trigger card (e.g. "定时任务 #7 触发了"). */
+  | { kind: "cron_trigger"; id: string; cronJobId?: string; cronJobName?: string; triggeredAt?: number; agentId?: string; createdAt?: number };
 
 export interface ReasonixMeta {
   label: string;
@@ -271,8 +283,21 @@ export function useReasonixController() {
 
   const conversationMessages = currentConversation?.messages ?? [];
 
+  const injectedItems = useTestItemsStore((s) => s.injectedItems);
   const items: ReasonixItem[] = useMemo(() => {
     const result: ReasonixItem[] = [];
+    // === Test injection (dev only): any items pushed via
+    // `useTestItemsStore.setInjectedItems` are prepended to the
+    // transcript so screenshots / Playwright runs can verify
+    // message rendering without a live CLI stream.
+    if (injectedItems.length > 0) {
+      // eslint-disable-next-line no-console
+      console.log("[reasonixAdapter] injecting", injectedItems.length, "test items");
+      for (const it of injectedItems) result.push(it);
+    } else {
+      // eslint-disable-next-line no-console
+      console.log("[reasonixAdapter] useMemo run, injectedItems.length=0");
+    }
     // The active agent for this conversation. Persisted
     // conversations carry `metadata.agentId`; for the live
     // stream we read from the model store so the current
@@ -389,6 +414,7 @@ export function useReasonixController() {
     return grouped;
   }, [
     conversationMessages,
+    injectedItems,
     isStreaming,
     currentThinking,
     currentToolCalls,
@@ -425,6 +451,14 @@ export function useReasonixController() {
     }),
     [items, isStreaming, meta]
   );
+
+  // === Dev hook: expose controller state for Playwright / devtools.
+  // Lets tests verify what the controller "sees" without going
+  // through DOM inspection alone.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    (window as any).__controllerState = { itemsLen: items.length, injectedLen: injectedItems.length, kindCounts: items.reduce<Record<string, number>>((acc, i) => { acc[i.kind] = (acc[i.kind] ?? 0) + 1; return acc; }, {}) };
+  }, [items, injectedItems]);
 
   // Hoisted out of the useEffect so the catch block in
   // `send` can unlisten the listeners after a failed send.

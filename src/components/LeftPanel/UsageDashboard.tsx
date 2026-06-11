@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useUsageStore } from "../../stores/useUsageStore";
-import { RefreshCw, Trash2 } from "lucide-react";
+import { RefreshCw, Trash2, X } from "lucide-react";
 
 export const UsageDashboard: React.FC = () => {
   const {
@@ -77,17 +77,27 @@ export const UsageDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Clear Confirm */}
+      {/* Clear Confirm — 统一的 drawer chrome */}
       {showClearConfirm && (
-        <div className="modal-backdrop" onClick={() => setShowClearConfirm(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal__title">清除用量记录</div>
-            <p style={{ margin: "0 0 16px", color: "var(--fg-dim)", fontSize: 13 }}>确定要清除所有用量记录吗？此操作不可恢复。</p>
-            <div className="modal__actions">
+        <div className="drawer-backdrop" onClick={() => setShowClearConfirm(false)}>
+          <aside className="drawer drawer--narrow">
+            <header className="drawer__head">
+              <div className="drawer__title">
+                <Trash2 size={14} className="ilo-fg-warn" />
+                清除用量记录
+              </div>
+              <button className="chip chip--icon" onClick={() => setShowClearConfirm(false)} title="关闭">
+                <X size={14} />
+              </button>
+            </header>
+            <div className="drawer__body drawer__body--single">
+              <p style={{ margin: 0, color: "var(--fg-dim)", fontSize: 13 }}>确定要清除所有用量记录吗？此操作不可恢复。</p>
+            </div>
+            <footer className="drawer__actions">
               <button className="btn" onClick={() => setShowClearConfirm(false)}>取消</button>
               <button className="btn" style={{ background: "var(--err)", borderColor: "var(--err)", color: "#fff" }} onClick={confirmClear}>清除</button>
-            </div>
-          </div>
+            </footer>
+          </aside>
         </div>
       )}
 

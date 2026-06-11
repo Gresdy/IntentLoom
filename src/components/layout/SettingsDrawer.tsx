@@ -1,43 +1,136 @@
-import { X, Sun, Moon, Monitor, Palette, Type, Keyboard, Info, Cpu, ChartBar, ScrollText } from "lucide-react";
-import { lazy, Suspense, useState } from "react";
+import {
+  X, Sun, Moon, Monitor, Palette, Type, Keyboard, Info, Cpu, ChartBar, ScrollText,
+  Bot, Sparkles, Users, FileCode, Server, MessageSquare, Search as SearchIcon,
+  Settings as SettingsIcon,
+} from "lucide-react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useThemeStore, ACCENT_COLORS_LIST, FONT_SIZE_OPTIONS } from "../../stores/useThemeStore";
 import { ModelPanel } from "./ModelPanel";
 
 // Heavy panels (originally lazy-loaded behind the sidebar popup) are
 // re-used here so the Settings drawer doesn't pay their bundle cost up
 // front either.
+// 侧栏精简到 3 个一级入口之后,其余全部并入本 drawer。Settings 现在是
+// 整个 app 唯一的设置面板:左侧 nav 分组,右侧渲染内容,弹框样式与
+// 旧的子弹窗/侧滑完全统一。
 const UsageDashboard = lazy(() =>
   import("../LeftPanel/UsageDashboard").then(m => ({ default: m.UsageDashboard })),
 );
 const LogsPanel = lazy(() =>
   import("../LeftPanel/LogsPanel").then(m => ({ default: m.LogsPanel })),
 );
+const AgentsPanel = lazy(() =>
+  import("../LeftPanel/AgentsPanel").then(m => ({ default: m.AgentsPanel })),
+);
+const SkillsPanel = lazy(() =>
+  import("../LeftPanel/SkillsPanel").then(m => ({ default: m.SkillsPanel })),
+);
+const PromptsPanel = lazy(() =>
+  import("../LeftPanel/PromptsPanel").then(m => ({ default: m.PromptsPanel })),
+);
+const McpPanel = lazy(() =>
+  import("../LeftPanel/McpPanel").then(m => ({ default: m.McpPanel })),
+);
+const ExpertPanel = lazy(() =>
+  import("../LeftPanel/ExpertPanel").then(m => ({ default: m.ExpertPanel })),
+);
+const SessionsPanel = lazy(() =>
+  import("../LeftPanel/SessionsPanel").then(m => ({ default: m.SessionsPanel })),
+);
+const SearchPanel = lazy(() =>
+  import("../LeftPanel/SearchPanel").then(m => ({ default: m.SearchPanel })),
+);
 
 interface SettingsDrawerProps {
   onClose: () => void;
+  // 允许从外部 deep-link 到某个 tab(由 ToolsModal 快捷入口或 URL 传入)。
+  initialTab?: SettingsTab;
+  // 会话管理 tab 需要这两个回调去唤起 / 删除一个 session。
+  onResumeSession?: (path: string) => void;
+  onDeleteSession?: (path: string) => void;
 }
 
-type SettingsTab =
+export type SettingsTab =
   | "appearance"
+  | "agents"
   | "model"
+  | "prompts"
+  | "skills"
+  | "expert"
+  | "mcp"
+  | "sessions"
+  | "search"
   | "usage"
   | "logs"
   | "shortcuts"
   | "about";
 
-export function SettingsDrawer({ onClose }: SettingsDrawerProps) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>("appearance");
+const SETTINGS_TAB_IDS: readonly SettingsTab[] = [
+  "appearance", "agents", "model", "prompts", "skills", "expert", "mcp",
+  "sessions", "search", "usage", "logs", "shortcuts", "about",
+];
+
+export function isSettingsTab(value: string | null | undefined): value is SettingsTab {
+  return !!value && (SETTINGS_TAB_IDS as readonly string[]).includes(value);
+}
+
+export function SettingsDrawer({
+  onClose,
+  initialTab,
+  onResumeSession,
+  onDeleteSession,
+}: SettingsDrawerProps) {
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? "appearance");
   const { mode, setMode, accentColor, setAccentColor, fontSize, setFontSize } = useThemeStore();
 
-  // 六个分类：外观 / 模型 / 用量 / 日志 / 快捷键 / 关于。
-  // 三个辅助型面板（模型/用量/日志）从左侧菜单搬进来，跟外观/快捷键/关于并排。
-  const tabs = [
-    { id: "appearance" as const, label: "外观", icon: <Palette size={14} /> },
-    { id: "model" as const, label: "模型", icon: <Cpu size={14} /> },
-    { id: "usage" as const, label: "用量", icon: <ChartBar size={14} /> },
-    { id: "logs" as const, label: "日志", icon: <ScrollText size={14} /> },
-    { id: "shortcuts" as const, label: "快捷键", icon: <Keyboard size={14} /> },
-    { id: "about" as const, label: "关于", icon: <Info size={14} /> },
+  // 当外部传入新的 initialTab(例如从 ToolsModal 快捷入口打开)时,
+  // 同步内部 active 状态。这样 ToolsModal / 命令面板跳转过来能直接
+  // 落在目标 tab 上,而不是停留在上次的 tab。只在 initialTab 变化
+  // 时同步,避免在内部切换 tab 时被这个 effect 覆盖回去。
+  useEffect(() => {
+    if (initialTab && initialTab !== activeTab) {
+      setActiveTab(initialTab);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTab]);
+
+  // 分组后的 13 个 tab。分组顺序就是侧栏从上到下的视觉顺序,与左侧
+  // 主菜单的"通用 → AI 与扩展 → 项目与会话 → 系统"层级保持一致,
+  // 用户从 sidebar 点进设置后不会有跳层感。
+  const sections: { label: string; items: { id: SettingsTab; label: string; icon: React.ReactNode }[] }[] = [
+    {
+      label: "通用",
+      items: [
+        { id: "appearance", label: "外观",   icon: <Palette size={14} /> },
+        { id: "shortcuts",  label: "快捷键", icon: <Keyboard size={14} /> },
+      ],
+    },
+    {
+      label: "AI 与扩展",
+      items: [
+        { id: "agents",  label: "AI 助手", icon: <Bot size={14} /> },
+        { id: "model",   label: "模型",    icon: <Cpu size={14} /> },
+        { id: "prompts", label: "Prompts", icon: <FileCode size={14} /> },
+        { id: "skills",  label: "Skills",  icon: <Sparkles size={14} /> },
+        { id: "expert",  label: "专家",    icon: <Users size={14} /> },
+        { id: "mcp",     label: "MCP",     icon: <Server size={14} /> },
+      ],
+    },
+    {
+      label: "项目与会话",
+      items: [
+        { id: "sessions", label: "会话管理", icon: <MessageSquare size={14} /> },
+        { id: "search",   label: "搜索",     icon: <SearchIcon size={14} /> },
+      ],
+    },
+    {
+      label: "系统",
+      items: [
+        { id: "usage", label: "用量", icon: <ChartBar size={14} /> },
+        { id: "logs",  label: "日志", icon: <ScrollText size={14} /> },
+        { id: "about", label: "关于", icon: <Info size={14} /> },
+      ],
+    },
   ];
 
   return (
@@ -46,7 +139,7 @@ export function SettingsDrawer({ onClose }: SettingsDrawerProps) {
         {/* 头部 */}
         <header className="drawer__head">
           <div className="drawer__title flex items-center gap-2">
-            <Cpu size={16} />
+            <SettingsIcon size={16} />
             设置
           </div>
           <button className="chip" onClick={onClose}>
@@ -57,17 +150,22 @@ export function SettingsDrawer({ onClose }: SettingsDrawerProps) {
         {/* 2-列布局：左侧纵向 nav，右侧内容 */}
         <div className="drawer__body">
           <nav className="settings-nav" aria-label="设置分类">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                className={`settings-nav__item${
-                  activeTab === tab.id ? " active" : ""
-                }`}
-                onClick={() => setActiveTab(tab.id)}
-              >
-                {tab.icon}
-                <span>{tab.label}</span>
-              </button>
+            {sections.map((section) => (
+              <div key={section.label} className="settings-nav__group">
+                <div className="settings-nav__group-label">{section.label}</div>
+                {section.items.map((item) => (
+                  <button
+                    key={item.id}
+                    className={`settings-nav__item${
+                      activeTab === item.id ? " active" : ""
+                    }`}
+                    onClick={() => setActiveTab(item.id)}
+                  >
+                    {item.icon}
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
             ))}
           </nav>
 
@@ -84,6 +182,54 @@ export function SettingsDrawer({ onClose }: SettingsDrawerProps) {
             )}
 
             {activeTab === "model" && <ModelPanel />}
+
+            {activeTab === "agents" && (
+              <Suspense fallback={<SettingsPanelFallback />}>
+                <AgentsPanel />
+              </Suspense>
+            )}
+
+            {activeTab === "prompts" && (
+              <Suspense fallback={<SettingsPanelFallback />}>
+                <PromptsPanel />
+              </Suspense>
+            )}
+
+            {activeTab === "skills" && (
+              <Suspense fallback={<SettingsPanelFallback />}>
+                <SkillsPanel />
+              </Suspense>
+            )}
+
+            {activeTab === "expert" && (
+              <Suspense fallback={<SettingsPanelFallback />}>
+                <ExpertPanel />
+              </Suspense>
+            )}
+
+            {activeTab === "mcp" && (
+              <Suspense fallback={<SettingsPanelFallback />}>
+                <McpPanel />
+              </Suspense>
+            )}
+
+            {activeTab === "sessions" && (
+              <Suspense fallback={<SettingsPanelFallback />}>
+                <SessionsPanel
+                  onResume={(path) => {
+                    onResumeSession?.(path);
+                    onClose();
+                  }}
+                  onDelete={(path) => onDeleteSession?.(path)}
+                />
+              </Suspense>
+            )}
+
+            {activeTab === "search" && (
+              <Suspense fallback={<SettingsPanelFallback />}>
+                <SearchPanel />
+              </Suspense>
+            )}
 
             {activeTab === "usage" && (
               <Suspense fallback={<SettingsPanelFallback />}>

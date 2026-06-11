@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Download, RefreshCw, Plus } from "lucide-react";
+import { Download, RefreshCw, Plus, Trash2, X } from "lucide-react";
 import type { Skill } from "../../shared/types";
 import { invoke } from "../../lib/tauri";
 
@@ -258,47 +258,68 @@ export const SkillsPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Delete Confirm */}
+      {/* Delete Confirm — 统一的 drawer chrome */}
       {deleteTarget && (
-        <div className="modal-backdrop" onClick={() => setDeleteTarget(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal__title">确定要删除这个技能吗？</div>
-            <div className="modal__actions">
+        <div className="drawer-backdrop" onClick={() => setDeleteTarget(null)}>
+          <aside className="drawer drawer--narrow">
+            <header className="drawer__head">
+              <div className="drawer__title">
+                <Trash2 size={14} className="ilo-fg-warn" />
+                删除技能
+              </div>
+              <button className="chip chip--icon" onClick={() => setDeleteTarget(null)} title="关闭">
+                <X size={14} />
+              </button>
+            </header>
+            <div className="drawer__body drawer__body--single">
+              <p style={{ margin: 0, color: "var(--fg-dim)", fontSize: 13 }}>确定要删除这个技能吗？</p>
+            </div>
+            <footer className="drawer__actions">
               <button className="btn" onClick={() => setDeleteTarget(null)}>取消</button>
               <button className="btn" style={btnDangerStyle} onClick={() => handleUninstall(deleteTarget)}>删除</button>
-            </div>
-          </div>
+            </footer>
+          </aside>
         </div>
       )}
 
-      {/* Custom IDE Modal */}
+      {/* Custom IDE Modal — 统一的 drawer chrome */}
       {showCustomIdeModal && (
-        <div className="modal-backdrop" onClick={() => setShowCustomIdeModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal__title">添加自定义 IDE</div>
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontSize: 13, color: "var(--fg-dim)", marginBottom: 4 }}>IDE 名称 *</label>
-              <input
-                style={inputStyle}
-                value={customIdeForm.name}
-                onChange={(e) => setCustomIdeForm({ ...customIdeForm, name: e.target.value })}
-                placeholder="例如：MyCustomIDE"
-              />
+        <div className="drawer-backdrop" onClick={() => setShowCustomIdeModal(false)}>
+          <aside className="drawer drawer--narrow">
+            <header className="drawer__head">
+              <div className="drawer__title">
+                <Plus size={14} className="ilo-fg-accent" />
+                添加自定义 IDE
+              </div>
+              <button className="chip chip--icon" onClick={() => setShowCustomIdeModal(false)} title="关闭">
+                <X size={14} />
+              </button>
+            </header>
+            <div className="drawer__body drawer__body--single" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 13, color: "var(--fg-dim)", marginBottom: 4 }}>IDE 名称 *</label>
+                <input
+                  style={inputStyle}
+                  value={customIdeForm.name}
+                  onChange={(e) => setCustomIdeForm({ ...customIdeForm, name: e.target.value })}
+                  placeholder="例如：MyCustomIDE"
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 13, color: "var(--fg-dim)", marginBottom: 4 }}>技能路径 *</label>
+                <input
+                  style={inputStyle}
+                  value={customIdeForm.path}
+                  onChange={(e) => setCustomIdeForm({ ...customIdeForm, path: e.target.value })}
+                  placeholder="例如：/Users/username/.myide/skills"
+                />
+              </div>
             </div>
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontSize: 13, color: "var(--fg-dim)", marginBottom: 4 }}>技能路径 *</label>
-              <input
-                style={inputStyle}
-                value={customIdeForm.path}
-                onChange={(e) => setCustomIdeForm({ ...customIdeForm, path: e.target.value })}
-                placeholder="例如：/Users/username/.myide/skills"
-              />
-            </div>
-            <div className="modal__actions">
+            <footer className="drawer__actions">
               <button className="btn" onClick={() => setShowCustomIdeModal(false)}>取消</button>
               <button className="btn btn--primary" onClick={handleCreateCustomIde}>确定</button>
-            </div>
-          </div>
+            </footer>
+          </aside>
         </div>
       )}
 

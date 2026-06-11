@@ -28,6 +28,13 @@ export interface FileChange {
   isDeleted?: boolean;
   /** Diff lines, if available. */
   diff?: DiffLine[];
+  /**
+   * Wall-clock timestamp the change was reported. Optional — when the
+   * adapter can't supply one the transcript row falls back to "now".
+   * Used by the `MessageTimeStamp` row chrome to render
+   * `formatMessageTime(createAt)` next to the change list.
+   */
+  createdAt?: number;
 }
 
 export interface DiffLine {

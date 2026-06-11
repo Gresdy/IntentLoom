@@ -1,19 +1,15 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { KeyboardEvent } from "react";
-import { ArrowUp, Square, Zap, Hash, Lightbulb } from "lucide-react";
+import { ArrowUp, Square, AtSign, Paperclip, X } from "lucide-react";
 import type { AppId } from "../../shared/types";
 import type { CliOption } from "../../lib/cliCapabilities";
 import type { ModelOption } from "../../config/cliPresets";
 import { Menu } from "../ui/Menu";
 import { useOpenclawSessionStore } from "@/stores/useOpenclawSessionStore";
 import { isOpenclawSessionSet } from "@/stores/useOpenclawSessionStore";
+import { SlashCommandMenu, DEFAULT_SLASH_COMMANDS, type SlashCommand } from "./SlashCommandMenu";
 
-// 斜杠命令
-const SLASH_COMMANDS = [
-  { name: "model", desc: "切换模型", icon: <Zap size={12} /> },
-  { name: "memory", desc: "打开记忆", icon: <Lightbulb size={12} /> },
-  { name: "plan", desc: "进入计划模式", icon: <Hash size={12} /> },
-];
+// Slash commands are now provided by `SlashCommandMenu` (AionUi port).
 
 interface ComposerProps {
   running: boolean;
@@ -52,8 +48,17 @@ interface ComposerProps {
   /** Currently selected model id. Null = "let the CLI default kick in". */
   modelId: string | null;
   onModelChange: (id: string) => void;
-  onSend: (text: string) => void;
+  onSend: (text: string, attachments?: { name: string; size: number; type?: string }[]) => void;
   onCancel: () => void;
+  /**
+   * Slash command interceptor. When the textarea text matches a known
+   * slash command (name or alias), the composer calls this instead of
+   * `onSend`. Returns `true` if the command was handled — the composer
+   * clears the textarea; returns `false` if it was not handled, in
+   * which case the composer falls back to `onSend` so the user can
+   * still paste unknown slash commands to the LLM.
+   */
+  onCommand?: (cmd: SlashCommand, args: string) => boolean | void;
 }
 
 export function Composer({
@@ -71,10 +76,22 @@ export function Composer({
   onModelChange,
   onSend,
   onCancel,
+  onCommand,
 }: ComposerProps) {
   const [text, setText] = useState("");
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [slashActive, setSlashActive] = useState(0);
+  // Drag-and-drop attachments. The parent decides whether to read
+  // them via Tauri's fs API, base64-embed them in the prompt, or
+  // pass them to an MCP resource. We do NOT block typing while
+  // files are attached — the chips live above the textarea.
+  const [attachedFiles, setAttachedFiles] = useState<
+    { name: string; size: number; type?: string }[]
+  >([]);
+  // Visual feedback for drag-over. We use a counter so dragenter /
+  // dragleave don't flicker when the user crosses child elements.
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   // 检测斜杠命令
@@ -87,7 +104,7 @@ export function Composer({
     () =>
       slashQuery === null
         ? []
-        : SLASH_COMMANDS.filter((c) => c.name.toLowerCase().includes(slashQuery)).slice(0, 8),
+        : DEFAULT_SLASH_COMMANDS.filter((c) => c.name.toLowerCase().includes(slashQuery)).slice(0, 8),
     [slashQuery]
   );
 
@@ -115,13 +132,120 @@ export function Composer({
     el.style.height = Math.min(el.scrollHeight, 160) + "px";
   }, []);
 
+  /**
+   * Resolve a slash command from a free-form string. Returns the matched
+   * command plus the trailing argument string (everything after the
+   * command token, trimmed). Match is case-insensitive against both
+   * the command name and any registered aliases.
+   */
+  const resolveSlashCommand = useCallback(
+    (raw: string): { cmd: SlashCommand; args: string } | null => {
+      const m = /^\/([A-Za-z0-9_-]+)(?:\s+([\s\S]*))?$/.exec(raw);
+      if (!m) return null;
+      const token = m[1].toLowerCase();
+      for (const c of DEFAULT_SLASH_COMMANDS) {
+        if (c.name.toLowerCase() === token) {
+          return { cmd: c, args: (m[2] ?? "").trim() };
+        }
+        if (c.aliases?.some((a) => a.toLowerCase() === token)) {
+          return { cmd: c, args: (m[2] ?? "").trim() };
+        }
+      }
+      return null;
+    },
+    []
+  );
+
+  /**
+   * Read a FileList (from drop or paste) and add the files to the
+   * attachment list. We only keep name + size + MIME type — the
+   * parent reads actual bytes on demand if/when the user sends.
+   * Holding File contents in component state would force every
+   * attachment into memory even when the user never sends.
+   */
+  const attachFiles = useCallback((fileList: FileList | File[]) => {
+    const incoming = Array.from(fileList).map((f) => ({
+      name: f.name,
+      size: f.size,
+      type: f.type || undefined,
+    }));
+    if (incoming.length === 0) return;
+    setAttachedFiles((prev) => [...prev, ...incoming]);
+  }, []);
+
+  // Drag-and-drop wiring. We MUST preventDefault on dragover to
+  // allow the drop event to fire; without it the browser opens the
+  // file in a new window and the textarea never sees the drop.
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes("Files")) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    }
+  }, []);
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes("Files")) {
+      e.preventDefault();
+      dragCounter.current += 1;
+      if (dragCounter.current === 1) setIsDragging(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    dragCounter.current -= 1;
+    if (dragCounter.current <= 0) {
+      dragCounter.current = 0;
+      setIsDragging(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      dragCounter.current = 0;
+      setIsDragging(false);
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        attachFiles(e.dataTransfer.files);
+        requestAnimationFrame(() => taRef.current?.focus());
+      }
+    },
+    [attachFiles]
+  );
+
+  /**
+   * Paste handler — when the clipboard contains files (e.g. a
+   * screenshot from the OS clipboard), add them as attachments.
+   * Plain-text paste is left to the textarea's default behavior.
+   */
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      if (e.clipboardData.files.length > 0) {
+        e.preventDefault();
+        attachFiles(e.clipboardData.files);
+      }
+    },
+    [attachFiles]
+  );
+
   const handleSubmit = useCallback(() => {
     const trimmed = text.trim();
-    if (trimmed) {
-      onSend(trimmed);
-      setText("");
+    if (!trimmed) return;
+    // Slash commands that the parent registers are intercepted BEFORE
+    // hitting the LLM channel. Unknown slash commands fall through to
+    // onSend so the user can still paste a literal "/foo" if they want.
+    const hit = resolveSlashCommand(trimmed);
+    if (hit) {
+      const handled = onCommand?.(hit.cmd, hit.args);
+      if (handled !== false) {
+        setText("");
+        return;
+      }
     }
-  }, [text, onSend]);
+    onSend(trimmed, attachedFiles.length > 0 ? attachedFiles : undefined);
+    setText("");
+    setAttachedFiles([]);
+  }, [text, onSend, onCommand, resolveSlashCommand, attachedFiles]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -141,6 +265,17 @@ export function Composer({
           e.preventDefault();
           const picked = slashMatches[slashActive];
           if (picked) {
+            if (picked.runOnPick) {
+              // Fire the slash command immediately. handleSubmit would
+              // do the same, but going through onPick keeps the menu
+              // closed and avoids a second round of state updates.
+              const handled = onCommand?.(picked, "");
+              if (handled !== false) {
+                setText("");
+                setShowSlashMenu(false);
+              }
+              return;
+            }
             setText("/" + picked.name + " ");
             setShowSlashMenu(false);
           }
@@ -161,37 +296,60 @@ export function Composer({
         return;
       }
     },
-    [showSlashMenu, slashMatches, slashActive, handleSubmit]
+    [showSlashMenu, slashMatches, slashActive, handleSubmit, onCommand]
   );
 
   return (
-    <div className="composer" data-cli={cli}>
+    <div
+      className={`composer${isDragging ? " composer--dragging" : ""}`}
+      data-cli={cli}
+      onDragOver={handleDragOver}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <div className="composer__wrap">
         {/* 斜杠命令菜单 */}
         {showSlashMenu && (
-          <div className="slashmenu">
-            {slashMatches.map((cmd, i) => (
-              <div
-                key={cmd.name}
-                className={`slashmenu__item ${i === slashActive ? "slashmenu__item--active" : ""}`}
-                onMouseEnter={() => setSlashActive(i)}
-                onClick={() => {
-                  setText("/" + cmd.name + " ");
+          <SlashCommandMenu
+            query={slashQuery ?? ""}
+            active={slashActive}
+            onActiveChange={setSlashActive}
+            onPick={(cmd: SlashCommand) => {
+              if (cmd.runOnPick) {
+                const handled = onCommand?.(cmd, "");
+                if (handled !== false) {
+                  setText("");
                   setShowSlashMenu(false);
                   taRef.current?.focus();
-                }}
-              >
-                <span style={{ color: "var(--accent)", display: "flex", alignItems: "center" }}>
-                  {cmd.icon}
-                </span>
-                <span
-                  className="font-mono"
-                  style={{ fontWeight: 600, color: "var(--accent)", flexShrink: 0 }}
+                }
+              } else {
+                setText("/" + cmd.name + " ");
+                setShowSlashMenu(false);
+                taRef.current?.focus();
+              }
+            }}
+          />
+        )}
+
+      {/* Attachment chips — show only when there are pending files. */}
+        {attachedFiles.length > 0 && (
+          <div className="composer__attachments" data-testid="composer-attachments">
+            {attachedFiles.map((f, i) => (
+              <span key={i} className="composer__attachment-chip" title={f.type ?? f.name}>
+                <Paperclip size={11} />
+                <span className="composer__attachment-name">{f.name}</span>
+                <button
+                  type="button"
+                  className="composer__attachment-remove"
+                  onClick={() =>
+                    setAttachedFiles((prev) => prev.filter((_, j) => j !== i))
+                  }
+                  title="移除附件"
                 >
-                  /{cmd.name}
-                </span>
-                <span style={{ color: "var(--fg-dim)", fontSize: 12 }}>{cmd.desc}</span>
-              </div>
+                  <X size={11} />
+                </button>
+              </span>
             ))}
           </div>
         )}
@@ -203,6 +361,7 @@ export function Composer({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder={
             isAvailable
               ? "输入消息... (/ 查看命令)"
@@ -224,6 +383,40 @@ export function Composer({
              redundant — the hint label calls that out.
              Persisted in localStorage via the zustand
              store so the choice survives an app restart. */}
+        {/* @ 提及 / 附件入口 — UI 占位，下一轮接 selection-reply 与文件选择 */}
+        <div className="composer__entry-points" role="toolbar" aria-label="composer entry points">
+          <button
+            type="button"
+            className="composer__entry"
+            aria-label="插入 @ 提及"
+            title="插入 @ 提及（即将支持）"
+            data-testid="composer-mention"
+            disabled={running || !isAvailable}
+            onClick={() => {
+              setText((prev) => prev + "@");
+              taRef.current?.focus();
+            }}
+          >
+            <AtSign size={14} />
+          </button>
+          <button
+            type="button"
+            className="composer__entry"
+            aria-label="附加文件"
+            title="附加文件（即将支持）"
+            data-testid="composer-attach"
+            disabled={running || !isAvailable}
+            onClick={() => {
+              // Phase 4: UI-only placeholder. Phase 5+ will wire a Tauri
+              // file picker that converts the picked files into the
+              // AionUi AIONUI_FILES_MARKER syntax, then the model can
+              // read them through the workspace mount.
+            }}
+          >
+            <Paperclip size={14} />
+          </button>
+        </div>
+
         {cli === "openclaw" && <OpenclawSessionPicker />}
 
         {/* 操作按钮 */}
@@ -293,6 +486,12 @@ export function Composer({
             )}
           </div>
         </div>
+        {isDragging && (
+          <div className="composer__drop-overlay" aria-hidden="true">
+            <Paperclip size={20} />
+            <span>松开以添加附件</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -358,4 +557,3 @@ function OpenclawSessionPicker() {
     </div>
   );
 }
-
