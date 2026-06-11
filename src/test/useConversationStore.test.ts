@@ -114,4 +114,74 @@ describe("useConversationStore", () => {
     expect(removed).toBe(0);
     expect(useConversationStore.getState().getCurrentConversation()!.messages).toHaveLength(1);
   });
+  // === T11 chat parity: per-message agentId stamping ===
+  // reasonixAdapter stamps every user / assistant message with
+  // `metadata.agentId = cli` at send time so the transcript
+  // shows the right agent badge even when the user has switched
+  // agents mid-conversation. This test confirms the store
+  // round-trips the field so the per-message stamp survives a
+  // reload.
+  it("preserves per-message metadata.agentId through add / read", () => {
+    useConversationStore.getState().createConversation();
+    useConversationStore.getState().addMessageToCurrent({
+      ...stubMsg("user", "hi"),
+      agentId: "claude",
+      metadata: { agentId: "claude" },
+    });
+    useConversationStore.getState().addMessageToCurrent({
+      ...stubMsg("assistant", "hello"),
+      agentId: "claude",
+      metadata: { agentId: "claude" },
+    });
+    const conv = useConversationStore.getState().getCurrentConversation();
+    expect(conv?.messages[0].agentId).toBe("claude");
+    expect(conv?.messages[0].metadata?.agentId).toBe("claude");
+    expect(conv?.messages[1].agentId).toBe("claude");
+    expect(conv?.messages[1].metadata?.agentId).toBe("claude");
+  });
+
+  it("preserves mid-conversation agent switches when each message has its own agentId", () => {
+    useConversationStore.getState().createConversation();
+    // Conversation was originally created on Hermes (metadata
+    // was set at creation time), then the user switched to
+    // Claude and sent a new prompt. Without per-message
+    // stamping the badge would say Hermes; with it, the new
+    // message correctly attributes to Claude.
+    useConversationStore.getState().addMessageToCurrent({
+      ...stubMsg("user", "first"),
+      agentId: "hermes",
+      metadata: { agentId: "hermes" },
+    });
+    useConversationStore.getState().addMessageToCurrent({
+      ...stubMsg("assistant", "hi from hermes"),
+      agentId: "hermes",
+      metadata: { agentId: "hermes" },
+    });
+    useConversationStore.getState().addMessageToCurrent({
+      ...stubMsg("user", "second"),
+      agentId: "claude",
+      metadata: { agentId: "claude" },
+    });
+    useConversationStore.getState().addMessageToCurrent({
+      ...stubMsg("assistant", "hi from claude"),
+      agentId: "claude",
+      metadata: { agentId: "claude" },
+    });
+    const conv = useConversationStore.getState().getCurrentConversation();
+    expect(conv?.messages[0].metadata?.agentId).toBe("hermes");
+    expect(conv?.messages[2].metadata?.agentId).toBe("claude");
+  });
+
+  it("updateConversation preserves the new metadata.agentId for next-message fallback", () => {
+    const c = useConversationStore.getState().createConversation();
+    // reasonixAdapter updates `conv.metadata.agentId` to the
+    // current CLI after each successful send, so legacy
+    // messages (pre-fix, no per-message agentId) inherit the
+    // correct badge.
+    useConversationStore
+      .getState()
+      .updateConversation(c.id, { metadata: { ...c.metadata, agentId: "claude" } });
+    const after = useConversationStore.getState().getCurrentConversation();
+    expect(after?.metadata.agentId).toBe("claude");
+  });
 });

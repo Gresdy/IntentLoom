@@ -306,14 +306,26 @@ export function useReasonixController() {
     // stream we read from the model store so the current
     // tab's agent identity is reflected even before the
     // first message is sent.
-    const agentId =
+    // Per-message agentId wins so the badge correctly reflects
+    // the agent that actually handled the turn — even when the
+    // user has switched agents mid-conversation. The
+    // conversation-level `metadata.agentId` is the fallback for
+    // messages created before the per-message stamp shipped.
+    const fallbackAgentId =
       currentConversation?.metadata?.agentId ??
       useModelStore.getState().currentApp ??
       "claude";
+    const messageAgentId = (m: { agentId?: string; metadata?: { agentId?: string } }) =>
+      m.agentId ?? m.metadata?.agentId;
 
     for (const msg of conversationMessages) {
       if (msg.role === "user") {
-        result.push({ kind: "user", id: msg.id, text: msg.content, agentId });
+        result.push({
+          kind: "user",
+          id: msg.id,
+          text: msg.content,
+          agentId: messageAgentId(msg) ?? fallbackAgentId,
+        });
       } else if (msg.role === "assistant") {
         result.push({
           kind: "assistant",
@@ -321,7 +333,7 @@ export function useReasonixController() {
           text: msg.content,
           streaming: false,
           reasoning: msg.thinking,
-          agentId,
+          agentId: messageAgentId(msg) ?? fallbackAgentId,
         });
         // Persisted tool calls on the assistant message become ToolCards
         // in the transcript. W3 of the-loom-as-product.md: this is what
@@ -330,7 +342,7 @@ export function useReasonixController() {
         // the same content inline in chat history.
         if (msg.toolCalls && msg.toolCalls.length > 0) {
           for (const tc of msg.toolCalls) {
-            result.push(toolCallToItem(tc, `${msg.id}-tc-${tc.id}`, agentId));
+            result.push(toolCallToItem(tc, `${msg.id}-tc-${tc.id}`, messageAgentId(msg) ?? fallbackAgentId));
           }
         }
         // Persisted permission requests render as inline permission cards
@@ -343,7 +355,7 @@ export function useReasonixController() {
             args: msg.permission.args,
             reason: msg.permission.reason,
             status: msg.permission.status ?? "pending",
-            agentId,
+            agentId: messageAgentId(msg) ?? fallbackAgentId,
           });
         }
       }
@@ -358,14 +370,14 @@ export function useReasonixController() {
           text: lastMsg.content,
           streaming: true,
           reasoning: currentThinking,
-          agentId,
+          agentId: messageAgentId(lastMsg) ?? fallbackAgentId,
         });
         // Live tool cards: the in-flight tool calls from messageStore.
         // After stream-end these get persisted onto the assistant
         // message (see ai-stream-end handler) and the live snapshot
         // resets, so we don't double-render.
         for (const tc of currentToolCalls) {
-          result.push(toolCallToItem(tc, `live-tc-${tc.id}`, agentId));
+          result.push(toolCallToItem(tc, `live-tc-${tc.id}`, fallbackAgentId));
         }
       }
     }
@@ -379,7 +391,7 @@ export function useReasonixController() {
         args: currentPermission.args,
         reason: currentPermission.reason,
         status: "pending",
-        agentId,
+        agentId: fallbackAgentId,
       });
     }
 
@@ -390,7 +402,7 @@ export function useReasonixController() {
           kind: "summary",
           id: `summary-${currentConversationId}`,
           tally,
-          agentId,
+          agentId: fallbackAgentId,
         });
       }
     }
@@ -402,7 +414,7 @@ export function useReasonixController() {
     // natural place to look. The Transcript already styles
     // the `notice` kind with a red border / soft background.
     for (const n of notices) {
-      result.push({ kind: "notice", id: n.id, level: n.level, text: n.text, agentId });
+      result.push({ kind: "notice", id: n.id, level: n.level, text: n.text, agentId: fallbackAgentId });
     }
 
     // AionUI-style grouping: consecutive `tool` items get
@@ -740,6 +752,13 @@ export function useReasonixController() {
         content: text,
         timestamp: Date.now(),
         position: "right" as const,
+        // Per-message agentId so the transcript shows the
+        // right agent badge even when the user has switched
+        // agents mid-conversation. Falls back to the
+        // conversation-level `metadata.agentId` for messages
+        // created before this fix shipped.
+        agentId: cli,
+        metadata: { agentId: cli },
       };
       addMessageToCurrent(userMessage);
 
@@ -750,9 +769,24 @@ export function useReasonixController() {
         content: "",
         timestamp: Date.now(),
         position: "left" as const,
+        agentId: cli,
+        metadata: { agentId: cli },
       };
       addMessageToCurrent(assistantMessage);
 
+      // Keep the conversation-level agentId in sync with the
+      // CLI that actually handled the new turn. The per-message
+      // `agentId` field above is the primary source of truth;
+      // this is the fallback for the items derivation and for
+      // any consumer that reads `conv.metadata.agentId`
+      // directly (the status bar, the agent-switch confirm
+      // dialog, …).
+      if (conv && cli) {
+        const md = (conv.metadata ?? {}) as { agentId?: string };
+        if (md.agentId !== cli) {
+          updateConversation(conv.id, { metadata: { ...md, agentId: cli } });
+        }
+      }
       setStreaming(true);
 
       try {

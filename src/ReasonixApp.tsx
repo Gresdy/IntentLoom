@@ -671,7 +671,19 @@ export const ReasonixApp: React.FC = () => {
              * `check_agent_health` `latencyMs` field. */}
             <button
               className="chip chip--icon"
-              onClick={() => void readiness.performFullCheck()}
+              onClick={() => {
+                // Refresh the registry (which binaries are
+                // currently on $PATH / user-local) AND the
+                // per-agent health probe (does the active
+                // binary actually run?). The topbar badge for
+                // each tab keys off the registry, so a stale
+                // registry would leave '未安装' on a tab whose
+                // binary was just installed. Both calls run in
+                // parallel — the click is a no-op for whichever
+                // side is already up to date.
+                void refreshAgentList();
+                void readiness.performFullCheck();
+              }}
               disabled={state.running || readiness.isChecking}
               title={
                 readiness.isChecking
