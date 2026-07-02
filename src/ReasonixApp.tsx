@@ -54,6 +54,7 @@ import {
 // 渲染。ProjectsPanel 是唯一例外 —— 侧栏「项目管理」还会打开右侧
 // slide-in,所以在这里保留一份 import。PanelLoader 是 slide-in 的
 // 通用 Suspense fallback,统一在 common/ 下。
+import { useMessageStore } from "./stores/messageStore";
 import { ProjectsPanel } from "./components/LeftPanel/ProjectsPanel";
 import { PanelLoader } from "./components/common/PanelLoader";
 
@@ -343,19 +344,8 @@ export const ReasonixApp: React.FC = () => {
       );
       return;
     }
-    // If a conversation is open and was started on a different agent,
-    // switching tabs would silently re-route the next message to a new
-    // CLI — exactly the bug Phase 2 of the multi-agent plan exists to
-    // prevent. Surface a confirm and start a new conversation if the
-    // user agrees.
-    const currentAgentId = selectCurrentAgentId(useConversationStore.getState());
-    if (currentAgentId !== appId) {
-      const ok = window.confirm(
-        `当前对话归属 ${currentAgentId},切到 ${appId} 会开启新对话。继续?`
-      );
-      if (!ok) return;
-      useConversationStore.getState().createConversation();
-    }
+    // 切换agent时清除notices和currentToolCalls，避免报错信息残留
+    useMessageStore.getState().resetCurrentStream();
     setCurrentApp(appId);
   }, [setCurrentApp, isUnavailable]);
 

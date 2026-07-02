@@ -37,7 +37,8 @@ import { MessageSkillSuggest } from "./MessageSkillSuggest";
 import { MessageCronTrigger } from "./MessageCronTrigger";
 import { MessageAvailableCommands } from "./MessageAvailableCommands";
 import { SelectionReplyButton } from "./SelectionReplyButton";
-import { TeammateMessageAvatar, type TeammateSender } from "./TeammateMessageAvatar";
+import { MessageText } from "./MessageText";
+import { ToolExecutionDisplay } from "./ToolExecutionDisplay";
 
 interface TranscriptProps {
   items: ReasonixItem[];
@@ -46,39 +47,18 @@ interface TranscriptProps {
   onPickWorkspace?: () => void;
   onSeedDemo?: () => void;
   onApprove?: (id: string, allow: boolean) => void;
-  // === T4 chat parity: edit + regenerate ===
-  // Fired when the user confirms an edit on a user message.
-  // The handler truncates the conversation at this message
-  // (drops everything after), persists the new text, and
-  // re-sends through the active CLI adapter — so the user
-  // gets a fresh assistant turn on top of the edited prompt.
   onEditUserMessage?: (messageId: string, newText: string) => void;
-  // Fired when the user clicks the regenerate icon on an
-  // assistant message. The handler truncates from the
-  // assistant message onward and re-sends the previous
-  // user message (the adapter looks it up via messageId).
   onRegenerateAssistant?: (messageId: string) => void;
 }
 
 /**
  * AionUI-style processed item type.
- * Mirrors AionUI's `IMessageVO` / `IProcessedItem` pattern:
- *   - Regular items pass through as-is
- *   - `file_summary`: merged file changes from WriteFile/Edit tools
- *   - `tool_summary`: aggregated tool steps with ToolGroupSummary rendering
  */
 type ProcessedItem =
   | { type: "item"; item: ReasonixItem }
   | { type: "file_summary"; id: string; changes: FileChange[]; sourceIds: string[] }
   | { type: "tool_summary"; id: string; tools: ReasonixItem[]; sourceIds: string[] };
 
-/**
- * AionUI-style message pre-processing.
- * Mirrors AionUI's `processedList` logic in MessageList.tsx:
- *   - Consecutive tool/tool_group items with file edits → `file_summary`
- *   - Consecutive tool/tool_group items → `tool_summary`
- *   - Other items pass through unchanged
- */
 function preprocessItems(items: ReasonixItem[]): ProcessedItem[] {
   const result: ProcessedItem[] = [];
   let fileChanges: FileChange[] = [];
@@ -113,7 +93,6 @@ function preprocessItems(items: ReasonixItem[]): ProcessedItem[] {
   };
 
   for (const item of items) {
-    // Extract file changes from tool items
     if (item.kind === "tool") {
       const isEdit = item.kind2 === "edit" || item.kind2 === "write" || /write|edit|replace/i.test(item.name ?? "");
       const filePath = fileSubject(item.args);
@@ -134,13 +113,11 @@ function preprocessItems(items: ReasonixItem[]): ProcessedItem[] {
           })) : undefined,
         });
         fileSourceIds.push(item.id);
-        // Also add to tool list so it appears in the tool summary
         toolList.push(item);
         toolSourceIds.push(item.id);
         continue;
       }
 
-      // Non-edit tool → add to tool list
       flushFileChanges();
       toolList.push(item);
       toolSourceIds.push(item.id);
@@ -148,15 +125,12 @@ function preprocessItems(items: ReasonixItem[]): ProcessedItem[] {
     }
 
     if (item.kind === "tool_group") {
-      // Flatten tool group items into the tool list
-      // AionUI pattern: tool groups become tool_summary entries
       flushFileChanges();
       toolList.push(item);
       toolSourceIds.push(item.id);
       continue;
     }
 
-    // Non-tool item → flush both buffers
     flushFileChanges();
     flushToolList();
     result.push({ type: "item", item });
@@ -181,19 +155,13 @@ export function Transcript({ items, onPrompt, onNewChat, onPickWorkspace, onSeed
     hideScrollButton,
   } = useAutoScroll({ messages: items, itemCount: items.length });
 
-  // AionUI-style pre-processing: aggregate tool items into
-  // `file_summary` and `tool_summary` virtual messages
   const processed = useMemo(() => preprocessItems(items), [items]);
 
-  // On mount / items refresh, surface a toast for any permission
-  // request that survived a page reload in `pending` state.
   usePendingConfirmationsRecovery(items);
 
-  // Highlight a target message for 2.4s after a jump event arrives.
-  // Mirrors AionUi's `highlightStyle` + `setHighlightedMessageId` pair
-  // in `MessageList.tsx`.
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | undefined>();
   const lastHandledJumpRef = useRef<string>("");
+  const shownAgentStatusRef = useRef<Set<string>>(new Set());
 
   const handleJumpToMessage = useCallback(
     (detail: ChatMessageJumpDetail) => {
@@ -319,6 +287,7 @@ export function Transcript({ items, onPrompt, onNewChat, onPickWorkspace, onSeed
                   onApprove={onApprove}
                   onEditUserMessage={onEditUserMessage}
                   onRegenerateAssistant={onRegenerateAssistant}
+                  shownAgentStatusRef={shownAgentStatusRef}
                 />
                 <MessageTimeStamp createdAt={timestampOf(p.item)} />
               </div>
@@ -354,12 +323,17 @@ function ItemRenderer({
   onApprove,
   onEditUserMessage,
   onRegenerateAssistant,
+  shownAgentStatusRef,
 }: {
   item: ReasonixItem;
   onApprove?: (id: string, allow: boolean) => void;
   onEditUserMessage?: (messageId: string, newText: string) => void;
   onRegenerateAssistant?: (messageId: string) => void;
+  shownAgentStatusRef?: React.MutableRefObject<Set<string>>;
 }) {
+  const localRef = useRef<Set<string>>(new Set());
+  const statusRef = shownAgentStatusRef ?? localRef;
+  
   switch (item.kind) {
     case "user":
       return (
@@ -378,7 +352,6 @@ function ItemRenderer({
           text={item.text}
           streaming={item.streaming}
           reasoning={item.reasoning}
-          agentId={item.agentId}
           onRegenerate={onRegenerateAssistant}
         />
       );
@@ -410,8 +383,12 @@ function ItemRenderer({
         </div>
       );
 
-    // === AionUi port (Phase 2): new message kinds ===
-    case "agent_status":
+    case "agent_status": {
+      const statusKey = `${item.backend}:${item.status}`;
+      if (statusRef.current.has(statusKey)) {
+        return null;
+      }
+      statusRef.current.add(statusKey);
       return (
         <MessageAgentStatus
           id={item.id}
@@ -421,6 +398,7 @@ function ItemRenderer({
           agentId={item.agentId}
         />
       );
+    }
 
     case "tips":
       return (
@@ -477,10 +455,7 @@ function ItemRenderer({
 
     case "notice": {
       const lvl = item.level;
-      const lvlClass =
-        lvl === "error" || lvl === "warn" || lvl === "info"
-          ? `notice--${lvl}`
-          : "";
+      const lvlClass = lvl === "error" || lvl === "warn" || lvl === "info" ? `notice--${lvl}` : "";
       return (
         <div className={lvlClass ? `notice ${lvlClass}` : "notice"} role={lvl === "error" ? "alert" : "status"}>
           {item.agentId && <AgentBadge agentId={item.agentId} />}
@@ -498,20 +473,8 @@ function ItemRenderer({
 }
 
 /**
- * UserMessageRow — T4 chat parity.
- *
- * Wraps the existing `msg--user` bubble in a small action bar that
- * shows an edit pencil on hover. Clicking the pencil swaps the text
- * for a textarea + save/cancel. On save the parent receives
- * `onEdit(messageId, newText)`, which is expected to:
- *   1. truncate the conversation at this message
- *   2. persist the new text
- *   3. re-send through the active CLI adapter
- *
- * We intentionally do NOT change the visual style of the bubble —
- * the user said "整体UI风格不要动" in the most recent direct message,
- * so the row reuses `msg--user` / `msg__bubble` chrome and only
- * adds a small action affordance on hover.
+ * UserMessageRow — AionUi-style user message rendering.
+ * Uses MessageText component with isUserMessage={true} for consistent styling.
  */
 export function UserMessageRow({
   id,
@@ -521,35 +484,28 @@ export function UserMessageRow({
 }: {
   id: string;
   text: string;
-  /** Live-streaming user text (extremely rare; user messages are
-   *  usually only the final text, but the type lets the parent
-   *  disable the edit button while a streamed update is in flight). */
   streaming?: boolean;
   onEdit?: (messageId: string, newText: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text);
 
-  // Reset the draft whenever the underlying message text changes
-  // (e.g. after the parent persists the new edit, the persisted
-  // message bubbles back through the store and we re-sync).
   useEffect(() => {
     if (!editing) setDraft(text);
   }, [text, editing]);
 
   if (editing) {
     return (
-      <div className="msg msg--user" data-message-id={id}>
-        <div className="msg__bubble msg__bubble--editing" data-testid="user-message-edit-form">
+      <div className="user-message-edit" data-message-id={id}>
+        <div className="user-message-edit__form" data-testid="user-message-edit-form">
           <textarea
-            className="msg__edit-textarea"
+            className="user-message-edit__textarea"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             autoFocus
             rows={Math.max(2, Math.min(8, draft.split("\n").length))}
             data-testid="user-message-edit-textarea"
             onKeyDown={(e) => {
-              // Enter (without shift) confirms; Escape cancels.
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 const trimmed = draft.trim();
@@ -564,10 +520,10 @@ export function UserMessageRow({
               }
             }}
           />
-          <div className="msg__edit-actions">
+          <div className="user-message-edit__actions">
             <button
               type="button"
-              className="chip chip--icon"
+              className="user-message-edit__cancel"
               onClick={() => {
                 setDraft(text);
                 setEditing(false);
@@ -579,7 +535,7 @@ export function UserMessageRow({
             </button>
             <button
               type="button"
-              className="chip chip--on"
+              className="user-message-edit__save"
               onClick={() => {
                 const trimmed = draft.trim();
                 if (trimmed && trimmed !== text) {
@@ -592,7 +548,7 @@ export function UserMessageRow({
               data-testid="user-message-edit-save"
             >
               <Check size={12} />
-              <span style={{ marginLeft: 4 }}>保存并重发</span>
+              <span>保存并重发</span>
             </button>
           </div>
         </div>
@@ -601,21 +557,25 @@ export function UserMessageRow({
   }
 
   const canEdit = Boolean(onEdit) && !streaming;
+
   return (
-    <div className="msg msg--user" data-message-id={id}>
-      <span className="msg__caret">›</span>
-      <div className="msg__bubble">{text}</div>
+    <div className="user-message" data-message-id={id}>
+      <MessageText
+        id={id}
+        content={text}
+        isUserMessage={true}
+        createdAt={timestampOf({ kind: "user", id, text })}
+      />
       {canEdit && (
-        <div className="msg__actions" data-testid="user-message-actions">
+        <div className="user-message-actions" data-testid="user-message-actions">
           <button
             type="button"
-            className="msg__action-btn"
+            className="user-message__edit-btn"
             onClick={() => {
               setDraft(text);
               setEditing(true);
             }}
             title="编辑并重发"
-            aria-label="编辑并重发"
             data-testid="user-message-edit-button"
           >
             <Pencil size={12} />
@@ -627,37 +587,30 @@ export function UserMessageRow({
 }
 
 /**
- * AssistantMessageRow — T4 chat parity.
- *
- * Wraps the assistant bubble in a hover-revealed "重新生成" action.
- * Clicking it calls `onRegenerate(messageId)`; the parent is expected
- * to truncate the conversation at this assistant message and re-send
- * the previous user prompt. Streaming turns do not show the button
- * (regenerating an in-flight turn would race the live stream).
+ * AssistantMessageRow — AionUi-style assistant message rendering.
  */
 export function AssistantMessageRow({
   id,
   text,
   streaming,
   reasoning,
-  agentId,
   onRegenerate,
 }: {
   id: string;
   text: string;
   streaming?: boolean;
   reasoning?: string;
-  agentId?: string;
   onRegenerate?: (messageId: string) => void;
 }) {
   const canRegenerate = Boolean(onRegenerate) && !streaming;
   return (
-    <div className="msg msg--assistant-wrapper" data-message-id={id}>
+    <div className="assistant-message" data-message-id={id}>
       <AssistantMessageBody
+        id={id}
         text={text}
         streaming={streaming}
         reasoning={reasoning}
-        agentId={agentId}
+        
       />
       {canRegenerate && (
         <div className="msg__actions msg__actions--assistant" data-testid="assistant-message-actions">
@@ -666,11 +619,10 @@ export function AssistantMessageRow({
             className="msg__action-btn"
             onClick={() => onRegenerate?.(id)}
             title="重新生成此回答"
-            aria-label="重新生成此回答"
             data-testid="assistant-message-regenerate-button"
           >
             <RefreshCw size={12} />
-            <span style={{ marginLeft: 4 }}>重新生成</span>
+            <span>重新生成</span>
           </button>
         </div>
       )}
@@ -679,87 +631,109 @@ export function AssistantMessageRow({
 }
 
 function AssistantMessageBody({
+  id,
   text,
   streaming,
   reasoning,
   agentId,
-  teammate,
 }: {
+  id?: string;
   text: string;
   streaming?: boolean;
   reasoning?: string;
   agentId?: string;
-  /** Optional teammate sender (multi-agent / multi-conversation). Renders a small
-   *  colored avatar next to the assistant message. The IntentLoom adapter does
-   *  not yet emit teammate metadata, so this defaults to `undefined`. */
-  teammate?: TeammateSender;
 }) {
-  const [showReasoning, setShowReasoning] = useState(false);
   const thinkingMeta = useMessageStore((s) => s.currentThinkingMeta);
+  const msgId = id ?? "";
+  const currentToolCalls = useMessageStore((s) => s.currentToolCalls);
   const isLiveTurn = Boolean(streaming);
-  const meta = getAgentMeta(agentId);
+
+  // Track tool execution start time
+  const toolStartTimeRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (currentToolCalls.length > 0 && toolStartTimeRef.current === null) {
+      toolStartTimeRef.current = Date.now();
+    }
+    if (currentToolCalls.length === 0) {
+      toolStartTimeRef.current = null;
+    }
+  }, [currentToolCalls.length]);
+
+  // 阶段1: 思考中 (Thinking) - 在最前面
+  const isThinking = isLiveTurn && thinkingMeta?.status === "active";
+  const thinkingDone = isLiveTurn && thinkingMeta?.status === "done";
+
+  // 阶段2: 工具执行中 (Tool Execution) - 思考完成后、回答前
+  const hasActiveTools = currentToolCalls.length > 0;
+  const isToolExecuting = isLiveTurn && hasActiveTools;
+
+  // 阶段3: 最终回答 (Final Answer) - 思考和工具都完成后
+  const hasFinalOutput = !isLiveTurn && text;
+
+  // 修复：流式输出时，如果有reasoning，不要同时显示MessageText，避免重复
+  const showLiveText = isLiveTurn && !isToolExecuting && !reasoning;
 
   return (
-    <div className="msg msg--assistant" style={{ borderLeftColor: meta.color } as React.CSSProperties}>
-      {teammate && (
-        <div className="msg__teammate">
-          <TeammateMessageAvatar sender={teammate} agentId={agentId} />
-        </div>
-      )}
+    <div className="assistant-message-body">
       {agentId && (
-        <div className="msg__agent">
-          <AgentBadge agentId={agentId} size="md" />
+        <div className="assistant-message-body__agent">
+          <AgentBadge size="md" />
         </div>
       )}
-      {isLiveTurn && thinkingMeta && (
+
+      {/* 阶段1: 思考过程 - 显示在最前面 */}
+      {(isThinking || thinkingDone || reasoning) && (
         <ThinkingDisplay
           content={reasoning ?? ""}
-          status={thinkingMeta.status}
-          startTime={thinkingMeta.startTime}
-          duration={thinkingMeta.duration}
+          status={thinkingMeta?.status ?? (reasoning ? "done" : "active")}
+          startTime={thinkingMeta?.startTime ?? Date.now()}
+          duration={thinkingMeta?.duration}
         />
       )}
-      {!isLiveTurn && reasoning && (
-        <div className="reasoning">
-          <button className="reasoning__toggle" onClick={() => setShowReasoning(!showReasoning)}>
-            <ChevronRight size={12} className={`reasoning__chevron ${showReasoning ? "reasoning__chevron--open" : ""}`} />
-            思考过程
-          </button>
-          {showReasoning && <div className="reasoning__body">{reasoning}</div>}
-        </div>
+
+      {/* 阶段2: 工具执行过程 - 思考完成后显示，类似思考过程的显示方式 */}
+      {(isToolExecuting || (hasActiveTools && !isLiveTurn)) && (
+        <ToolExecutionDisplay
+          tools={currentToolCalls}
+          startTime={toolStartTimeRef.current ?? Date.now()}
+        />
       )}
-      <div className="msg__stream">{text}{streaming && <span className="cursor" />}</div>
+
+      {/* 阶段3: 最终回答 - 最后显示 */}
+      {hasFinalOutput && (
+        <MessageText 
+          id={msgId} 
+          content={text} 
+          createdAt={Date.now()}
+        />
+      )}
+
+      {/* 流式输出时显示（没有reasoning时） */}
+      {showLiveText && (
+        <MessageText 
+          id={msgId} 
+          content={text} 
+          createdAt={Date.now()}
+        />
+      )}
     </div>
   );
 }
 
-/**
- * ToolCard — AionUI-style per-tool rendering.
- *
- * Mirrors AionUI's `MessageToolCall` pattern:
- *   - `Edit`/`Replace` tools with diffs → ReplacePreview diff panel
- *   - Other tools → Badge status + tool name + description + expandable input/output
- *   - `badge-breathing` animation for running state
- *
- * AionUI reference:
- *   packages/desktop/src/renderer/pages/conversation/Messages/components/MessageToolCall.tsx
- */
-export function ToolCard({ item }: { item: any }) {
+function ToolCard({ item }: { item: any }) {
   const [expanded, setExpanded] = useState(item.status === "error");
-  const kind: string | undefined =
-    item.kind === "tool" ? item.kind2 ?? undefined : item.kind;
+  const kind: string | undefined = item.kind === "tool" ? item.kind2 ?? undefined : item.kind;
   const diff: any[] | undefined = Array.isArray(item.diff) ? item.diff : undefined;
   const hasDiff = (kind === "edit" || kind === "write" || /edit|write|replace/i.test(item.name ?? "")) && diff && diff.length > 0;
   const isExec = kind === "execute" || /exec|bash|command/i.test(item.name ?? "");
-  // AionUI pattern: Edit/Replace tools with diffs get a ReplacePreview
+  
   if (hasDiff) {
     return <ReplacePreview item={item} diff={diff!} />;
   }
 
-  // AionUI pattern: Badge status + tool name + description
   const statusIcon: Record<string, React.ReactNode> = {
-    running: <Loader2 size={12} className="spin ilo-fg-accent" />,
-    in_progress: <Loader2 size={12} className="spin ilo-fg-accent" />,
+    running: <Loader2 size={12} className="spin" />,
+    in_progress: <Loader2 size={12} className="spin" />,
     success: <span className="ilo-fg-ok">✓</span>,
     completed: <span className="ilo-fg-ok">✓</span>,
     error: <span className="ilo-fg-err">✗</span>,
@@ -773,21 +747,17 @@ export function ToolCard({ item }: { item: any }) {
   };
   const kindLabel = friendlyKind[kind ?? ""] ?? item.name;
 
-  const subject = isExec
-    ? commandSubject(item.args)
-    : fileSubject(item.args) || (typeof item.args === "object" ? JSON.stringify(item.args).slice(0, 50) : "");
-
+  const subject = isExec ? commandSubject(item.args) : fileSubject(item.args) || (typeof item.args === "object" ? JSON.stringify(item.args).slice(0, 50) : "");
   const hasDetail = item.args || item.result;
   const agentMeta = getAgentMeta(item.agentId);
 
   return (
-    <div className={`tool ${item.status === "running" || item.status === "in_progress" ? "tool--running" : ""}`} style={{ borderLeftColor: agentMeta.color } as React.CSSProperties}>
-      {/* AionUI pattern: Badge + tool name + description row */}
+    <div className={`tool ${item.status === "running" || item.status === "in_progress" ? "tool--running" : ""}`} style={{ borderLeftColor: agentMeta.color }}>
       <div
         className={`tool__row ${hasDetail ? "tool__row--clickable" : ""}`}
         onClick={hasDetail ? () => setExpanded(!expanded) : undefined}
       >
-        <span className={`tool__chevron ${expanded ? "tool__chevron--open" : "tool__chevron--placeholder"}`}>
+        <span className={`tool__chevron ${expanded ? "tool__chevron--open" : ""}`}>
           {expanded ? <ChevronRight size={12} /> : null}
         </span>
         <span className="tool__icon">{statusIcon[item.status] ?? statusIcon.pending}</span>
@@ -796,12 +766,11 @@ export function ToolCard({ item }: { item: any }) {
         {item.agentId && <AgentBadge agentId={item.agentId} />}
         {hasDetail && (
           <span className="tool__expand-hint">
-            {expanded ? <ChevronRight size={10} style={{ transform: "rotate(90deg)" }} /> : <ChevronRight size={10} />}
+            <ChevronRight size={10} />
           </span>
         )}
       </div>
 
-      {/* AionUI pattern: expandable detail panel */}
       {expanded && hasDetail && (
         <div className="tool__detail-panel">
           {item.args && typeof item.args === "object" && Object.keys(item.args).length > 0 && (
@@ -826,16 +795,11 @@ export function ToolCard({ item }: { item: any }) {
   );
 }
 
-/**
- * ReplacePreview — AionUI-style diff preview for Edit/Replace tools.
- * Mirrors AionUI's `ReplacePreview` component which uses `createTwoFilesPatch`.
- */
 function ReplacePreview({ item, diff }: { item: any; diff: any[] }) {
   const filePath = fileSubject(item.args) || "unknown";
   const fileName = filePath.split(/[/\\]/).pop() || filePath;
   const agentMeta = getAgentMeta(item.agentId);
 
-  // Collect add/remove counts from diff
   let added = 0, removed = 0;
   for (const d of diff) {
     if (d.type === "add") added++;
@@ -847,7 +811,7 @@ function ReplacePreview({ item, diff }: { item: any; diff: any[] }) {
   }
 
   return (
-    <div className="tool tool--has-diff" style={{ borderLeftColor: agentMeta.color } as React.CSSProperties}>
+    <div className="tool tool--has-diff" style={{ borderLeftColor: agentMeta.color }}>
       <div className="tool__diff-header">
         <FileEdit size={12} style={{ color: agentMeta.color }} />
         <span className="tool__diff-filename">{fileName}</span>
@@ -870,21 +834,13 @@ function DiffLine({ diff }: { diff: any }) {
   if (diff.type === "diff" || diff.type === "content") {
     return (
       <>
-        {diff.oldText !== undefined && (
-          <div className="tool__diff-line tool__diff-line--remove">- {diff.oldText}</div>
-        )}
-        {diff.newText !== undefined && (
-          <div className="tool__diff-line tool__diff-line--add">+ {diff.newText}</div>
-        )}
+        {diff.oldText !== undefined && <div className="tool__diff-line tool__diff-line--remove">- {diff.oldText}</div>}
+        {diff.newText !== undefined && <div className="tool__diff-line tool__diff-line--add">+ {diff.newText}</div>}
       </>
     );
   }
-  if (diff.type === "add") {
-    return <div className="tool__diff-line tool__diff-line--add">+ {diff.newText ?? ""}</div>;
-  }
-  if (diff.type === "remove") {
-    return <div className="tool__diff-line tool__diff-line--remove">- {diff.oldText ?? ""}</div>;
-  }
+  if (diff.type === "add") return <div className="tool__diff-line tool__diff-line--add">+ {diff.newText ?? ""}</div>;
+  if (diff.type === "remove") return <div className="tool__diff-line tool__diff-line--remove">- {diff.oldText ?? ""}</div>;
   return null;
 }
 
@@ -908,36 +864,18 @@ function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max) + "…" : s;
 }
 
-/**
- * timestampOf — pull a best-effort creation timestamp from a
- * ReasonixItem. The adapter doesn't stamp every kind with a
- * `createdAt` (it's only set on items that survived the
- * streamChunkParser), so we fall back to a stable hash of the id
- * to keep the rendered time string deterministic across rerenders.
- */
 function timestampOf(item: ReasonixItem): number | undefined {
   const maybe = (item as { createdAt?: number }).createdAt;
   if (typeof maybe === "number" && Number.isFinite(maybe) && maybe > 0) return maybe;
-  // Fall back to now so the row still shows a time; this is purely
-  // cosmetic for items that lack a real timestamp and we don't want
-  // the user to see an empty placeholder where the time should be.
   return Date.now();
 }
 
-/**
- * MessageTimeStamp — AionUi `formatMessageTime` port, rendered as
- * a small right-aligned pill under each transcript row. The
- * component is intentionally inert (no clicks, no tooltips) so
- * it doesn't fight with the row's own click targets; the
- * `formatMessageTime` rule (HH:mm same day, MM-DD HH:mm otherwise)
- * is the single source of truth from `src/chat/formatMessageTime.ts`.
- */
 function MessageTimeStamp({ createdAt }: { createdAt?: number }) {
   if (!createdAt) return null;
   const label = formatMessageTime(createdAt);
   if (!label) return null;
   return (
-    <span className="transcript__time" data-testid="transcript-time" title={new Date(createdAt).toISOString()}>
+    <span className="transcript__time" title={new Date(createdAt).toISOString()}>
       {label}
     </span>
   );
