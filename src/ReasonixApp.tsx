@@ -2,7 +2,7 @@ import { useCallback, useState, useEffect, useMemo, useRef, Suspense, Fragment }
 import { useSearchParams } from "react-router-dom";
 import {
   SquarePen, History, Settings, Command, Moon, Sun, Bot, PanelLeftClose, PanelLeftOpen,
-  FolderOpen, X, Zap, ShieldAlert,
+  FolderOpen, X, Zap, ShieldAlert, Sparkles,
   MessageCircle, RefreshCw, Loader2,
   LayoutGrid,
 } from "lucide-react";
@@ -28,7 +28,7 @@ import { useThemeStore } from "./stores/useThemeStore";
 import { useModelStore } from "./stores/useModelStore";
 import { seedProvidersFromPresets } from "./config/providerPresets";
 import type { AppId } from "./shared/types";
-import { useConversationStore, selectCurrentAgentId, selectCurrentConversationId } from "./stores/conversationStore";
+import { useConversationStore, selectCurrentConversationId } from "./stores/conversationStore";
 import { useAutoTitle } from "./hooks/useAutoTitle";
 import {
   buildConversationExportText,
@@ -56,6 +56,7 @@ import {
 // 通用 Suspense fallback,统一在 common/ 下。
 import { useMessageStore } from "./stores/messageStore";
 import { ProjectsPanel } from "./components/LeftPanel/ProjectsPanel";
+import { SkillsManager } from "./components/Skills/SkillsManager";
 import { PanelLoader } from "./components/common/PanelLoader";
 
 // Hermes is intentionally absent: it lives in ALL_AGENTS as a top-tab
@@ -64,7 +65,7 @@ import { PanelLoader } from "./components/common/PanelLoader";
 // 以及「点齿轮进设置」这一种 view。其余 10+ 个面板（agents / sessions / skills /
 // expert / prompts / mcp / model / usage / logs / search / shortcuts / about）
 // 都合并进 Settings 里的左侧 nav，对应的内容在 SettingsDrawer 里渲染。
-type NavKey = "chat" | "automation" | "projects" | "settings";
+type NavKey = "chat" | "automation" | "projects" | "skills" | "settings";
 
 interface NavItem {
   key: NavKey;
@@ -81,6 +82,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: "chat",       icon: <MessageCircle size={18} />, label: "聊天" },
   { key: "automation", icon: <Zap size={18} />,          label: "自动化" },
   { key: "projects",   icon: <FolderOpen size={18} />,   label: "项目管理" },
+  { key: "skills",     icon: <Sparkles size={18} />,     label: "Skills" },
 ];
 
 // 仅用于键盘快捷键 Ctrl+1..3 跳转的扁平顺序。
@@ -111,13 +113,20 @@ function isNavKey(value: string | null): value is NavKey {
   // 其余所有面板(agents / sessions / skills / expert / prompts / mcp /
   // search)都通过 ?view=settings&tab=... 走 Settings 弹框,不再有
   // 独立的 panel 路由。
-  return value === "chat" || value === "automation" || value === "projects" || value === "settings";
+  return (
+    value === "chat" ||
+    value === "automation" ||
+    value === "projects" ||
+    value === "skills" ||
+    value === "settings"
+  );
 }
 
 const PANEL_TITLES: Record<NavKey, string> = {
   chat: "聊天",
   automation: "自动化",
   projects: "项目管理",
+  skills: "Skills",
   settings: "设置",
 };
 
@@ -511,6 +520,12 @@ export const ReasonixApp: React.FC = () => {
         return (
           <Suspense fallback={<PanelLoader />}>
             <ProjectsPanel />
+          </Suspense>
+        );
+      case "skills":
+        return (
+          <Suspense fallback={<PanelLoader />}>
+            <SkillsManager />
           </Suspense>
         );
       default:
@@ -1085,6 +1100,7 @@ export const ReasonixApp: React.FC = () => {
       {settingsOpen && (
         <SettingsDrawer
           initialTab={initialSettingsTab}
+          onOpenSkillsPanel={() => handleNavClick("skills")}
           onClose={() => {
             const next = new URLSearchParams(searchParams);
             next.delete("view");

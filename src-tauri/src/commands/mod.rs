@@ -1,9 +1,6 @@
-pub mod market;
-pub mod projects;
 pub mod sessions;
 pub mod ai;
 pub mod fs;
-pub mod skills;
 pub mod agents;
 pub mod permissions;
 pub mod proxy;
