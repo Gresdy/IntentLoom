@@ -47,6 +47,10 @@
     "shell": {
       "open": true
     },
-    "fs": {}
+    "fs": {},
+    "updater": {
+      "endpoints": [],
+      "pubkey": ""
+    }
   }
 }

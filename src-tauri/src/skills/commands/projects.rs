@@ -518,7 +518,7 @@ pub async fn get_projects(store: State<'_, Arc<SkillStore>>) -> Result<Vec<Proje
 }
 
 #[tauri::command]
-pub async fn add_project(
+pub async fn skills_add_project(
     store: State<'_, Arc<SkillStore>>,
     path: String,
 ) -> Result<ProjectDto, AppError> {
@@ -640,7 +640,7 @@ pub async fn add_linked_workspace(
 }
 
 #[tauri::command]
-pub async fn remove_project(store: State<'_, Arc<SkillStore>>, id: String) -> Result<(), AppError> {
+pub async fn skills_remove_project(store: State<'_, Arc<SkillStore>>, id: String) -> Result<(), AppError> {
     let store = store.inner().clone();
     tauri::async_runtime::spawn_blocking(move || store.delete_project(&id).map_err(AppError::db))
         .await?

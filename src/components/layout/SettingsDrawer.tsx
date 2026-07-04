@@ -22,8 +22,8 @@ const LogsPanel = lazy(() =>
 const AgentsPanel = lazy(() =>
   import("../LeftPanel/AgentsPanel").then(m => ({ default: m.AgentsPanel })),
 );
-const SkillsPanel = lazy(() =>
-  import("../LeftPanel/SkillsPanel").then(m => ({ default: m.SkillsPanel })),
+const SkillsManager = lazy(() =>
+  import("../Skills/SkillsManager").then(m => ({ default: m.SkillsManager })),
 );
 const PromptsPanel = lazy(() =>
   import("../LeftPanel/PromptsPanel").then(m => ({ default: m.PromptsPanel })),
@@ -48,10 +48,6 @@ interface SettingsDrawerProps {
   // 会话管理 tab 需要这两个回调去唤起 / 删除一个 session。
   onResumeSession?: (path: string) => void;
   onDeleteSession?: (path: string) => void;
-  // When the user clicks the "Skills" tab, route out to the dedicated
-  // Skills panel in the right rail instead of rendering the legacy
-  // SkillsPanel inline. IntentLoom owns the dedicated entry point.
-  onOpenSkillsPanel?: () => void;
 }
 
 export type SettingsTab =
@@ -83,7 +79,6 @@ export function SettingsDrawer({
   initialTab,
   onResumeSession,
   onDeleteSession,
-  onOpenSkillsPanel,
 }: SettingsDrawerProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? "appearance");
   const { mode, setMode, accentColor, setAccentColor, fontSize, setFontSize } = useThemeStore();
@@ -164,11 +159,7 @@ export function SettingsDrawer({
                     className={`settings-nav__item${
                       activeTab === item.id ? " active" : ""
                     }`}
-                    onClick={() =>
-                      item.id === "skills" && onOpenSkillsPanel
-                        ? onOpenSkillsPanel()
-                        : setActiveTab(item.id)
-                    }
+                    onClick={() => setActiveTab(item.id)}
                   >
                     {item.icon}
                     <span>{item.label}</span>
@@ -204,9 +195,9 @@ export function SettingsDrawer({
               </Suspense>
             )}
 
-            {activeTab === "skills" && onOpenSkillsPanel === undefined && (
+            {activeTab === "skills" && (
               <Suspense fallback={<SettingsPanelFallback />}>
-                <SkillsPanel />
+                <SkillsManager />
               </Suspense>
             )}
 

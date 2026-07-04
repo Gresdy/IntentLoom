@@ -2,7 +2,7 @@ import { useCallback, useState, useEffect, useMemo, useRef, Suspense, Fragment }
 import { useSearchParams } from "react-router-dom";
 import {
   SquarePen, History, Settings, Command, Moon, Sun, Bot, PanelLeftClose, PanelLeftOpen,
-  FolderOpen, X, Zap, ShieldAlert, Sparkles,
+  FolderOpen, X, Zap, ShieldAlert,
   MessageCircle, RefreshCw, Loader2,
   LayoutGrid,
 } from "lucide-react";
@@ -56,7 +56,6 @@ import {
 // 通用 Suspense fallback,统一在 common/ 下。
 import { useMessageStore } from "./stores/messageStore";
 import { ProjectsPanel } from "./components/LeftPanel/ProjectsPanel";
-import { SkillsManager } from "./components/Skills/SkillsManager";
 import { PanelLoader } from "./components/common/PanelLoader";
 
 // Hermes is intentionally absent: it lives in ALL_AGENTS as a top-tab
@@ -65,7 +64,7 @@ import { PanelLoader } from "./components/common/PanelLoader";
 // 以及「点齿轮进设置」这一种 view。其余 10+ 个面板（agents / sessions / skills /
 // expert / prompts / mcp / model / usage / logs / search / shortcuts / about）
 // 都合并进 Settings 里的左侧 nav，对应的内容在 SettingsDrawer 里渲染。
-type NavKey = "chat" | "automation" | "projects" | "skills" | "settings";
+type NavKey = "chat" | "automation" | "projects" | "settings";
 
 interface NavItem {
   key: NavKey;
@@ -82,7 +81,6 @@ const NAV_ITEMS: NavItem[] = [
   { key: "chat",       icon: <MessageCircle size={18} />, label: "聊天" },
   { key: "automation", icon: <Zap size={18} />,          label: "自动化" },
   { key: "projects",   icon: <FolderOpen size={18} />,   label: "项目管理" },
-  { key: "skills",     icon: <Sparkles size={18} />,     label: "Skills" },
 ];
 
 // 仅用于键盘快捷键 Ctrl+1..3 跳转的扁平顺序。
@@ -117,7 +115,6 @@ function isNavKey(value: string | null): value is NavKey {
     value === "chat" ||
     value === "automation" ||
     value === "projects" ||
-    value === "skills" ||
     value === "settings"
   );
 }
@@ -126,7 +123,6 @@ const PANEL_TITLES: Record<NavKey, string> = {
   chat: "聊天",
   automation: "自动化",
   projects: "项目管理",
-  skills: "Skills",
   settings: "设置",
 };
 
@@ -520,12 +516,6 @@ export const ReasonixApp: React.FC = () => {
         return (
           <Suspense fallback={<PanelLoader />}>
             <ProjectsPanel />
-          </Suspense>
-        );
-      case "skills":
-        return (
-          <Suspense fallback={<PanelLoader />}>
-            <SkillsManager />
           </Suspense>
         );
       default:
@@ -1100,7 +1090,6 @@ export const ReasonixApp: React.FC = () => {
       {settingsOpen && (
         <SettingsDrawer
           initialTab={initialSettingsTab}
-          onOpenSkillsPanel={() => handleNavClick("skills")}
           onClose={() => {
             const next = new URLSearchParams(searchParams);
             next.delete("view");

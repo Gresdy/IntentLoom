@@ -6,6 +6,7 @@ authors = ["you"]
 edition = "2021"
 
 [lib]
+name = "intentloom_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -63,7 +64,7 @@ arboard = "3.6"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "5"
 url = "2.5"
-reqwest = { version = "0.12", features = ["json", "blocking"] }
+reqwest = { version = "=0.12.10", features = ["json", "blocking", "rustls-tls", "stream", "socks", "multipart"] }
 urlencoding = "2"
 zip = "2"
 walkdir = "2"
@@ -79,6 +80,7 @@ uuid = { version = "1.11", features = ["v4"] }
 sha2 = "0.10"
 hmac = "0.12"
 json5 = "0.4"
+json-five = "0.3.1"  # unify version
 axum = "0.7"
 tempfile = "3"
 # skills-manager migrated dependencies

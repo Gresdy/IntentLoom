@@ -1,145 +1,78 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Skills panel — scoped token bridge.
+ *
+ * The migrated skills-manager ships its own design tokens
+ * (--color-*, --bg-*, --surface-*) that don't match IntentLoom's
+ * design system. To keep the migrated component code untouched we
+ * define those tokens as aliases of IntentLoom's existing tokens
+ * (--bg, --bg-soft, --bg-elev, --fg, --accent, ...) so every
+ * `bg-bg-secondary`, `bg-surface`, `text-accent`, etc. resolves to
+ * the same color as the surrounding app.
+ *
+ * Everything is wrapped in `.skills-scope` so the migration can't
+ * leak styles back into the host app. The SkillsManager wrapper
+ * applies this class on its root element.
+ */
 
-@layer base {
-  /* Light theme (default) */
-  :root {
-    --app-scale: 1;
-    --color-bg: #FAFAFA;
-    --color-bg-secondary: #F4F4F5;
-    --color-surface: #FFFFFF;
-    --color-surface-hover: #F4F4F5;
-    --color-surface-active: #E4E4E7;
-    --color-border: #D4D4D8;
-    --color-border-subtle: #E4E4E7;
-    --color-text-primary: #18181B;
-    --color-text-secondary: #27272A;
-    --color-text-tertiary: #52525B;
-    --color-text-muted: #71717A;
-    --color-text-faint: #8B8B94;
-    --color-accent: #059669;
-    --color-accent-light: #10B981;
-    --color-accent-dark: #047857;
-    --color-accent-bg: rgba(5,150,105,0.08);
-    --color-accent-border: rgba(5,150,105,0.25);
-    --color-danger: #DC2626;
-    --color-danger-bg: rgba(220,38,38,0.08);
-  }
+.skills-scope {
+  /* ── Color aliases for the migrated --color-* tokens ── */
+  --color-bg: var(--bg);
+  --color-bg-secondary: var(--bg-soft);
+  --color-surface: var(--bg-elev);
+  --color-surface-hover: var(--bg-elev-2);
+  --color-surface-active: var(--bg-elev-2);
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-soft);
+  --color-text-primary: var(--fg);
+  --color-text-secondary: var(--fg-dim);
+  --color-text-tertiary: var(--fg-dim);
+  --color-text-muted: var(--fg-faint);
+  --color-text-faint: var(--fg-faint);
+  --color-accent: var(--accent);
+  --color-accent-light: var(--accent);
+  --color-accent-dark: var(--accent);
+  --color-accent-bg: var(--accent-soft);
+  --color-accent-border: var(--accent-soft);
+  --color-danger: var(--err);
+  --color-danger-bg: var(--accent-soft);
 
-  /* Dark theme */
-  .dark {
-    --color-bg: #0C0C0F;
-    --color-bg-secondary: #0F0F13;
-    --color-surface: #131317;
-    --color-surface-hover: #17171E;
-    --color-surface-active: #1E1E28;
-    --color-border: #222229;
-    --color-border-subtle: #1C1C22;
-    --color-text-primary: #F4F4F5;
-    --color-text-secondary: #D4D4D8;
-    --color-text-tertiary: #A1A1AA;
-    --color-text-muted: #8E8E96;
-    --color-text-faint: #71717A;
-    --color-accent: #10B981;
-    --color-accent-light: #34D399;
-    --color-accent-dark: #059669;
-    --color-accent-bg: rgba(16,185,129,0.08);
-    --color-accent-border: rgba(16,185,129,0.25);
-    --color-danger: #EF4444;
-    --color-danger-bg: rgba(239,68,68,0.08);
-  }
+  /* ── Bridge for the skills-manager utility-class tokens ──
+     UnoCSS resolves `bg-bg-secondary` to `background-color:
+     var(--bg-secondary)`, `bg-surface` to `var(--surface)`, etc.
+     These aliases map them onto IntentLoom's tokens. */
+  --bg-secondary: var(--bg-soft);
+  --surface: var(--bg-elev);
+  --surface-hover: var(--bg-elev-2);
+  --surface-active: var(--bg-elev-2);
+  --background: var(--bg);
+  --accent-bg: var(--accent-soft);
+  --accent-dark: var(--accent);
+  --accent-hover: var(--accent-soft);
+  --accent-border: var(--accent-soft);
+  --accent-light: var(--accent);
+  --border-subtle: var(--border-soft);
 
-  /* System preference fallback (when no .dark class and user chose "system") */
-  @media (prefers-color-scheme: dark) {
-    :root:not(.dark) {
-      /* JS will add .dark class, but this is a brief fallback */
-    }
-  }
-
-  html,
-  body,
-  #root {
-    height: calc(100vh / var(--app-scale));
-    width: calc(100vw / var(--app-scale));
-  }
-
-  body {
-    @apply bg-background text-primary font-sans antialiased overflow-hidden;
-    letter-spacing: -0.005em;
-  }
+  /* Dark theme was on a `.dark` class in the source repo;
+     IntentLoom drives theme via :root[data-theme="dark"] which is
+     already set above the scope so these aliases auto-flip when the
+     user toggles theme. */
+  background: var(--bg);
+  color: var(--fg);
+  font-family: inherit;
 }
 
-@layer components {
-  .scrollbar-hide::-webkit-scrollbar {
-    display: none;
-  }
-  .scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-
-  .app-page {
-    @apply mx-auto flex min-h-full w-full max-w-[1200px] flex-col gap-6 pb-8;
-  }
-
-  .app-page-narrow {
-    @apply max-w-[1040px];
-  }
-
-  .app-page-header {
-    @apply border-b border-border-subtle pb-4;
-  }
-
-  .app-page-title {
-    @apply text-[17px] font-semibold tracking-tight text-primary;
-  }
-
-  .app-page-subtitle {
-    @apply mt-1.5 text-[13px] leading-5 text-muted;
-  }
-
-  .app-section-title {
-    @apply text-[12px] font-semibold uppercase tracking-[0.08em] text-muted;
-  }
-
-  .app-panel {
-    @apply rounded-xl border border-border-subtle bg-surface;
-  }
-
-  .app-panel-muted {
-    @apply rounded-xl border border-border-subtle bg-bg-secondary;
-  }
-
-  .app-toolbar {
-    @apply flex flex-wrap items-center justify-between gap-3;
-  }
-
-  .app-input {
-    @apply h-10 rounded-lg border border-border-subtle bg-surface px-3 text-[13px] text-secondary outline-none transition-colors placeholder:text-faint focus:border-border;
-  }
-
-  .app-segmented {
-    @apply flex rounded-lg border border-border-subtle bg-surface p-0.5;
-  }
-
-  .app-segmented-button {
-    @apply rounded-md px-3 py-2 text-[13px] font-medium text-muted transition-colors outline-none hover:text-tertiary;
-  }
-
-  .app-segmented-button-active {
-    @apply bg-surface-active text-secondary;
-  }
-
-  .app-button-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-accent-border bg-accent-dark px-4 py-2.5 text-[13px] font-medium text-white transition-colors outline-none hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50;
-  }
-
-  .app-button-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-border-subtle bg-surface px-4 py-2.5 text-[13px] font-medium text-secondary transition-colors outline-none hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50;
-  }
-
-  .app-badge {
-    @apply inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-hover px-2.5 py-1 text-[12px] font-medium text-tertiary;
-  }
+/* ── Scoped scrollbar tweak so the migrated panels don't show a
+   bare OS scrollbar against IntentLoom's chrome. ── */
+.skills-scope ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.skills-scope ::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+.skills-scope ::-webkit-scrollbar-thumb:hover {
+  background: var(--border-soft);
+}
+.skills-scope ::-webkit-scrollbar-track {
+  background: transparent;
 }

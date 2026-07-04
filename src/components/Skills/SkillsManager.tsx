@@ -20,6 +20,10 @@ import { Settings } from "@/skills/views/Settings";
 import { applyTextSize } from "@/skills/lib/textScale";
 import { useThemeStore } from "@/stores/useThemeStore";
 import { LayoutGrid, Library, Download, Cog, ChartLine } from "lucide-react";
+// Scoped design-token bridge from the migrated skills-manager — maps
+// its --color-* / --bg-* / --surface-* names onto IntentLoom's own
+// tokens so the panel visually inherits the host app's theme.
+import "@/skills/index.css";
 
 type SkillsTab = "library" | "install" | "settings" | "dashboard";
 
@@ -68,7 +72,7 @@ function SkillsContent() {
   })();
 
   return (
-    <div className="flex h-full w-full flex-col bg-bg text-fg">
+    <div className="skills-scope flex h-full w-full flex-col bg-bg text-fg">
       <div className="flex items-center gap-1 border-b border-border-subtle bg-surface px-4 py-2">
         <LayoutGrid size={16} className="mr-2 ilo-fg-accent" />
         <span className="text-sm font-semibold mr-3">Skills</span>

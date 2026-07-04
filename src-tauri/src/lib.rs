@@ -1,5 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// `Manager` trait 提供 .manage() / .state() 等 runtime 接口, tauri::App <R> 与 tauri::AppHandle 都实现它
+use tauri::Manager;
+
 mod commands;
 mod db;
 mod types;
@@ -12,6 +15,16 @@ mod utils;
 // binary resolution.
 pub mod agents;
 pub mod cc_switch;
+// Re-exports so cc_switch's internal callers can use `crate::refresh_tray_menu`,
+// `crate::quit_app`, etc. (the original cc-switch top-level entry points).
+// IntentLoom doesn't need any of these itself — they're called only by
+// the cc_switch code paths — but the names are referenced from inside
+// `crate::cc_switch::commands::*` so we re-export them at the crate root.
+pub use cc_switch::{
+    refresh_tray_menu, quit_app, set_tray_icon_enabled, schedule_tray_refresh,
+    restart_process, save_window_state_before_exit,
+};
+
 pub mod skills;
 
 use std::panic;
@@ -22,14 +35,11 @@ pub fn run() {
         eprintln!("Application panic: {}", panic_info);
     }));
 
-    // Initialize logging
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .with_target(false)
-        .try_init();
+    // Logging is wired up by tauri-plugin-log below; setting up a
+    // tracing subscriber here as well would race with the plugin and
+    // panic on second `set_logger` with "attempted to set a logger
+    // after the logging system was already initialized". Pre-existing
+    // IntentLoom bug, not related to the skills migration.
 
     println!("IntentLoom starting...");
 
@@ -54,6 +64,24 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {}))
+        // 关键: 在 invoke_handler 之前初始化 cc-switch 的 SQLite + AppState 并 manage()
+        .setup(|app| {
+            // 关键: 把 cc-switch 的 SQLite + AppState 初始化并 manage() 给 Tauri runtime,
+            // 否则 invoke("cc_switch_*") 全部 "state not found"
+            // —— 用户说"没有真正融合"的根因。
+            let state = match cc_switch::init::setup() {
+                Ok(s) => s,
+                Err(e) => {
+                    return Err(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("cc_switch init failed: {e}"),
+                    )));
+                }
+            };
+            app.manage(state);
+            tracing::info!("cc-switch::init::setup() 完成, AppState 已 manage()");
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             cc_switch::commands::balance::cc_switch_get_balance,
             cc_switch::commands::coding_plan::cc_switch_get_coding_plan_quota,
@@ -315,10 +343,6 @@ pub fn run() {
             cc_switch::commands::workspace::cc_switch_write_daily_memory_file,
             cc_switch::commands::workspace::cc_switch_write_workspace_file,
             // projects / sessions
-            commands::projects::list_projects,
-            commands::projects::add_project,
-            commands::projects::remove_project,
-            commands::projects::pick_workspace,
             commands::sessions::list_sessions,
             commands::sessions::create_session,
             commands::sessions::get_session,
@@ -438,9 +462,9 @@ pub fn run() {
             skills::commands::git_backup::git_backup_list_versions,
             skills::commands::git_backup::git_backup_restore_version,
             skills::commands::projects::get_projects,
-            skills::commands::projects::add_project,
+            skills::commands::projects::skills_add_project,
             skills::commands::projects::add_linked_workspace,
-            skills::commands::projects::remove_project,
+            skills::commands::projects::skills_remove_project,
             skills::commands::projects::scan_projects,
             skills::commands::projects::get_project_agent_targets,
             skills::commands::projects::get_project_skills,
