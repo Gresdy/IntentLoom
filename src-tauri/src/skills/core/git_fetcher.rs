@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::skills::core::central_repo;
 use crate::skills::core::skill_metadata;
 use anyhow::{Context, Result};

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, State};
@@ -29,7 +31,7 @@ fn disabled_tools(store: &SkillStore) -> Vec<String> {
 /// coalescing refresh so a burst rebuilds the tray at most once per window
 /// instead of once per row.
 fn schedule_tray_refresh(app: &AppHandle) {
-    crate::skills::tray_stubs::schedule_tray_refresh(app);
+    let _ = crate::skills::tray_stubs::schedule_tray_refresh(app);
 }
 
 fn sync_skill_to_tool_internal(

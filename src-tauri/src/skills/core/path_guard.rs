@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Centralized path safety helpers.
 //!
 //! `sanitize_name` strips characters that are unsafe as filesystem names,

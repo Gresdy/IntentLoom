@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Append-only audit log of user/system actions.
 //!
 //! Stored in the existing SQLite database (table `audit_log`). Writes are

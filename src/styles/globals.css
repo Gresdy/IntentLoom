@@ -1,4 +1,5 @@
 @import '@unocss/reset/tailwind.css';
+@import './cc-switch.css';
 
 /* ═══════════════════════════════════════════
    1. Design Tokens
@@ -6433,3 +6434,4 @@ body {
   max-height: 150px;
   overflow-y: auto;
 }
+

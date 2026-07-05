@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use anyhow::Result;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};

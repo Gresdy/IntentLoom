@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub mod agent_workspace;
 pub mod browse;
 pub mod git_backup;

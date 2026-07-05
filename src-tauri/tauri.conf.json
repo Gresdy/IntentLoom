@@ -51,6 +51,12 @@
     "updater": {
       "endpoints": [],
       "pubkey": ""
-    }
+    },
+    "opener": {},
+    "window-state": {},
+    "store": {},
+    "log": {},
+    "deep-link": {},
+    "single-instance": {}
   }
 }

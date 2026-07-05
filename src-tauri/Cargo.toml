@@ -110,3 +110,9 @@ webkit2gtk = { version = "2.0.1", features = ["v2_16"] }
 [dev-dependencies]
 
 serial_test = "3"
+
+[features]
+# 让 cc-switch 自己的 `#[cfg_attr(not(feature = "test-hooks"), doc(hidden))]` 通过,
+# 避免 6 个 `unexpected cfg condition value: test-hooks` 警告。
+# IntentLoom 不用 test-hooks, 这是占位 feature, 保持 cc-switch 上游代码不需改。
+test-hooks = []

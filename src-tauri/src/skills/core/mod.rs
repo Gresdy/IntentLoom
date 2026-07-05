@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub mod app_state;
 pub mod audit_log;
 pub mod central_repo;

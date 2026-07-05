@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use anyhow::{Context, Result};
 use fs2::FileExt;
 use std::fs::{File, OpenOptions};

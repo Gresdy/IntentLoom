@@ -323,6 +323,24 @@ const AgentCard: React.FC<AgentCardProps> = ({
               </span>
             )}
             {authChip()}
+            {/*
+              Surface the backend human-readable setup explanation
+              right next to the state chips so the user can see why
+              an adapter is not ready without scrolling to the CTA
+              row. Hidden for ready agents since the ready chip
+              already implies the explanation. The same muted gray
+              shape is used for any of the three non-ready states
+              (needs_install, needs_login, misconfigured) so the
+              affordance stays consistent with the rest of the row.
+            */}
+            {!ready && agent.setup.message && (
+              <span
+                className="px-2 py-0.5 text-xs rounded bg-[#F3F4F6] text-[#6B7280] max-w-[220px] truncate"
+                title={agent.setup.message}
+              >
+                {agent.setup.message}
+              </span>
+            )}
             {agent.supports_streaming && agent.available && (
               <span className="px-2 py-0.5 text-xs rounded bg-[#CFFAFE] text-[#0891B2]">流式</span>
             )}

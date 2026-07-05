@@ -761,6 +761,23 @@ export function useReasonixController() {
         metadata: { agentId: cli },
       };
       addMessageToCurrent(userMessage);
+      // Keep messageStore.messages in lockstep with the
+      // conversation store. The per-chunk streaming
+      // functions (appendContent / appendThinking /
+      // updateThinkingContent) guard on
+      // `state.messages.length === 0`; if we never push
+      // the user + assistant messages into this mirror,
+      // the guard bails out and the streamed text never
+      // reaches either store. When ai-stream-end then
+      // sees an empty assistant content, it writes the
+      // "no response from CLI" placeholder — even though
+      // the CLI returned a perfectly good answer. This
+      // is exactly the T12 regression: the seedAssistant
+      // helper in streamingPassthrough.test.ts mirrors
+      // explicitly because it knows the real send() has
+      // to. (T12 itself only fixed the write-through
+      // side, assuming this mirror already happened.)
+      useMessageStore.getState().addMessage(userMessage);
 
       const assistantMessage = {
         id: generateId(),
@@ -773,6 +790,7 @@ export function useReasonixController() {
         metadata: { agentId: cli },
       };
       addMessageToCurrent(assistantMessage);
+      useMessageStore.getState().addMessage(assistantMessage);
 
       // Keep the conversation-level agentId in sync with the
       // CLI that actually handled the new turn. The per-message

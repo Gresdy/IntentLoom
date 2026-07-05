@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Decide whether a per-command timing line should be logged.

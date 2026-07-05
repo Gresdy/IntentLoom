@@ -32,10 +32,10 @@ IntentLoom 是一个桌面应用,给你 **一个聊天框 + 多套本地 AI 引�
 ## 功能
 
 ### 多 CLI 驾驶舱
-- 顶部 tab 覆盖 5 个本地引擎:**Claude Code**、**Codex**、**Gemini CLI**、**OpenCode**、**OpenClaw**(Hermes 槽位已留好,后端落地前灰着)
-- 每个引擎一份独立 adapter,记录它被验证过的 CLI flag 以及如何归一化它的 stream-JSON
-- 第六个 `Hermes` 槽位在 UI 里保留但灰显 —— 后端命令故意不注册,前端在调用时直接 throw,避免画饼
-- 启动时用 `which` 探测可用性;缺失的 CLI 在 tab 上明显标出,点击直接拒绝并提示
+- 顶部 tab 覆盖 **6** 个本地引擎:**Claude Code**、**Codex**、**Gemini CLI**、**OpenCode**、**OpenClaw**、**Hermes** —— 每个 tab 都会把你的 prompt 路由到真实 adapter 和真实 CLI。
+- 每个引擎一份独立 adapter,记录它被验证过的 CLI flag 以及如何归一化它的 stream-JSON(Claude `-p --output-format stream-json --verbose`、Codex `exec --json`、Gemini `-p --output-format stream-json`、OpenClaw `agent --local --json -m`、Hermes `chat -q -Q`、OpenCode 暂未验证的占位)。
+- 六个 adapter 全部在 `src-tauri/src/agents/` 注册,接入 Tauri 的 `send_chat_message` IPC,带端到端单测(`cargo test --lib`: 83 passed,含 OpenClaw headless `--to/--session-id/--agent` 的 flag 装配测试)。
+- 启动时用 `which` 探测可用性;缺失的 CLI 在 tab 上如实标出,点不动。Hermes 与其它引擎走同一套可用性闸门,没有特例灰显。
 
 ### Loom 面板(常驻右侧栏)
 四段,对话进行时实时更新:
@@ -222,7 +222,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 [`docs/plan/`](./docs/plan/README.md) 里描述的两条主线,在 `main` 分支上大部分已经落地:
 
-- **多 Agent 驾驶舱**(W1-W3):移除硬编码的 `cli: "claude"`;5 个 adapter 全部建立并带单测;stream JSON 在前端归一化;`Conversation` 与引擎绑定;未安装 CLI 如实标记;`Hermes` 在 UI 上灰显而不是假装可用。
+- **多 Agent 驾驶舱**(W1-W3):移除硬编码的 `cli: "claude"`;6 个 adapter(Claude / Codex / Gemini / OpenCode / OpenClaw / Hermes)全部建立并带单测;stream JSON 在前端归一化;`Conversation` 与引擎绑定;未安装 CLI 如实标记;每个 tab 走同一道可用性闸门。
 - **Loom 作为产品形态**(W1-W3):3 列布局;右侧 LoomPanel 常驻;ToolCard 渲染真实 diff;live panel 与对话产物卡片共用同一份 artifact 累计。
 
 `typecheck`、Vite build、`cargo test --lib` 全部干净通过。下一阶段是 W4 的打磨与真实用户上机验证 —— 详细分解见 [`docs/plan/`](./docs/plan/README.md)。
@@ -258,4 +258,4 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 ## 致谢
 
-IntentLoom 站在它所路由的 5 个 CLI 肩上 —— Claude Code、Codex、Gemini CLI、OpenCode、OpenClaw。没有它们,也就没有可切换的对象。
+IntentLoom 站在它所路由的 6 个 CLI 肩上 —— Claude Code、Codex、Gemini CLI、OpenCode、OpenClaw、Hermes。没有它们,也就没有可切换的对象。

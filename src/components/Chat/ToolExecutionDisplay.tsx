@@ -11,7 +11,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useThemeStore } from "@/stores/useThemeStore";
-import { Loader2, ListChecks, ChevronRight } from "lucide-react";
+import { Loader2, ChevronRight } from "lucide-react";
 import type { ToolCall } from "@/types/message";
 
 export interface ToolExecutionDisplayProps {
@@ -56,7 +56,7 @@ function getToolArgPreview(tool: ToolCall): string {
   }
   
   // Fall back to first string field
-  for (const [key, value] of Object.entries(args)) {
+  for (const [, value] of Object.entries(args)) {
     if (typeof value === "string" && value.length > 0) {
       return value.length > 50 ? value.slice(0, 47) + "..." : value;
     }
@@ -65,39 +65,11 @@ function getToolArgPreview(tool: ToolCall): string {
   return "";
 }
 
-/** Get the result as a preview string */
-function getToolResultPreview(tool: ToolCall): string {
-  const result = tool.result;
-  if (!result) return "";
-  if (typeof result === "string") {
-    return result.length > 100 ? result.slice(0, 97) + "..." : result;
-  }
-  if (typeof result === "object") {
-    // Try to get useful fields from result
-    const fields = ["content", "output", "data", "files", "matches"];
-    for (const field of fields) {
-      if (field in result && result[field]) {
-        const value = result[field];
-        if (typeof value === "string") {
-          return value.length > 100 ? value.slice(0, 97) + "..." : value;
-        }
-        if (Array.isArray(value)) {
-          return `${value.length} items`;
-        }
-      }
-    }
-    // Fall back to JSON
-    const json = JSON.stringify(result);
-    return json.length > 100 ? json.slice(0, 97) + "..." : json;
-  }
-  return String(result).slice(0, 100);
-}
-
 export function ToolExecutionDisplay(props: ToolExecutionDisplayProps) {
   const { tools, startTime } = props;
   const themeMode = useThemeStore((s) => s.mode);
   
-  const hasRunning = tools.some(t => t.status === "running" || t.status === "in_progress");
+  const hasRunning = tools.some(t => t.status === "in_progress");
   const isDone = !hasRunning && tools.length > 0;
   const [expanded, setExpanded] = useState(!isDone);
   const [now, setNow] = useState(() => Date.now());
@@ -195,7 +167,6 @@ export function ToolExecutionDisplay(props: ToolExecutionDisplayProps) {
             const isExpanded = expandedTools.has(tool.id);
             const hasDetail = tool.arguments || tool.result;
             const argPreview = getToolArgPreview(tool);
-            const resultPreview = getToolResultPreview(tool);
             
             return (
               <div key={tool.id} className="tool-execution__item">
@@ -204,9 +175,9 @@ export function ToolExecutionDisplay(props: ToolExecutionDisplayProps) {
                   onClick={hasDetail ? () => toggleToolExpanded(tool.id) : undefined}
                 >
                   <span className="tool-execution__item-icon">
-                    {tool.status === "running" || tool.status === "in_progress" ? (
+                    {tool.status === "in_progress" ? (
                       <Loader2 size={10} className="spin" />
-                    ) : tool.status === "completed" || tool.status === "success" ? (
+                    ) : tool.status === "completed" ? (
                       <span className="ilo-fg-ok">✓</span>
                     ) : tool.status === "error" ? (
                       <span className="ilo-fg-err">✗</span>

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Stubs for the tray-related functions that the migrated skills-manager
 //! code expects to find at the crate root. IntentLoom has its own tray
 //! implementation, so we provide no-op shims here so the migrated code

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::path::{Component, Path, PathBuf};
 
 pub fn is_safe_relative_dir(rel: &str) -> bool {

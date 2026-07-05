@@ -10,6 +10,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
+      "@cc-switch": fileURLToPath(new URL("./src/cc-switch", import.meta.url)),
     },
   },
   server: {

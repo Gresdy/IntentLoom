@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::skills::core::{
     central_repo, error::AppError, git_backup, git_fetcher, skill_metadata, sync_metadata,
 };

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 // skills-manager module re-export for the IntentLoom project.
 // Full port of https://github.com/xingkongliang/skills-manager, exposed as
 // a sub-module of the main Tauri app. The Rust core lives in `core/` and

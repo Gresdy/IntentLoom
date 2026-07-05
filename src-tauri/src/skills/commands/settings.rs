@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use semver::Version;
 use std::process::Command;
 use std::sync::Arc;
