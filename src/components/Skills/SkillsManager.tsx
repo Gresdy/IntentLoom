@@ -1,60 +1,89 @@
 /**
  * SkillsManager - Entry point for the migrated xingkongliang/skills-manager
  * module. Wraps the migrated AppContext + views and embeds them inside
- * IntentLoom's shell so the user can reach them from the left nav / Settings.
+ * IntentLoom's shell so the user can reach them from Settings.
  *
- * The migrated code lives in `src/skills/` and is treated as a self-contained
- * sub-app: it ships its own React context, i18n, theme provider, and CSS.
- * This component picks the most useful surface (MySkills) and provides a
- * thin tab bar to jump between the migrated Library / Install / Settings /
- * Dashboard views, all sharing the migrated AppProvider state.
+ * Layout:
+ *   - Header: title + 4 uniform chips (no color coding — only the active
+ *     one is filled).
+ *   - Two columns: left = at-a-glance skill overview (counts + status),
+ *     right = the active tab's content.
  */
-import { useEffect, useState, type ReactNode } from "react";
-import { AppProvider } from "@/skills/context/AppContext";
-import { ThemeProvider, useThemeContext } from "@/skills/context/ThemeContext";
-import { Toaster } from "sonner";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { AppProvider, useApp } from "@/skills/context/AppContext";
+import { ThemeProvider } from "@/skills/context/ThemeContext";
 import { MySkills } from "@/skills/views/MySkills";
 import { InstallSkills } from "@/skills/views/InstallSkills";
 import { Dashboard } from "@/skills/views/Dashboard";
 import { Settings } from "@/skills/views/Settings";
 import { applyTextSize } from "@/skills/lib/textScale";
 import { useThemeStore } from "@/stores/useThemeStore";
-import { LayoutGrid, Library, Download, Cog, ChartLine } from "lucide-react";
-// Scoped design-token bridge from the migrated skills-manager — maps
-// its --color-* / --bg-* / --surface-* names onto IntentLoom's own
-// tokens so the panel visually inherits the host app's theme.
+import { Sparkles, Library, Download, ChartLine, Cog } from "lucide-react";
+// Scoped design-token bridge from the migrated skills-manager.
 import "@/skills/index.css";
 
-type SkillsTab = "library" | "install" | "settings" | "dashboard";
+type SkillsTab = "library" | "install" | "dashboard" | "settings";
 
-function ThemedToaster() {
-  const { resolvedTheme } = useThemeContext();
+const TAB_ITEMS: { id: SkillsTab; label: string; icon: ReactNode }[] = [
+  { id: "library", label: "Skills 库", icon: <Library size={14} /> },
+  { id: "install", label: "安装", icon: <Download size={14} /> },
+  { id: "dashboard", label: "总览", icon: <ChartLine size={14} /> },
+  { id: "settings", label: "设置", icon: <Cog size={14} /> },
+];
+
+function Overview() {
+  // Pure presentational overview derived from current AppContext state.
+  // No new IPC — just re-uses the same data the migrated views already
+  // load, so the numbers stay in sync without extra requests.
+  const { tools, managedSkills, projects } = useApp() as any;
+  const enabledTools = useMemo(
+    () => (Array.isArray(tools) ? tools.filter((t: any) => t?.enabled).length : 0),
+    [tools],
+  );
+  const installed = managedSkills?.length ?? 0;
+  const needsUpdate = useMemo(
+    () => (Array.isArray(managedSkills) ? managedSkills.filter((s: any) => s?.update_status && s.update_status !== "up_to_date").length : 0),
+    [managedSkills],
+  );
+  const projectsCount = Array.isArray(projects) ? projects.length : 0;
+
+  const cells = [
+    { label: "已安装", value: installed, hint: "已管理的 Skills" },
+    { label: "待更新", value: needsUpdate, hint: "可升级版本" },
+    { label: "可用 Agent", value: enabledTools, hint: "已启用的目标" },
+    { label: "项目", value: projectsCount, hint: "关联工程" },
+  ];
+
   return (
-    <Toaster
-      theme={resolvedTheme}
-      position="bottom-right"
-      toastOptions={{
-        style: {
-          background: "var(--color-surface)",
-          border: "1px solid var(--color-border)",
-          color: "var(--color-text-primary)",
-        },
-      }}
-    />
+    <div className="flex h-full flex-col gap-3 p-4">
+      <div className="grid grid-cols-2 gap-2">
+        {cells.map((c) => (
+          <div
+            key={c.label}
+            className="rounded-lg border border-border-subtle bg-bg-soft p-3"
+          >
+            <div className="text-[10px] uppercase tracking-wider text-fg-faint">
+              {c.label}
+            </div>
+            <div className="mt-0.5 text-xl font-semibold tabular-nums text-fg">
+              {c.value}
+            </div>
+            <div className="text-[11px] text-fg-faint">{c.hint}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-auto flex items-center gap-2 rounded-md border border-border-subtle bg-bg-soft px-3 py-2 text-[11px] text-fg-faint">
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
+        Skills 服务已就绪 — 切换上方 tab 管理、浏览或配置。
+      </div>
+    </div>
   );
 }
-
-const TABS: { id: SkillsTab; label: string; icon: ReactNode }[] = [
-  { id: "library",   label: "Skills 库",   icon: <Library size={14} /> },
-  { id: "install",   label: "安装 Skills",  icon: <Download size={14} /> },
-  { id: "dashboard", label: "总览",         icon: <ChartLine size={14} /> },
-  { id: "settings",  label: "设置",         icon: <Cog size={14} /> },
-];
 
 function SkillsContent() {
   const [tab, setTab] = useState<SkillsTab>("library");
 
-  // Apply parent text scale setting to the migrated shell.
   useEffect(() => {
     const root = document.documentElement;
     const stored = root.getAttribute("data-text-size") || "100";
@@ -63,42 +92,56 @@ function SkillsContent() {
 
   const view = (() => {
     switch (tab) {
-      case "install":   return <InstallSkills />;
-      case "settings":  return <Settings />;
+      case "install": return <InstallSkills />;
+      case "settings": return <Settings />;
       case "dashboard": return <Dashboard />;
       case "library":
-      default:          return <MySkills />;
+      default: return <MySkills />;
     }
   })();
 
   return (
     <div className="skills-scope flex h-full w-full flex-col bg-bg text-fg">
-      <div className="flex items-center gap-1 border-b border-border-subtle bg-surface px-4 py-2">
-        <LayoutGrid size={16} className="mr-2 ilo-fg-accent" />
-        <span className="text-sm font-semibold mr-3">Skills</span>
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`chip ${tab === t.id ? "active" : ""}`}
-            style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-          >
-            {t.icon}
-            <span>{t.label}</span>
-          </button>
-        ))}
+      {/* Header — uniform chip row, only the active one is filled */}
+      <div className="flex items-center gap-1.5 border-b border-border-subtle bg-bg-soft px-3 py-2">
+        <div className="mr-2 flex items-center gap-1.5 pl-0.5 text-sm font-semibold text-fg">
+          <Sparkles size={14} className="ilo-fg-accent" />
+          Skills
+        </div>
+        <div className="ml-1 flex flex-1 items-center gap-1">
+          {TAB_ITEMS.map((t) => {
+            const active = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={
+                  "inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs " +
+                  (active
+                    ? "bg-accent text-accent-fg"
+                    : "text-fg-dim hover:bg-bg-elev")
+                }
+              >
+                {t.icon}
+                <span>{t.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
-      <main className="flex-1 min-w-0 overflow-auto">{view}</main>
-      <ThemedToaster />
+
+      {/* Two columns: left = overview, right = active tab content */}
+      <div className="grid min-h-0 flex-1 grid-cols-[260px_1fr] overflow-hidden">
+        <aside className="border-r border-border-subtle bg-bg-elev/50 overflow-y-auto">
+          <Overview />
+        </aside>
+        <main className="min-w-0 overflow-y-auto">{view}</main>
+      </div>
     </div>
   );
 }
 
 export function SkillsManager() {
-  // Pull the parent theme store so the migrated ThemeProvider stays in sync
-  // when the user toggles the parent theme. The ThemeProvider reads from
-  // its own hook, but we keep the subscription here so the Skills shell
-  // re-renders on theme changes.
   useThemeStore((s) => s.mode);
   return (
     <ThemeProvider>
