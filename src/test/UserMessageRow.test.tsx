@@ -19,11 +19,13 @@
  */
 
 import { fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   UserMessageRow,
   AssistantMessageRow,
 } from "@/components/Chat/ReasonixTranscript";
+import { useMessageStore } from "@/stores/messageStore";
+import type { ToolCall } from "@/types/message";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -116,6 +118,10 @@ describe("UserMessageRow", () => {
 });
 
 describe("AssistantMessageRow", () => {
+  beforeEach(() => {
+    useMessageStore.setState({ currentThinkingMeta: null });
+  });
+
   it("renders the assistant text inside a msg--assistant wrapper", () => {
     render(<AssistantMessageRow id="a1" text="answer" onRegenerate={vi.fn()} />);
     expect(screen.getByText("answer")).toBeTruthy();
@@ -138,5 +144,39 @@ describe("AssistantMessageRow", () => {
     render(<AssistantMessageRow id="a1" text="answer" onRegenerate={onRegenerate} />);
     fireEvent.click(screen.getByTestId("assistant-message-regenerate-button"));
     expect(onRegenerate).toHaveBeenCalledWith("a1");
+  });
+
+  it("renders thinking, tool calls, and final output in that exact order", () => {
+    const tools: ToolCall[] = [
+      {
+        id: "read-1",
+        name: "Read",
+        kind: "read",
+        arguments: { path: "src/main.ts" },
+        status: "completed",
+        result: "file contents",
+      },
+    ];
+
+    const { container } = render(
+      <AssistantMessageRow
+        id="a-sequence"
+        text="最终回答"
+        reasoning="先检查项目文件"
+        toolCalls={tools}
+        createdAt={1_700_000_000_000}
+      />,
+    );
+
+    const body = container.querySelector(".assistant-message-body");
+    const thinking = screen.getByTestId("thinking-display");
+    const toolExecution = screen.getByTestId("tool-execution-display");
+    const finalOutput = screen.getByTestId("message-text");
+    const children = Array.from(body?.children ?? []);
+
+    expect(children.indexOf(thinking)).toBeLessThan(children.indexOf(toolExecution));
+    expect(children.indexOf(toolExecution)).toBeLessThan(children.indexOf(finalOutput));
+    expect(screen.getByText("工具调用完成")).toBeTruthy();
+    expect(screen.getByText("最终回答")).toBeTruthy();
   });
 });

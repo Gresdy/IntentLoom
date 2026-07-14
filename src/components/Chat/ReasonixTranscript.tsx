@@ -39,6 +39,7 @@ import { MessageAvailableCommands } from "./MessageAvailableCommands";
 import { SelectionReplyButton } from "./SelectionReplyButton";
 import { MessageText } from "./MessageText";
 import { ToolExecutionDisplay } from "./ToolExecutionDisplay";
+import type { ToolCall } from "@/types/message";
 
 interface TranscriptProps {
   items: ReasonixItem[];
@@ -352,6 +353,8 @@ function ItemRenderer({
           text={item.text}
           streaming={item.streaming}
           reasoning={item.reasoning}
+          toolCalls={item.toolCalls}
+          createdAt={item.createdAt}
           onRegenerate={onRegenerateAssistant}
         />
       );
@@ -594,12 +597,16 @@ export function AssistantMessageRow({
   text,
   streaming,
   reasoning,
+  toolCalls,
+  createdAt,
   onRegenerate,
 }: {
   id: string;
   text: string;
   streaming?: boolean;
   reasoning?: string;
+  toolCalls?: ToolCall[];
+  createdAt?: number;
   onRegenerate?: (messageId: string) => void;
 }) {
   const canRegenerate = Boolean(onRegenerate) && !streaming;
@@ -610,7 +617,8 @@ export function AssistantMessageRow({
         text={text}
         streaming={streaming}
         reasoning={reasoning}
-        
+        toolCalls={toolCalls}
+        createdAt={createdAt}
       />
       {canRegenerate && (
         <div className="msg__actions msg__actions--assistant" data-testid="assistant-message-actions">
@@ -635,36 +643,40 @@ function AssistantMessageBody({
   text,
   streaming,
   reasoning,
+  toolCalls = [],
+  createdAt,
   agentId,
 }: {
   id?: string;
   text: string;
   streaming?: boolean;
   reasoning?: string;
+  toolCalls?: ToolCall[];
+  createdAt?: number;
   agentId?: string;
 }) {
   const thinkingMeta = useMessageStore((s) => s.currentThinkingMeta);
   const msgId = id ?? "";
-  const currentToolCalls = useMessageStore((s) => s.currentToolCalls);
   const isLiveTurn = Boolean(streaming);
+  const liveThinkingMeta = isLiveTurn ? thinkingMeta : null;
 
   // Track tool execution start time
   const toolStartTimeRef = useRef<number | null>(null);
   useEffect(() => {
-    if (currentToolCalls.length > 0 && toolStartTimeRef.current === null) {
+    if (toolCalls.length > 0 && toolStartTimeRef.current === null) {
       toolStartTimeRef.current = Date.now();
     }
-    if (currentToolCalls.length === 0) {
+    if (toolCalls.length === 0) {
       toolStartTimeRef.current = null;
     }
-  }, [currentToolCalls.length]);
+  }, [toolCalls.length]);
 
   // 阶段1: 思考中 (Thinking) - 在最前面
-  const isThinking = isLiveTurn && thinkingMeta?.status === "active";
-  const thinkingDone = isLiveTurn && thinkingMeta?.status === "done";
+  const isThinking = liveThinkingMeta?.status === "active";
+  const thinkingDone = liveThinkingMeta?.status === "done";
 
   // 阶段2: 工具执行中 (Tool Execution) - 思考完成后、回答前
-  const hasActiveTools = currentToolCalls.length > 0;
+  const hasActiveTools = toolCalls.length > 0;
   const isToolExecuting = isLiveTurn && hasActiveTools;
 
   // 阶段3: 最终回答 (Final Answer) - 思考和工具都完成后
@@ -685,17 +697,17 @@ function AssistantMessageBody({
       {(isThinking || thinkingDone || reasoning) && (
         <ThinkingDisplay
           content={reasoning ?? ""}
-          status={thinkingMeta?.status ?? (reasoning ? "done" : "active")}
-          startTime={thinkingMeta?.startTime ?? Date.now()}
-          duration={thinkingMeta?.duration}
+          status={liveThinkingMeta?.status ?? (reasoning ? "done" : "active")}
+          startTime={liveThinkingMeta?.startTime ?? createdAt ?? Date.now()}
+          duration={liveThinkingMeta?.duration}
         />
       )}
 
       {/* 阶段2: 工具执行过程 - 思考完成后显示，类似思考过程的显示方式 */}
       {(isToolExecuting || (hasActiveTools && !isLiveTurn)) && (
         <ToolExecutionDisplay
-          tools={currentToolCalls}
-          startTime={toolStartTimeRef.current ?? Date.now()}
+          tools={toolCalls}
+          startTime={toolStartTimeRef.current ?? createdAt ?? Date.now()}
         />
       )}
 
@@ -704,7 +716,7 @@ function AssistantMessageBody({
         <MessageText 
           id={msgId} 
           content={text} 
-          createdAt={Date.now()}
+          createdAt={createdAt ?? Date.now()}
         />
       )}
 
@@ -713,7 +725,7 @@ function AssistantMessageBody({
         <MessageText 
           id={msgId} 
           content={text} 
-          createdAt={Date.now()}
+          createdAt={createdAt ?? Date.now()}
         />
       )}
     </div>

@@ -21,8 +21,8 @@ import type { ToolCall } from "@/types/message";
 export type Mode = "normal" | "plan" | "yolo";
 
 export type ReasonixItem =
-  | { kind: "user"; id: string; text: string; agentId?: string }
-  | { kind: "assistant"; id: string; text: string; streaming?: boolean; reasoning?: string; agentId?: string }
+  | { kind: "user"; id: string; text: string; agentId?: string; createdAt?: number }
+  | { kind: "assistant"; id: string; text: string; streaming?: boolean; reasoning?: string; toolCalls?: ToolCall[]; agentId?: string; createdAt?: number }
   | { kind: "tool"; id: string; name: string; args: any; status: string; result?: any; diff?: any[]; kind2?: string; agentId?: string }
   | { kind: "tool_group"; id: string; tools: ReasonixItem[]; agentId?: string }
   | { kind: "phase"; id: string; text: string; agentId?: string }
@@ -103,23 +103,6 @@ function writePersistedCwd(cwd: string | undefined): void {
     // Same as readPersistedCwd: swallow storage failures rather
     // than blocking the UI on a transient storage error.
   }
-}
-
-// Convert a ToolCall from messageStore into the wire shape used by
-// the `tool` ReasonixItem. Kept tiny because the Transcript side
-// already has its own `tool.diff` / `tool.kind` accessors.
-function toolCallToItem(tc: ToolCall, idSuffix: string, agentId?: string): ReasonixItem {
-  return {
-    kind: "tool",
-    id: idSuffix,
-    name: tc.name,
-    args: tc.arguments,
-    status: tc.status,
-    result: tc.result,
-    diff: tc.diff,
-    kind2: tc.kind,
-    agentId,
-  };
 }
 
 /**
@@ -318,6 +301,10 @@ export function useReasonixController() {
     const messageAgentId = (m: { agentId?: string; metadata?: { agentId?: string } }) =>
       m.agentId ?? m.metadata?.agentId;
 
+    const liveAssistantId = isStreaming
+      ? conversationMessages[conversationMessages.length - 1]?.id
+      : undefined;
+
     for (const msg of conversationMessages) {
       if (msg.role === "user") {
         result.push({
@@ -325,26 +312,27 @@ export function useReasonixController() {
           id: msg.id,
           text: msg.content,
           agentId: messageAgentId(msg) ?? fallbackAgentId,
+          createdAt: msg.timestamp,
         });
       } else if (msg.role === "assistant") {
+        const isLiveAssistant = msg.id === liveAssistantId;
         result.push({
           kind: "assistant",
           id: msg.id,
           text: msg.content,
-          streaming: false,
-          reasoning: msg.thinking,
+          streaming: isLiveAssistant,
+          reasoning: isLiveAssistant ? currentThinking || msg.thinking : msg.thinking,
+          // Tool calls belong to the assistant turn that produced them.
+          // Keeping them on the same item lets the transcript render the
+          // stable sequence: thinking -> tools/results -> final answer.
+          // The live store is only a fallback for the tiny interval before
+          // its write-through reaches the persisted conversation message.
+          toolCalls: isLiveAssistant && currentToolCalls.length > 0
+            ? currentToolCalls
+            : msg.toolCalls,
           agentId: messageAgentId(msg) ?? fallbackAgentId,
+          createdAt: msg.timestamp,
         });
-        // Persisted tool calls on the assistant message become ToolCards
-        // in the transcript. W3 of the-loom-as-product.md: this is what
-        // makes "文件改动内联展示" work after the stream ends — the
-        // live stream lights up LoomPanel, the persisted mirror shows
-        // the same content inline in chat history.
-        if (msg.toolCalls && msg.toolCalls.length > 0) {
-          for (const tc of msg.toolCalls) {
-            result.push(toolCallToItem(tc, `${msg.id}-tc-${tc.id}`, messageAgentId(msg) ?? fallbackAgentId));
-          }
-        }
         // Persisted permission requests render as inline permission cards
         // so the user can see what was approved / denied in history.
         if (msg.permission && msg.permission.status === "pending") {
@@ -357,27 +345,6 @@ export function useReasonixController() {
             status: msg.permission.status ?? "pending",
             agentId: messageAgentId(msg) ?? fallbackAgentId,
           });
-        }
-      }
-    }
-
-    if (isStreaming && currentConversation?.messages.length) {
-      const lastMsg = currentConversation.messages[currentConversation.messages.length - 1];
-      if (lastMsg && lastMsg.role === "assistant") {
-        result.push({
-          kind: "assistant",
-          id: "streaming",
-          text: lastMsg.content,
-          streaming: true,
-          reasoning: currentThinking,
-          agentId: messageAgentId(lastMsg) ?? fallbackAgentId,
-        });
-        // Live tool cards: the in-flight tool calls from messageStore.
-        // After stream-end these get persisted onto the assistant
-        // message (see ai-stream-end handler) and the live snapshot
-        // resets, so we don't double-render.
-        for (const tc of currentToolCalls) {
-          result.push(toolCallToItem(tc, `live-tc-${tc.id}`, fallbackAgentId));
         }
       }
     }

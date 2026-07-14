@@ -7,3 +7,4 @@ pub mod proxy;
 pub mod experts;
 pub mod product_changes;
 pub mod projects;
+pub mod knowledge;

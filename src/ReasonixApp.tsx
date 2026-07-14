@@ -5,6 +5,7 @@ import {
   FolderOpen, X, Zap, ShieldAlert,
   MessageCircle, RefreshCw, Loader2,
   LayoutGrid,
+  BookOpen,
 } from "lucide-react";
 import { AGENT_TAB_ICON } from "@/components/Topbar/AgentTabIcon";
 import { useReasonixController } from "./lib/reasonixAdapter";
@@ -60,11 +61,12 @@ import { PanelLoader } from "./components/common/PanelLoader";
 
 // Hermes is intentionally absent: it lives in ALL_AGENTS as a top-tab
 // peer of Claude / Codex / Gemini, with no dedicated side panel.
-// NavKey 只描述「左侧主侧栏」能直接打开的入口（聊天 / 自动化 / 项目管理），
-// 以及「点齿轮进设置」这一种 view。其余 10+ 个面板（agents / sessions / skills /
-// expert / prompts / mcp / model / usage / logs / search / shortcuts / about）
-// 都合并进 Settings 里的左侧 nav，对应的内容在 SettingsDrawer 里渲染。
-type NavKey = "chat" | "automation" | "projects" | "settings";
+// NavKey 描述「左侧主侧栏」能直接打开的入口：
+// 聊天 / 自动化 / 项目管理 / 知识库 / 设置。
+// 「知识库」内容走 SettingsDrawer 的 knowledge tab，作为一级入口
+// 放在项目管理下面，点一下直接落到设置里的知识库面板，避免多绕齿轮。
+// 其余 10+ 个面板（agents / sessions / skills / expert / prompts / mcp / model /
+// usage / logs / search / shortcuts / about）仍合并进 Settings 里的左侧 nav。
 
 interface NavItem {
   key: NavKey;
@@ -81,6 +83,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: "chat",       icon: <MessageCircle size={18} />, label: "聊天" },
   { key: "automation", icon: <Zap size={18} />,          label: "自动化" },
   { key: "projects",   icon: <FolderOpen size={18} />,   label: "项目管理" },
+  { key: "knowledge",  icon: <BookOpen size={18} />,     label: "知识库" },
 ];
 
 // 仅用于键盘快捷键 Ctrl+1..3 跳转的扁平顺序。
@@ -115,6 +118,7 @@ function isNavKey(value: string | null): value is NavKey {
     value === "chat" ||
     value === "automation" ||
     value === "projects" ||
+    value === "knowledge" ||
     value === "settings"
   );
 }
@@ -123,6 +127,7 @@ const PANEL_TITLES: Record<NavKey, string> = {
   chat: "聊天",
   automation: "自动化",
   projects: "项目管理",
+  knowledge: "知识库",
   settings: "设置",
 };
 
@@ -194,7 +199,8 @@ export const ReasonixApp: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const panelParam = searchParams.get("panel");
   const activeNav: NavKey = isNavKey(panelParam) ? panelParam : "chat";
-  const rightPanelOpen = activeNav !== "chat";
+  // 「知识库」走 SettingsDrawer 的 knowledge tab，不开右侧 slide-in。
+  const rightPanelOpen = activeNav !== "chat" && activeNav !== "knowledge";
   // Sidebar expands on hover and stays expanded for the active item. A
   // user-driven pin (Ctrl+B / Ctrl+/) keeps it open regardless of
   // hover or active state — the three sources OR together so any one
@@ -322,6 +328,11 @@ export const ReasonixApp: React.FC = () => {
         next.delete("panel");
       } else if (key === "settings") {
         next.set("view", "settings");
+      } else if (key === "knowledge") {
+        // 「知识库」是侧栏一级入口，但内容走 SettingsDrawer 的
+        // knowledge tab —— 直接落到目标面板，避免用户多绕一层。
+        next.set("view", "settings");
+        next.set("tab", "knowledge");
       } else {
         next.set("panel", key);
         next.delete("view");
@@ -1117,3 +1128,7 @@ export const ReasonixApp: React.FC = () => {
     </div>
   );
 };
+// 「知识库」内容走 SettingsDrawer 的 knowledge tab，但作为侧栏
+// 一级入口直接放在「项目管理」下面，点一下就跳到设置里的知识库面板，
+// 避免用户多绕一层齿轮。
+type NavKey = "chat" | "automation" | "projects" | "knowledge" | "settings";

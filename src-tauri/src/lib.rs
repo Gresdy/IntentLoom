@@ -381,6 +381,16 @@ pub fn run() {
             commands::experts::toggle_expert_active,
             commands::experts::scan_expert_files,
             commands::experts::import_expert_to_project,
+            // knowledge base / local RAG (v1)
+            commands::knowledge::list_knowledge_bases,
+            commands::knowledge::create_knowledge_base,
+            commands::knowledge::update_knowledge_base,
+            commands::knowledge::delete_knowledge_base,
+            commands::knowledge::list_kb_documents,
+            commands::knowledge::ingest_kb_document,
+            commands::knowledge::delete_kb_document,
+            commands::knowledge::kb_search,
+            commands::knowledge::kb_ask,
             // product_changes (cross-conversation artifact ledger)
             commands::product_changes::record_product_change,
             commands::product_changes::record_product_changes_batch,

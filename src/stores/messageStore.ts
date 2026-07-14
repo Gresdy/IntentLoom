@@ -249,9 +249,22 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   },
   
   addToolCall: (toolCall) => {
-    set((state) => ({
-      currentToolCalls: [...state.currentToolCalls, toolCall],
-    }));
+    set((state) => {
+      const existingIndex = state.currentToolCalls.findIndex((tc) => tc.id === toolCall.id);
+      if (existingIndex === -1) {
+        return { currentToolCalls: [...state.currentToolCalls, toolCall] };
+      }
+
+      // Some CLIs emit both a start record and a richer completion
+      // record for the same call. Update it in place so the original
+      // execution order is stable and the UI never shows duplicates.
+      const currentToolCalls = [...state.currentToolCalls];
+      currentToolCalls[existingIndex] = {
+        ...currentToolCalls[existingIndex],
+        ...toolCall,
+      };
+      return { currentToolCalls };
+    });
     // T12: write through to the conversation store so the
     // ToolCard renders the call live (not only at
     // ai-stream-end).

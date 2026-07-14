@@ -70,6 +70,71 @@ pub fn init() {
             args TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
+
+        -- ── Knowledge Base (本地 RAG) ─────────────────────────────────────
+        -- 每个 knowledge_base 是一组文档 + 一个向量索引 + 一份嵌入配置。
+        -- 文档 (kb_documents) 与切片 (kb_chunks) 1:N；切片单独存向量，
+        -- 检索时把 kb_id 下的所有 chunks 加载到内存做 cosine 排序。
+        -- v1 没有接 sqlite-vec，embedding 用 JSON 文本存；chunk 量级
+        -- 在 ~万级以内都能扛得住，v2 再换 HNSW / sqlite-vec。
+        CREATE TABLE IF NOT EXISTS knowledge_bases (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            provider TEXT NOT NULL DEFAULT 'openai',
+            api_base TEXT NOT NULL DEFAULT 'https://api.openai.com/v1',
+            api_key TEXT NOT NULL DEFAULT '',
+            embed_model TEXT NOT NULL DEFAULT 'text-embedding-3-small',
+            chunk_size INTEGER NOT NULL DEFAULT 500,
+            chunk_overlap INTEGER NOT NULL DEFAULT 50,
+            top_k INTEGER NOT NULL DEFAULT 5,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS kb_documents (
+            id TEXT PRIMARY KEY,
+            kb_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            source_path TEXT NOT NULL DEFAULT '',
+            mime_type TEXT NOT NULL DEFAULT 'text/plain',
+            size_bytes INTEGER NOT NULL DEFAULT 0,
+            char_count INTEGER NOT NULL DEFAULT 0,
+            chunk_count INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'pending',
+            error TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (kb_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_kb_documents_kb ON kb_documents(kb_id);
+
+        CREATE TABLE IF NOT EXISTS kb_chunks (
+            id TEXT PRIMARY KEY,
+            kb_id TEXT NOT NULL,
+            doc_id TEXT NOT NULL,
+            ord INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            embedding TEXT NOT NULL,
+            char_start INTEGER NOT NULL DEFAULT 0,
+            char_end INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (kb_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE,
+            FOREIGN KEY (doc_id) REFERENCES kb_documents(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_kb_chunks_kb ON kb_chunks(kb_id);
+        CREATE INDEX IF NOT EXISTS idx_kb_chunks_doc ON kb_chunks(doc_id);
+
+        CREATE TABLE IF NOT EXISTS kb_qa_history (
+            id TEXT PRIMARY KEY,
+            kb_id TEXT NOT NULL,
+            question TEXT NOT NULL,
+            answer TEXT NOT NULL,
+            citations TEXT NOT NULL DEFAULT '[]',
+            cli TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (kb_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_kb_qa_history_kb ON kb_qa_history(kb_id, created_at);
         ",
     )
     .expect("Failed to create database tables");
