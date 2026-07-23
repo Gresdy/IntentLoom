@@ -59,11 +59,11 @@ Four sections, updated live as the conversation runs:
 - Live log panel and full audit report
 - Command palette and keyboard shortcuts
 - Dark / light theme
-- Built-in auto-update via the Tauri updater plugin
+- Signed auto-update from IntentLoom GitHub Releases via the Tauri updater plugin
 
 ### i18n
 - `zh-CN` and `en-US` are first-class
-- All product strings live in `src/i18n.ts`; the rest of the app is i18n-driven
+- The host app and migrated Skills/CC-Switch modules currently maintain separate locale catalogs
 
 ---
 

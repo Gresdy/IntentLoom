@@ -59,11 +59,11 @@ IntentLoom 是一个桌面应用,给你 **一个聊天框 + 多套本地 AI 引�
 - 实时日志面板 + 完整审计报告
 - Command palette + 键盘快捷键
 - 深色 / 浅色主题
-- 通过 Tauri updater 插件内置自动更新
+- 通过 Tauri updater 插件从 IntentLoom GitHub Releases 获取签名自动更新
 
 ### 国际化
 - `zh-CN` 与 `en-US` 一等公民
-- 所有产品文案集中在 `src/i18n.ts`;UI 全部走 i18n
+- 主应用与迁入的 Skills/CC-Switch 模块目前分别维护各自的语言目录
 
 ---
 
