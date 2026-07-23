@@ -1,10 +1,11 @@
-pub mod sessions;
-pub mod ai;
-pub mod fs;
 pub mod agents;
-pub mod permissions;
-pub mod proxy;
+pub mod ai;
 pub mod experts;
+pub mod fs;
+pub mod knowledge;
+pub mod permissions;
 pub mod product_changes;
 pub mod projects;
-pub mod knowledge;
+pub mod prompts;
+pub mod proxy;
+pub mod sessions;

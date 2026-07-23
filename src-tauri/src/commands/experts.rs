@@ -1,5 +1,5 @@
 use crate::db::get_connection;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tauri::command;
@@ -49,6 +49,7 @@ fn row_to_expert(row: &rusqlite::Row) -> rusqlite::Result<Expert> {
 
 #[command]
 pub async fn list_experts(project_id: Option<String>) -> Result<Vec<Expert>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
     let conn = get_connection();
     let mut stmt = conn
         .prepare(
@@ -62,13 +63,18 @@ pub async fn list_experts(project_id: Option<String>) -> Result<Vec<Expert>, Str
         .query_map([], map_row)
         .map_err(|e| e.to_string())?;
     let all: Vec<Expert> = rows
-        .filter_map(|r| r.ok())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?
+            .into_iter()
         .filter(|e| match &project_id {
             Some(pid) => e.project_id.as_deref() == Some(pid.as_str()),
             None => true,
         })
         .collect();
     Ok(all)
+    })
+    .await
+    .map_err(|e| format!("join error: {e}"))?
 }
 
 #[command]
@@ -86,6 +92,7 @@ pub async fn create_expert(
     sort_order: Option<i32>,
     project_id: Option<String>,
 ) -> Result<Expert, String> {
+    tauri::async_runtime::spawn_blocking(move || {
     let id = format!(
         "exp-{}-{:x}",
         chrono::Utc::now().timestamp_millis(),
@@ -116,11 +123,13 @@ pub async fn create_expert(
         ],
     )
     .map_err(|e| e.to_string())?;
-    fetch_expert(&id)
+        fetch_expert_with_conn(&conn, &id)
+    })
+    .await
+    .map_err(|e| format!("join error: {e}"))?
 }
 
-fn fetch_expert(id: &str) -> Result<Expert, String> {
-    let conn = get_connection();
+fn fetch_expert_with_conn(conn: &Connection, id: &str) -> Result<Expert, String> {
     conn.query_row(
         "SELECT id, name, description, system_prompt, color, enabled, is_template, \
          department, sort_order, skills, mcp_servers, knowledge_base, avatar, model, is_active, project_id \
@@ -146,9 +155,12 @@ pub async fn update_expert(
     is_active: Option<bool>,
     sort_order: Option<i32>,
 ) -> Result<Expert, String> {
+    tauri::async_runtime::spawn_blocking(move || {
     let conn = get_connection();
     let exists: Option<String> = conn
-        .query_row("SELECT id FROM experts WHERE id = ?1", params![id], |r| r.get(0))
+            .query_row("SELECT id FROM experts WHERE id = ?1", params![id], |r| {
+                r.get(0)
+            })
         .optional()
         .map_err(|e| e.to_string())?;
     if exists.is_none() {
@@ -174,15 +186,24 @@ pub async fn update_expert(
         .map_err(|e| e.to_string())?;
     }
     if let Some(v) = &color {
-        conn.execute("UPDATE experts SET color = ?1 WHERE id = ?2", params![v, id])
+            conn.execute(
+                "UPDATE experts SET color = ?1 WHERE id = ?2",
+                params![v, id],
+            )
             .map_err(|e| e.to_string())?;
     }
     if let Some(v) = &avatar {
-        conn.execute("UPDATE experts SET avatar = ?1 WHERE id = ?2", params![v, id])
+            conn.execute(
+                "UPDATE experts SET avatar = ?1 WHERE id = ?2",
+                params![v, id],
+            )
             .map_err(|e| e.to_string())?;
     }
     if let Some(v) = &model {
-        conn.execute("UPDATE experts SET model = ?1 WHERE id = ?2", params![v, id])
+            conn.execute(
+                "UPDATE experts SET model = ?1 WHERE id = ?2",
+                params![v, id],
+            )
             .map_err(|e| e.to_string())?;
     }
     if let Some(v) = &skills {
@@ -223,27 +244,38 @@ pub async fn update_expert(
         )
         .map_err(|e| e.to_string())?;
     }
-    fetch_expert(&id)
+        fetch_expert_with_conn(&conn, &id)
+    })
+    .await
+    .map_err(|e| format!("join error: {e}"))?
 }
 
 #[command]
 pub async fn delete_expert(id: String) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
     let conn = get_connection();
     let n = conn
         .execute("DELETE FROM experts WHERE id = ?1", params![id])
         .map_err(|e| e.to_string())?;
     Ok(n > 0)
+    })
+    .await
+    .map_err(|e| format!("join error: {e}"))?
 }
 
 #[command]
 pub async fn toggle_expert_active(id: String) -> Result<Expert, String> {
+    tauri::async_runtime::spawn_blocking(move || {
     let conn = get_connection();
     conn.execute(
         "UPDATE experts SET is_active = 1 - is_active WHERE id = ?1",
         params![id],
     )
     .map_err(|e| e.to_string())?;
-    fetch_expert(&id)
+        fetch_expert_with_conn(&conn, &id)
+    })
+    .await
+    .map_err(|e| format!("join error: {e}"))?
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -261,6 +293,7 @@ pub struct ScanResult {
 
 #[command]
 pub async fn scan_expert_files(dir_path: String) -> Result<ScanResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
     let mut files = Vec::new();
     let path = Path::new(&dir_path);
     if !path.is_dir() {
@@ -278,6 +311,9 @@ pub async fn scan_expert_files(dir_path: String) -> Result<ScanResult, String> {
         }
     }
     Ok(ScanResult { files })
+    })
+    .await
+    .map_err(|e| format!("join error: {e}"))?
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -294,6 +330,10 @@ pub struct ImportExpertRequest {
 
 #[command]
 pub async fn import_expert_to_project(request: ImportExpertRequest) -> Result<Expert, String> {
+    // Delegates to the async `create_expert` above. We cannot await an
+    // async fn from inside a non-async `spawn_blocking` closure, so just
+    // call it directly — it already offloads its own DB work to
+    // spawn_blocking internally, so the call remains non-blocking.
     create_expert(
         request.name,
         request.description,
@@ -309,4 +349,32 @@ pub async fn import_expert_to_project(request: ImportExpertRequest) -> Result<Ex
         request.project_id,
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fetch_after_write_reuses_existing_connection() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE experts (
+                id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL,
+                system_prompt TEXT NOT NULL, color TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+                is_template INTEGER NOT NULL DEFAULT 0, department TEXT, sort_order INTEGER NOT NULL DEFAULT 0,
+                skills TEXT, mcp_servers TEXT, knowledge_base TEXT, avatar TEXT, model TEXT,
+                is_active INTEGER NOT NULL DEFAULT 1, project_id TEXT
+            );",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO experts (id, name, description, system_prompt, color) VALUES (?1, ?2, '', '', '#fff')",
+            params!["expert-1", "Reviewer"],
+        )
+        .unwrap();
+
+        let expert = fetch_expert_with_conn(&conn, "expert-1").unwrap();
+        assert_eq!(expert.name, "Reviewer");
+    }
 }

@@ -2,7 +2,7 @@
 // 本地 RAG 最小闭环：KB CRUD + 文档解析/切片/嵌入 + 检索 + 问答 prompt 构造。
 
 use crate::db::get_connection;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tauri::command;
@@ -18,7 +18,9 @@ pub struct KnowledgeBase {
     pub description: String,
     pub provider: String,
     pub api_base: String,
+    #[serde(skip_serializing)]
     pub api_key: String,
+    pub has_api_key: bool,
     pub embed_model: String,
     pub chunk_size: i32,
     pub chunk_overlap: i32,
@@ -87,13 +89,22 @@ pub struct IngestDocumentResult {
 // ── 行映射 ──────────────────────────────────────────────────────────────
 
 fn row_to_kb(row: &rusqlite::Row) -> rusqlite::Result<KnowledgeBase> {
+    let stored_api_key: String = row.get("api_key")?;
+    let api_key = crate::db::decrypt_secret(&stored_api_key).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(
+            5,
+            rusqlite::types::Type::Text,
+            Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, error)),
+        )
+    })?;
     Ok(KnowledgeBase {
         id: row.get("id")?,
         name: row.get("name")?,
         description: row.get("description")?,
         provider: row.get("provider")?,
         api_base: row.get("api_base")?,
-        api_key: row.get("api_key")?,
+        has_api_key: !api_key.is_empty(),
+        api_key,
         embed_model: row.get("embed_model")?,
         chunk_size: row.get("chunk_size")?,
         chunk_overlap: row.get("chunk_overlap")?,
@@ -123,6 +134,10 @@ fn row_to_document(row: &rusqlite::Row) -> rusqlite::Result<KbDocument> {
 
 fn fetch_kb(id: &str) -> Result<KnowledgeBase, String> {
     let conn = get_connection();
+    fetch_kb_with_conn(&conn, id)
+}
+
+fn fetch_kb_with_conn(conn: &Connection, id: &str) -> Result<KnowledgeBase, String> {
     conn.query_row(
         "SELECT k.id, k.name, k.description, k.provider, k.api_base, k.api_key, k.embed_model, \
          k.chunk_size, k.chunk_overlap, k.top_k, \
@@ -136,8 +151,7 @@ fn fetch_kb(id: &str) -> Result<KnowledgeBase, String> {
     .map_err(|e| e.to_string())
 }
 
-fn fetch_document(id: &str) -> Result<KbDocument, String> {
-    let conn = get_connection();
+fn fetch_document_with_conn(conn: &Connection, id: &str) -> Result<KbDocument, String> {
     conn.query_row(
         "SELECT id, kb_id, name, source_path, mime_type, size_bytes, char_count, \
          chunk_count, status, error, created_at \
@@ -163,10 +177,9 @@ pub async fn list_knowledge_bases() -> Result<Vec<KnowledgeBase>, String> {
              FROM knowledge_bases k ORDER BY k.updated_at DESC",
         )
         .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], row_to_kb)
-        .map_err(|e| e.to_string())?;
-    Ok(rows.filter_map(|r| r.ok()).collect())
+    let rows = stmt.query_map([], row_to_kb).map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
 }
 
 #[command]
@@ -183,6 +196,7 @@ pub async fn create_knowledge_base(
 ) -> Result<KnowledgeBase, String> {
     let id = format!("kb-{}", Uuid::new_v4());
     let conn = get_connection();
+    let encrypted_api_key = crate::db::encrypt_secret(&api_key.unwrap_or_default())?;
     conn.execute(
         "INSERT INTO knowledge_bases (id, name, description, provider, api_base, api_key, \
          embed_model, chunk_size, chunk_overlap, top_k) \
@@ -193,7 +207,7 @@ pub async fn create_knowledge_base(
             description.unwrap_or_default(),
             provider.unwrap_or_else(|| "openai".to_string()),
             api_base.unwrap_or_else(|| "https://api.openai.com/v1".to_string()),
-            api_key.unwrap_or_default(),
+            encrypted_api_key,
             embed_model.unwrap_or_else(|| "text-embedding-3-small".to_string()),
             chunk_size.unwrap_or(500),
             chunk_overlap.unwrap_or(50),
@@ -201,7 +215,7 @@ pub async fn create_knowledge_base(
         ],
     )
     .map_err(|e| e.to_string())?;
-    fetch_kb(&id)
+    fetch_kb_with_conn(&conn, &id)
 }
 
 #[command]
@@ -238,43 +252,71 @@ pub async fn update_knowledge_base(
         Ok(())
     };
     if let Some(v) = name {
-        conn.execute("UPDATE knowledge_bases SET name = ?1 WHERE id = ?2", params![v, id])
+        conn.execute(
+            "UPDATE knowledge_bases SET name = ?1 WHERE id = ?2",
+            params![v, id],
+        )
             .map_err(|e| e.to_string())?;
     }
     if let Some(v) = description {
-        conn.execute("UPDATE knowledge_bases SET description = ?1 WHERE id = ?2", params![v, id])
+        conn.execute(
+            "UPDATE knowledge_bases SET description = ?1 WHERE id = ?2",
+            params![v, id],
+        )
             .map_err(|e| e.to_string())?;
     }
     if let Some(v) = provider {
-        conn.execute("UPDATE knowledge_bases SET provider = ?1 WHERE id = ?2", params![v, id])
+        conn.execute(
+            "UPDATE knowledge_bases SET provider = ?1 WHERE id = ?2",
+            params![v, id],
+        )
             .map_err(|e| e.to_string())?;
     }
     if let Some(v) = api_base {
-        conn.execute("UPDATE knowledge_bases SET api_base = ?1 WHERE id = ?2", params![v, id])
+        conn.execute(
+            "UPDATE knowledge_bases SET api_base = ?1 WHERE id = ?2",
+            params![v, id],
+        )
             .map_err(|e| e.to_string())?;
     }
     if let Some(v) = api_key {
-        conn.execute("UPDATE knowledge_bases SET api_key = ?1 WHERE id = ?2", params![v, id])
+        let encrypted = crate::db::encrypt_secret(&v)?;
+        conn.execute(
+            "UPDATE knowledge_bases SET api_key = ?1 WHERE id = ?2",
+            params![encrypted, id],
+        )
             .map_err(|e| e.to_string())?;
     }
     if let Some(v) = embed_model {
-        conn.execute("UPDATE knowledge_bases SET embed_model = ?1 WHERE id = ?2", params![v, id])
+        conn.execute(
+            "UPDATE knowledge_bases SET embed_model = ?1 WHERE id = ?2",
+            params![v, id],
+        )
             .map_err(|e| e.to_string())?;
     }
     if let Some(v) = chunk_size {
-        conn.execute("UPDATE knowledge_bases SET chunk_size = ?1 WHERE id = ?2", params![v, id])
+        conn.execute(
+            "UPDATE knowledge_bases SET chunk_size = ?1 WHERE id = ?2",
+            params![v, id],
+        )
             .map_err(|e| e.to_string())?;
     }
     if let Some(v) = chunk_overlap {
-        conn.execute("UPDATE knowledge_bases SET chunk_overlap = ?1 WHERE id = ?2", params![v, id])
+        conn.execute(
+            "UPDATE knowledge_bases SET chunk_overlap = ?1 WHERE id = ?2",
+            params![v, id],
+        )
             .map_err(|e| e.to_string())?;
     }
     if let Some(v) = top_k {
-        conn.execute("UPDATE knowledge_bases SET top_k = ?1 WHERE id = ?2", params![v, id])
+        conn.execute(
+            "UPDATE knowledge_bases SET top_k = ?1 WHERE id = ?2",
+            params![v, id],
+        )
             .map_err(|e| e.to_string())?;
     }
     touch()?;
-    fetch_kb(&id)
+    fetch_kb_with_conn(&conn, &id)
 }
 
 #[command]
@@ -304,16 +346,17 @@ fn parse_document(path: &Path) -> Result<(String, String), String> {
         _ => "text/plain",
     };
     let text = match ext.as_str() {
-        "md" | "markdown" | "txt" => std::fs::read_to_string(path)
-            .map_err(|e| format!("read failed: {e}"))?,
+        "md" | "markdown" | "txt" => {
+            std::fs::read_to_string(path).map_err(|e| format!("read failed: {e}"))?
+        }
         "pdf" => {
             let bytes = std::fs::read(path).map_err(|e| format!("read pdf failed: {e}"))?;
             pdf_extract::extract_text_from_mem(&bytes)
                 .map_err(|e| format!("pdf parse failed: {e}"))?
         }
         "html" | "htm" => {
-            let raw = std::fs::read_to_string(path)
-                .map_err(|e| format!("read html failed: {e}"))?;
+            let raw =
+                std::fs::read_to_string(path).map_err(|e| format!("read html failed: {e}"))?;
             let doc = scraper::Html::parse_document(&raw);
             doc.root_element().text().collect::<Vec<_>>().join(" ")
         }
@@ -324,7 +367,11 @@ fn parse_document(path: &Path) -> Result<(String, String), String> {
 }
 
 fn mime_of(path: &Path) -> String {
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
     match ext.as_str() {
         "md" | "markdown" => "text/markdown".into(),
         "txt" => "text/plain".into(),
@@ -457,7 +504,10 @@ async fn embed_texts(
         .build()
         .map_err(|e| format!("client build: {e}"))?;
     let input_refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
-    let body = EmbeddingRequest { input: input_refs, model };
+    let body = EmbeddingRequest {
+        input: input_refs,
+        model,
+    };
     let mut req = client.post(&url).json(&body);
     if !api_key.is_empty() {
         req = req.bearer_auth(api_key);
@@ -653,7 +703,7 @@ pub async fn ingest_kb_document(
             params![kb_id],
         )
         .map_err(|e| e.to_string())?;
-        fetch_document(&doc_id)?
+        fetch_document_with_conn(&conn, &doc_id)?
     };
     Ok(IngestDocumentResult {
         document: doc,
@@ -677,7 +727,12 @@ pub async fn kb_search(
         return Ok(Vec::new());
     }
     let k = top_k.unwrap_or(kb.top_k).max(1) as usize;
-    let query_vec = embed_texts(&kb.api_base, &kb.api_key, &kb.embed_model, &[trimmed.to_string()])
+    let query_vec = embed_texts(
+        &kb.api_base,
+        &kb.api_key,
+        &kb.embed_model,
+        &[trimmed.to_string()],
+    )
         .await?
         .into_iter()
         .next()
@@ -773,6 +828,61 @@ mod tests {
     use super::*;
 
     #[test]
+    fn fetch_after_write_reuses_existing_connection() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE knowledge_bases (
+                id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+                provider TEXT NOT NULL DEFAULT 'openai', api_base TEXT NOT NULL,
+                api_key TEXT NOT NULL DEFAULT '', embed_model TEXT NOT NULL,
+                chunk_size INTEGER NOT NULL, chunk_overlap INTEGER NOT NULL, top_k INTEGER NOT NULL,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+            );
+            CREATE TABLE kb_documents (id TEXT PRIMARY KEY, kb_id TEXT NOT NULL);
+            CREATE TABLE kb_chunks (id TEXT PRIMARY KEY, kb_id TEXT NOT NULL);
+            INSERT INTO knowledge_bases VALUES (
+                'kb-1', 'Docs', '', 'openai', 'https://api.openai.com/v1', '',
+                'text-embedding-3-small', 500, 50, 5, 'now', 'now'
+            );",
+        )
+        .unwrap();
+
+        let knowledge_base = fetch_kb_with_conn(&conn, "kb-1").unwrap();
+        assert_eq!(knowledge_base.name, "Docs");
+        assert!(!knowledge_base.has_api_key);
+    }
+
+    #[test]
+    fn serialized_knowledge_base_never_exposes_api_key() {
+        let knowledge_base = KnowledgeBase {
+            id: "kb-1".to_string(),
+            name: "Docs".to_string(),
+            description: String::new(),
+            provider: "openai".to_string(),
+            api_base: "https://api.openai.com/v1".to_string(),
+            api_key: "secret-value".to_string(),
+            has_api_key: true,
+            embed_model: "text-embedding-3-small".to_string(),
+            chunk_size: 500,
+            chunk_overlap: 50,
+            top_k: 5,
+            document_count: 0,
+            chunk_count: 0,
+            created_at: "now".to_string(),
+            updated_at: "now".to_string(),
+        };
+
+        let serialized = serde_json::to_value(knowledge_base).unwrap();
+        assert!(serialized.get("apiKey").is_none());
+        assert_eq!(
+            serialized
+                .get("hasApiKey")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+    }
+
+    #[test]
     fn chunker_short_paragraph_yields_one_chunk() {
         let chunks = split_text_into_chunks("hello world", 500, 50);
         assert_eq!(chunks.len(), 1);
@@ -843,8 +953,10 @@ mod tests {
         assert_eq!(mime_of(Path::new("/x/a.md")), "text/markdown");
         assert_eq!(mime_of(Path::new("/x/a.txt")), "text/plain");
         assert_eq!(mime_of(Path::new("/x/a.pdf")), "application/pdf");
-        assert_eq!(mime_of(Path::new("/x/a.docx")),
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        assert_eq!(
+            mime_of(Path::new("/x/a.docx")),
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        );
         assert_eq!(mime_of(Path::new("/x/a")), "text/plain");
     }
 }

@@ -21,8 +21,8 @@ pub mod cc_switch;
 // the cc_switch code paths — but the names are referenced from inside
 // `crate::cc_switch::commands::*` so we re-export them at the crate root.
 pub use cc_switch::{
-    refresh_tray_menu, quit_app, set_tray_icon_enabled, schedule_tray_refresh,
-    restart_process, save_window_state_before_exit,
+    quit_app, refresh_tray_menu, restart_process, save_window_state_before_exit,
+    schedule_tray_refresh, set_tray_icon_enabled,
 };
 
 pub mod skills;
@@ -53,13 +53,11 @@ pub fn run() {
     .manage(crate::agents::config::AgentConfigStore::load(
         &dirs::data_local_dir().unwrap_or_else(|| std::path::PathBuf::from(".")),
     ))
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_log::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
-        // .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -346,10 +344,17 @@ pub fn run() {
             commands::sessions::list_sessions,
             commands::sessions::create_session,
             commands::sessions::get_session,
+            // prompts — Settings → Prompts panel relies on these; the panel
+            // was previously silently failing because no commands existed.
+            commands::prompts::get_prompts,
+            commands::prompts::create_prompt,
+            commands::prompts::update_prompt,
+            commands::prompts::delete_prompt,
+            commands::prompts::enable_prompt,
+            commands::prompts::disable_all_prompts,
             // filesystem
             commands::fs::read_dir,
             commands::fs::read_file,
-            commands::fs::write_file,
             commands::fs::open_directory,
             // AI
             commands::ai::call_ai,

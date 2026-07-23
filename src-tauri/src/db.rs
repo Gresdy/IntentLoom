@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use tracing::info;
 
 static DB_CONNECTION: std::sync::OnceLock<Mutex<Connection>> = std::sync::OnceLock::new();
+static DB_SECRET_KEY: std::sync::OnceLock<[u8; 32]> = std::sync::OnceLock::new();
 
 pub fn init() {
     let db_path = dirs::data_local_dir()
@@ -11,6 +12,13 @@ pub fn init() {
         .join("intentloom.db");
 
     std::fs::create_dir_all(db_path.parent().unwrap()).ok();
+
+    let key_path = db_path.parent().unwrap().join(".secret.key");
+    let secret_key = crate::skills::core::crypto::load_or_create_key(&key_path)
+        .expect("Failed to initialize database encryption key");
+    DB_SECRET_KEY
+        .set(secret_key)
+        .expect("Failed to set database encryption key");
 
     let conn = Connection::open(&db_path).expect("Failed to open database");
 
@@ -157,11 +165,90 @@ pub fn init() {
     )
     .expect("Failed to create product_changes table");
 
+    // Idempotent column-level migration for the `prompts` table. Older
+    // installs only have id / name / content / created_at; the
+    // Settings -> Prompts panel now reads description / enabled /
+    // updated_at, so without these ALTERs the SELECT errors on every
+    // refresh. Mirrors the experts migration above.
+    {
+        let mut stmt = conn
+            .prepare("PRAGMA table_info(prompts)")
+            .expect("Failed to inspect prompts schema");
+        let cols: std::collections::HashSet<String> = stmt
+            .query_map([], |r| r.get::<_, String>(1))
+            .expect("table_info rows")
+            .filter_map(|r| r.ok())
+            .collect();
+        drop(stmt);
+        let needed: &[(&str, &str)] = &[
+            ("description", "TEXT NOT NULL DEFAULT ''"),
+            ("enabled", "INTEGER NOT NULL DEFAULT 0"),
+            ("updated_at", "TEXT"),
+        ];
+        for (col, decl) in needed {
+            if !cols.contains(*col) {
+                let stmt = format!("ALTER TABLE prompts ADD COLUMN {col} {decl}");
+                if let Err(e) = conn.execute(&stmt, []) {
+                    tracing::warn!("schema migration ({stmt}) failed: {e}");
+                }
+            }
+        }
+    }
+
+    {
+        let mut stmt = conn
+            .prepare("SELECT id, api_key FROM knowledge_bases WHERE api_key <> ''")
+            .expect("Failed to inspect knowledge base credentials");
+        let credentials = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .expect("Failed to read knowledge base credentials")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("Failed to decode knowledge base credentials");
+        drop(stmt);
+
+        for (id, api_key) in credentials {
+            if crate::skills::core::crypto::is_encrypted(&api_key) {
+                continue;
+            }
+            let encrypted = encrypt_secret(&api_key)
+                .expect("Failed to encrypt existing knowledge base credential");
+            conn.execute(
+                "UPDATE knowledge_bases SET api_key = ?1 WHERE id = ?2",
+                rusqlite::params![encrypted, id],
+            )
+            .expect("Failed to migrate knowledge base credential");
+        }
+    }
     info!("Database initialized at {:?}", db_path);
 
     DB_CONNECTION
         .set(Mutex::new(conn))
         .expect("Failed to set database connection");
+}
+
+pub fn encrypt_secret(value: &str) -> Result<String, String> {
+    if value.is_empty() {
+        return Ok(String::new());
+    }
+    let key = DB_SECRET_KEY
+        .get()
+        .ok_or_else(|| "Database encryption key not initialized".to_string())?;
+    crate::skills::core::crypto::encrypt(key, value).map_err(|error| error.to_string())
+}
+
+pub fn decrypt_secret(value: &str) -> Result<String, String> {
+    if value.is_empty() {
+        return Ok(String::new());
+    }
+    if !crate::skills::core::crypto::is_encrypted(value) {
+        return Ok(value.to_string());
+    }
+    let key = DB_SECRET_KEY
+        .get()
+        .ok_or_else(|| "Database encryption key not initialized".to_string())?;
+    crate::skills::core::crypto::decrypt(key, value).map_err(|error| error.to_string())
 }
 
 pub fn get_connection() -> std::sync::MutexGuard<'static, Connection> {
