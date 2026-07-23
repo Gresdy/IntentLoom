@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from "react";
+import React, { Suspense, lazy, useEffect } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import "@cc-switch/i18n";
 import { queryClient as ccSwitchQueryClient } from "@cc-switch/lib/query/queryClient";
@@ -16,6 +16,27 @@ const CCSwitchApp = lazy(() =>
 );
 
 function CCSwitchBootstrap() {
+  // cc-switch persists its last-active view in localStorage under
+  // `cc-switch-last-view` (shared with the standalone cc-switch webapp).
+  // If the user previously navigated to Settings inside this panel,
+  // re-opening would inherit that and never show the providers list.
+  // Force the home view ("providers") on every mount, and restore the
+  // original value on unmount so the standalone window's preference is
+  // untouched.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const key = "cc-switch-last-view";
+    const previous = window.localStorage.getItem(key);
+    window.localStorage.setItem(key, "providers");
+    return () => {
+      if (previous === null) {
+        window.localStorage.removeItem(key);
+      } else {
+        window.localStorage.setItem(key, previous);
+      }
+    };
+  }, []);
+
   return (
     <QueryClientProvider client={ccSwitchQueryClient}>
       <ThemeProvider defaultTheme="system" storageKey="intentloom-cc-switch-theme">

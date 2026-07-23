@@ -49,30 +49,24 @@ export const usePromptsStore = create<PromptsState>((set, get) => ({
   },
 
   createPrompt: async (name, content, description) => {
-    try {
-      const prompt = await invoke<Prompt>("create_prompt", {
-        prompt: { name, content, description }
-      });
-      await get().loadPrompts();
-      return prompt;
-    } catch (error) {
-      console.error("Failed to create prompt:", error);
-      return null;
-    }
+    // Propagate the error so the panel can toast it instead of
+    // silently swallowing and closing the modal. The previous
+    // `return null` shape was indistinguishable from "user closed the
+    // dialog" — clicking 添加 with bad input would silently no-op.
+    const prompt = await invoke<Prompt>("create_prompt", {
+      prompt: { name, content, description }
+    });
+    await get().loadPrompts();
+    return prompt;
   },
 
   updatePrompt: async (id, name, content, description) => {
-    try {
-      const prompt = await invoke<Prompt>("update_prompt", {
-        id,
-        prompt: { name, content, description }
-      });
-      await get().loadPrompts();
-      return prompt;
-    } catch (error) {
-      console.error("Failed to update prompt:", error);
-      return null;
-    }
+    const prompt = await invoke<Prompt>("update_prompt", {
+      id,
+      prompt: { name, content, description }
+    });
+    await get().loadPrompts();
+    return prompt;
   },
 
   deletePrompt: async (id) => {

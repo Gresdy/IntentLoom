@@ -1,9 +1,20 @@
 import { useEffect, useState, useMemo } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
-  Plus, Trash2, Database, FileText, Search, Send, RefreshCw,
-  AlertCircle, Loader2, BookOpen, Settings as SettingsIcon, X,
-  Pencil, Check,
+  Plus,
+  Trash2,
+  Database,
+  FileText,
+  Search,
+  Send,
+  RefreshCw,
+  AlertCircle,
+  Loader2,
+  BookOpen,
+  Settings as SettingsIcon,
+  X,
+  Pencil,
+  Check,
 } from "lucide-react";
 import { useKnowledgeBaseStore } from "../../stores/knowledgeBaseStore";
 import type { KnowledgeBase, KbDocument } from "../../shared/types";
@@ -57,7 +68,7 @@ export function KnowledgeBasePanel() {
     () => bases.find((b) => b.id === activeKbId) ?? null,
     [bases, activeKbId],
   );
-  const activeDocs = activeKbId ? documentsByKb[activeKbId] ?? [] : [];
+  const activeDocs = activeKbId ? (documentsByKb[activeKbId] ?? []) : [];
 
   useEffect(() => {
     void loadBases();
@@ -80,7 +91,9 @@ export function KnowledgeBasePanel() {
   };
 
   const handleDeleteKb = async (kb: KnowledgeBase) => {
-    if (!window.confirm(`确定删除知识库「${kb.name}」？所有文档与向量将被清除。`)) {
+    if (
+      !window.confirm(`确定删除知识库「${kb.name}」？所有文档与向量将被清除。`)
+    ) {
       return;
     }
     try {
@@ -118,7 +131,8 @@ export function KnowledgeBasePanel() {
   };
 
   const handleDeleteDoc = async (doc: KbDocument) => {
-    if (!window.confirm(`确定删除「${doc.name}」？相关向量会被一起清理。`)) return;
+    if (!window.confirm(`确定删除「${doc.name}」？相关向量会被一起清理。`))
+      return;
     try {
       await deleteDocument(doc.id);
       addToast({ type: "success", message: `已删除 ${doc.name}` });
@@ -171,9 +185,7 @@ export function KnowledgeBasePanel() {
             </div>
           )}
           {!loadingBases && bases.length === 0 && (
-            <div className="kb-empty">
-              还没有知识库，点击右上角 + 创建。
-            </div>
+            <div className="kb-empty">还没有知识库，点击右上角 + 创建。</div>
           )}
           {bases.map((kb) => (
             <button
@@ -269,7 +281,9 @@ export function KnowledgeBasePanel() {
                       </div>
                     </div>
                     <div className="kb-doc__aside">
-                      <span className={`kb-doc__status kb-doc__status--${doc.status}`}>
+                      <span
+                        className={`kb-doc__status kb-doc__status--${doc.status}`}
+                      >
                         {isIngesting ? (
                           <>
                             <Loader2 size={10} className="spin" /> 处理中
@@ -292,7 +306,9 @@ export function KnowledgeBasePanel() {
             </div>
           </>
         ) : (
-          <div className="kb-empty kb-empty--center">请在左侧选择一个知识库</div>
+          <div className="kb-empty kb-empty--center">
+            请在左侧选择一个知识库
+          </div>
         )}
       </section>
 
@@ -380,7 +396,9 @@ export function KnowledgeBasePanel() {
                 </div>
               )}
 
-              {lastCitations.length === 0 && askHistory.length > 0 && tab === "ask" && (
+              {lastCitations.length === 0 &&
+                askHistory.length > 0 &&
+                tab === "ask" && (
                 <div className="kb-history">
                   <div className="kb-citations__head">最近问答</div>
                   {askHistory.slice(0, 5).map((h) => (
@@ -410,7 +428,10 @@ export function KnowledgeBasePanel() {
       </section>
 
       {showCreate && (
-        <CreateKbModal onClose={() => setShowCreate(false)} onSubmit={handleCreate} />
+        <CreateKbModal
+          onClose={() => setShowCreate(false)}
+          onSubmit={handleCreate}
+        />
       )}
       {showSettings && activeKb && (
         <KbSettingsModal
@@ -460,7 +481,10 @@ function CreateKbModal({
 
   return (
     <div className="drawer-backdrop" onClick={onClose}>
-      <aside className="drawer drawer--narrow" onClick={(e) => e.stopPropagation()}>
+      <aside
+        className="drawer drawer--narrow"
+        onClick={(e) => e.stopPropagation()}
+      >
         <header className="drawer__head">
           <div className="drawer__title">
             <Database size={14} /> 新建知识库
@@ -487,7 +511,10 @@ function CreateKbModal({
               />
             </Field>
             <Field label="嵌入 API Base">
-              <input value={apiBase} onChange={(e) => setApiBase(e.target.value)} />
+              <input
+                value={apiBase}
+                onChange={(e) => setApiBase(e.target.value)}
+              />
             </Field>
             <Field label="API Key">
               <input
@@ -569,14 +596,17 @@ function KbSettingsModal({
   onSubmit: (patch: Partial<CreateKbForm>) => void;
 }) {
   const [apiBase, setApiBase] = useState(kb.apiBase);
-  const [apiKey, setApiKey] = useState(kb.apiKey);
+  const [apiKey, setApiKey] = useState("");
   const [embedModel, setEmbedModel] = useState(kb.embedModel);
   const [chunkSize, setChunkSize] = useState(kb.chunkSize);
   const [chunkOverlap, setChunkOverlap] = useState(kb.chunkOverlap);
   const [topK, setTopK] = useState(kb.topK);
   return (
     <div className="drawer-backdrop" onClick={onClose}>
-      <aside className="drawer drawer--narrow" onClick={(e) => e.stopPropagation()}>
+      <aside
+        className="drawer drawer--narrow"
+        onClick={(e) => e.stopPropagation()}
+      >
         <header className="drawer__head">
           <div className="drawer__title">
             <Pencil size={14} /> {kb.name} · 设置
@@ -588,17 +618,24 @@ function KbSettingsModal({
         <div className="drawer__body drawer__body--single">
           <div className="kb-form">
             <Field label="嵌入 API Base">
-              <input value={apiBase} onChange={(e) => setApiBase(e.target.value)} />
+              <input
+                value={apiBase}
+                onChange={(e) => setApiBase(e.target.value)}
+              />
             </Field>
             <Field label="API Key">
               <input
                 type="password"
                 value={apiKey}
+                placeholder={kb.hasApiKey ? "已配置；留空则保持不变" : "未配置"}
                 onChange={(e) => setApiKey(e.target.value)}
               />
             </Field>
             <Field label="嵌入模型">
-              <input value={embedModel} onChange={(e) => setEmbedModel(e.target.value)} />
+              <input
+                value={embedModel}
+                onChange={(e) => setEmbedModel(e.target.value)}
+              />
             </Field>
             <div className="kb-form__row">
               <Field label="切片大小">
@@ -653,7 +690,13 @@ function KbSettingsModal({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <label className="kb-form__field">
       <span className="kb-form__label">{label}</span>

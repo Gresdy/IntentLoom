@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@cc-switch/components/ui/button";
 
-const RELEASES_URL = "https://github.com/farion1231/cc-switch/releases";
+const RELEASES_URL = "https://github.com/Gresdy/IntentLoom/releases";
 
 interface DatabaseUpgradeProps {
   payload: {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { usePromptsStore, type Prompt } from "../../stores/usePromptsStore";
+import { useToastStore } from "../../lib/useToast";
 import { Check, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
 
 export const PromptsPanel: React.FC = () => {
@@ -12,6 +13,7 @@ export const PromptsPanel: React.FC = () => {
     deletePrompt,
     enablePrompt,
   } = usePromptsStore();
+  const addToast = useToastStore((s) => s.addToast);
 
   const [showForm, setShowForm] = useState(false);
   const [editingPrompt, setEditingPrompt] = useState<Prompt | null>(null);
@@ -28,15 +30,33 @@ export const PromptsPanel: React.FC = () => {
   const handleSubmit = async () => {
     if (!formData.name.trim() || !formData.content.trim()) return;
 
-    if (editingPrompt) {
-      await updatePrompt(editingPrompt.id, formData.name, formData.content, formData.description);
-    } else {
-      await createPrompt(formData.name, formData.content, formData.description);
+    try {
+      if (editingPrompt) {
+        await updatePrompt(
+          editingPrompt.id,
+          formData.name,
+          formData.content,
+          formData.description,
+        );
+        addToast({ type: "success", message: "提示词已更新" });
+      } else {
+        await createPrompt(
+          formData.name,
+          formData.content,
+          formData.description,
+        );
+        addToast({ type: "success", message: "提示词已添加" });
+      }
+      setFormData({ name: "", content: "", description: "" });
+      setEditingPrompt(null);
+      setShowForm(false);
+    } catch (e) {
+      // Keep the modal open so the user can see / correct what they
+      // typed. Show the actual error from the backend instead of
+      // silently closing the form (which was the previous behavior).
+      const msg = typeof e === "string" ? e : (e as Error)?.message ?? String(e);
+      addToast({ type: "error", message: `${editingPrompt ? "更新" : "添加"}失败:${msg}` });
     }
-
-    setFormData({ name: "", content: "", description: "" });
-    setEditingPrompt(null);
-    setShowForm(false);
   };
 
   const handleEdit = (prompt: Prompt) => {

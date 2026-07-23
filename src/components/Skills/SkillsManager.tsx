@@ -11,6 +11,7 @@
  */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AppProvider, useApp } from "@/skills/context/AppContext";
+import { toast } from "sonner";
 import { ThemeProvider } from "@/skills/context/ThemeContext";
 import { MySkills } from "@/skills/views/MySkills";
 import { InstallSkills } from "@/skills/views/InstallSkills";
@@ -18,7 +19,7 @@ import { Dashboard } from "@/skills/views/Dashboard";
 import { Settings } from "@/skills/views/Settings";
 import { applyTextSize } from "@/skills/lib/textScale";
 import { useThemeStore } from "@/stores/useThemeStore";
-import { Sparkles, Library, Download, ChartLine, Cog } from "lucide-react";
+import { Sparkles, Library, Download, ChartLine, Cog, HardDrive } from "lucide-react";
 // Scoped design-token bridge from the migrated skills-manager.
 import "@/skills/index.css";
 
@@ -83,6 +84,39 @@ function Overview() {
 
 function SkillsContent() {
   const [tab, setTab] = useState<SkillsTab>("library");
+  const [scanning, setScanning] = useState(false);
+  // AppProvider exposes a scanLocalSkills helper that walks the standard
+  // agent skill dirs (~/.claude/skills, ~/.hermes/skills, …) and writes
+  // results into the discovered_skills table. AppContext's
+  // refreshManagedSkills is called after to make the new skills appear.
+  // Older builds without this wiring simply degrade to "no button".
+  const app = useApp() as any;
+  const refreshManagedSkills = app.refreshManagedSkills;
+  const scanLocalSkills = app.scanLocalSkills as
+    | (() => Promise<{ tools_scanned: number; skills_found: number }>)
+    | undefined;
+
+  const handleScanLocal = async () => {
+    if (!scanLocalSkills || scanning) return;
+    setScanning(true);
+    try {
+      const result = await scanLocalSkills();
+      if (typeof refreshManagedSkills === "function") {
+        await refreshManagedSkills();
+      }
+      if (result.skills_found === 0) {
+        toast.info("未在本机 ~/.claude / ~/.hermes / ~/.gemini 等目录下找到 skill");
+      } else {
+        toast.success(
+          `扫描完成:${result.tools_scanned} 个 agent 中发现 ${result.skills_found} 个本地 skill`,
+        );
+      }
+    } catch (e) {
+      toast.error(`扫描失败:${String(e)}`);
+    } finally {
+      setScanning(false);
+    }
+  };
 
   useEffect(() => {
     const root = document.documentElement;
@@ -127,6 +161,17 @@ function SkillsContent() {
               </button>
             );
           })}
+          {scanLocalSkills ? (
+            <button
+              onClick={handleScanLocal}
+              disabled={scanning}
+              title="扫描 ~/.claude/skills、~/.hermes/skills 等本地 agent skill 目录"
+              className="ml-auto mr-2 inline-flex items-center gap-1 rounded-md border border-border-subtle bg-bg-soft px-2 py-1 text-xs text-fg-dim transition-colors hover:border-accent hover:text-fg disabled:opacity-60"
+            >
+              <HardDrive size={12} className={scanning ? "animate-pulse" : ""} />
+              <span>{scanning ? "扫描中…" : "扫描本地"}</span>
+            </button>
+          ) : null}
         </div>
       </div>
 

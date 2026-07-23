@@ -25,6 +25,13 @@ interface AppState {
   refreshTools: () => Promise<void>;
   refreshManagedSkills: () => Promise<void>;
   refreshProjects: () => Promise<void>;
+  /**
+   * Walk standard local agent skill directories (~/.claude/skills,
+   * ~/.hermes/skills, ~/.gemini/skills, …) and persist the findings
+   * into the discovered_skills table. Returns counts from the Rust
+   * backend. Call `refreshManagedSkills` afterwards to surface them.
+   */
+  scanLocalSkills?: () => Promise<{ tools_scanned: number; skills_found: number }>;
   setViewedPresetId: (id: string) => void;
   applyPresetToDefault: (id: string) => Promise<void>;
   clearAppError: () => void;
@@ -383,6 +390,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         refreshProjects,
         setViewedPresetId,
         applyPresetToDefault: handleApplyPresetToDefault,
+        scanLocalSkills: () => api.scanLocalSkills(),
         clearAppError: () => setAppError(null),
         openHelp: () => setHelpOpen(true),
         closeHelp: () => setHelpOpen(false),

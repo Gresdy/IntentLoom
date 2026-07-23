@@ -7,7 +7,13 @@
 
 :root {
   font-family: "IBM Plex Sans", "Source Sans 3", "Noto Sans", sans-serif;
-  font-size: 16px;
+  /* Defaults to the medium preference; the Settings → 外观 → 字体大小
+     chip writes into this CSS variable via useThemeStore.applyTheme(),
+     and every descendant that doesn't pin its own font-size inherits
+     from here. Tailwind text-* utility classes still override, but the
+     long tail of plain buttons / paragraphs / chips that rely on
+     inherited size respects the user choice. */
+  font-size: var(--font-size, 14px);
   line-height: 1.5;
   font-weight: 400;
   font-synthesis: none;
@@ -1558,6 +1564,106 @@ body {
   min-width: 0;
   overflow-y: auto;
   padding: 22px 26px 24px;
+}
+
+/* ── Settings body content sections ─────────────────────────────────
+   The Appearance / Shortcuts / About panes inside the Settings drawer
+   are grouped into titled sections. Without these rules each panel
+   rendered as raw text — theme buttons stacked with no border, swatch
+   colors running into one another. Scoped under .settings-content so
+   the rules don't leak into other surfaces that reuse these names. */
+.settings-content .settings-section {
+  margin-bottom: 22px;
+}
+.settings-content .settings-section:last-child {
+  margin-bottom: 0;
+}
+.settings-content .settings-section__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-faint);
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+/* Theme switcher (light / dark / auto). The three buttons sit inside a
+   single rounded container so they read as one segmented control; the
+   active one fills with --accent. */
+.settings-content .theme-switcher {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: 100%;
+}
+.settings-content .theme-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 1 1 0;
+  padding: 8px 12px;
+  border-radius: calc(var(--radius) - 2px);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.settings-content .theme-btn:hover {
+  background: var(--bg-soft);
+  color: var(--fg);
+}
+.settings-content .theme-btn--active {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.settings-content .theme-btn--active:hover {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+/* Accent swatches. Six preset color buttons; the active one uses a
+   double ring (outer = accent, inner = bg) so contrast against similar
+   swatch colors stays unambiguous. */
+.settings-content .color-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 4px 2px;
+}
+.settings-content .color-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  cursor: pointer;
+  padding: 0;
+  background-clip: padding-box;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+.settings-content .color-swatch:hover {
+  transform: scale(1.08);
+  border-color: var(--fg-dim);
+}
+.settings-content .color-swatch--active {
+  border-color: var(--fg);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+}
+.settings-content .color-swatch:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
 }
 
 /* Drawer body with no left rail (used by the right side panel for

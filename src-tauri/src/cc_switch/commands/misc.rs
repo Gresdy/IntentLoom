@@ -1,5 +1,4 @@
 #![allow(dead_code)]
-
 #![allow(non_snake_case)]
 
 use crate::cc_switch::app_config::AppType;
@@ -58,7 +57,7 @@ pub async fn cc_switch_check_for_updates(handle: AppHandle) -> Result<bool, Stri
     handle
         .opener()
         .open_url(
-            "https://github.com/farion1231/cc-switch/releases/latest",
+            "https://github.com/Gresdy/IntentLoom/releases/latest",
             None::<String>,
         )
         .map_err(|e| format!("打开更新页面失败: {e}"))?;
@@ -94,7 +93,8 @@ pub async fn cc_switch_get_migration_result() -> Result<bool, String> {
 /// 获取 Skills 自动导入（SSOT）迁移结果（若有）。
 /// 只返回一次 Some({count})，之后返回 None，用于前端显示一次性 Toast 通知。
 #[tauri::command]
-pub async fn cc_switch_get_skills_migration_result() -> Result<Option<SkillsMigrationPayload>, String> {
+pub async fn cc_switch_get_skills_migration_result(
+) -> Result<Option<SkillsMigrationPayload>, String> {
     Ok(crate::cc_switch::init_status::take_skills_migration_result())
 }
 
@@ -3508,7 +3508,10 @@ read -r _
 /// 设置窗口主题（Windows/macOS 标题栏颜色）
 /// theme: "dark" | "light" | "system"
 #[tauri::command]
-pub async fn cc_switch_set_window_theme(window: tauri::Window, theme: String) -> Result<(), String> {
+pub async fn cc_switch_set_window_theme(
+    window: tauri::Window,
+    theme: String,
+) -> Result<(), String> {
     use tauri::Theme;
 
     let tauri_theme = match theme.as_str() {

@@ -5,7 +5,9 @@ use std::process::Command;
 use std::sync::Arc;
 use tauri::{Manager, State};
 
-use crate::skills::core::{central_repo, error::AppError, log_sanitize, skill_store::SkillStore, skillssh_api};
+use crate::skills::core::{
+    central_repo, error::AppError, log_sanitize, skill_store::SkillStore, skillssh_api,
+};
 
 #[derive(serde::Serialize)]
 pub struct AppUpdateInfo {
@@ -35,11 +37,7 @@ pub async fn get_settings(
 /// log file layout.
 #[tauri::command]
 pub fn log_startup_event(label: String, elapsed_ms: u64) {
-    let sanitized: String = label
-        .chars()
-        .filter(|c| !c.is_control())
-        .take(64)
-        .collect();
+    let sanitized: String = label.chars().filter(|c| !c.is_control()).take(64).collect();
     let display = if sanitized.is_empty() {
         "(empty)".to_string()
     } else {
@@ -162,7 +160,7 @@ pub async fn check_app_update(
         let client = skillssh_api::build_http_client(proxy_url.as_deref(), 15);
 
         let resp: serde_json::Value = client
-            .get("https://api.github.com/repos/xingkongliang/skills-manager/releases/latest")
+            .get("https://api.github.com/repos/Gresdy/IntentLoom/releases/latest")
             .send()
             .map_err(|e| AppError::network(format!("Network error: {e}")))?
             .json()
@@ -174,7 +172,7 @@ pub async fn check_app_update(
         let latest_version = tag.strip_prefix('v').unwrap_or(tag).to_string();
         let release_url = resp["html_url"]
             .as_str()
-            .unwrap_or("https://github.com/xingkongliang/skills-manager/releases")
+            .unwrap_or("https://github.com/Gresdy/IntentLoom/releases")
             .to_string();
 
         let has_update = version_gt(&latest_version, &current_version);
@@ -454,7 +452,10 @@ fn collapse_consecutive_repeats(text: &str) -> String {
         let count = j - i;
         out.push(lines[i].to_string());
         if count >= 3 {
-            out.push(format!("... (line above repeated {} more times)", count - 1));
+            out.push(format!(
+                "... (line above repeated {} more times)",
+                count - 1
+            ));
         } else if count == 2 {
             out.push(lines[i + 1].to_string());
         }
@@ -670,7 +671,9 @@ mod tests {
 #[tauri::command]
 pub async fn app_exit(app: tauri::AppHandle) {
     let app_for_main = app.clone();
-    if let Err(err) = app.run_on_main_thread(move || crate::skills::tray_stubs::quit_app(&app_for_main)) {
+    if let Err(err) =
+        app.run_on_main_thread(move || crate::skills::tray_stubs::quit_app(&app_for_main))
+    {
         log::error!("Failed to schedule app_exit on main thread: {err}");
         crate::skills::tray_stubs::quit_app(&app);
     }
