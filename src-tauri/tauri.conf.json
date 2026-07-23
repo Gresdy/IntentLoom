@@ -28,6 +28,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [
       "icons/32x32.png",
@@ -44,8 +45,11 @@
     }
   },
   "plugins": {
-    "shell": {
-      "open": true
+    "updater": {
+      "endpoints": [
+        "https://github.com/Gresdy/IntentLoom/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZBMEIzMEE4MzEzQkEwQjgKUldTNG9Ec3hxREFMYWttcFBnMkJDOUFGRExoL05YTzRKUDNJc2xNMlpRM080WUF0WDlpSkNwSngK"
     }
   }
 }
