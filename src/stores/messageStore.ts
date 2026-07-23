@@ -1,8 +1,15 @@
-import { create } from 'zustand';
-import type { Message, ToolCall, ToolResponse, PermissionRequest, PlanState, TokenUsage } from '@/types/message';
-import type { ThinkingProcess } from '@/shared/thinking';
-import type { ArtifactTally } from '@/lib/artifactTally';
-import { useConversationStore } from './conversationStore';
+import { create } from "zustand";
+import type {
+  Message,
+  ToolCall,
+  ToolResponse,
+  PermissionRequest,
+  PlanState,
+  TokenUsage,
+} from "@/types/message";
+import type { ThinkingProcess } from "@/shared/thinking";
+import type { ArtifactTally } from "@/lib/artifactTally";
+import { useConversationStore } from "./conversationStore";
 
 /**
  * In-conversation notice emitted by the streaming controller.
@@ -130,13 +137,14 @@ interface MessageState {
   // Stream reset
   resetCurrentStream: () => void;
   appendContent: (content: string) => void;
+  replaceContent: (content: string) => void;
 }
 
 export const useMessageStore = create<MessageState>((set, get) => ({
   messages: [],
   isStreaming: false,
 
-  currentThinking: '',
+  currentThinking: "",
   currentThinkingProcess: null,
   currentToolCalls: [],
   currentToolResponses: [],
@@ -156,7 +164,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   updateMessage: (id, updates) => {
     set((state) => ({
       messages: state.messages.map((msg) =>
-        msg.id === id ? { ...msg, ...updates } : msg
+        msg.id === id ? { ...msg, ...updates } : msg,
       ),
     }));
   },
@@ -185,12 +193,14 @@ export const useMessageStore = create<MessageState>((set, get) => ({
     if (lastMessage.role !== 'assistant') return;
     
     set((state) => ({
+      currentThinking: content,
       messages: state.messages.map((msg, idx) =>
         idx === state.messages.length - 1
           ? { ...msg, thinking: content }
           : msg
       ),
     }));
+    useConversationStore.getState().updateLastMessage({ thinking: content });
   },
   
   appendThinking: (content) => {
@@ -276,7 +286,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   updateToolCall: (id, updates) => {
     set((state) => ({
       currentToolCalls: state.currentToolCalls.map((tc) =>
-        tc.id === id ? { ...tc, ...updates } : tc
+        tc.id === id ? { ...tc, ...updates } : tc,
       ),
     }));
     // T12: write through (see addToolCall).
@@ -327,7 +337,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
       currentPlan: {
         ...state.currentPlan,
         entries: state.currentPlan.entries.map((entry) =>
-          entry.id === entryId ? { ...entry, status: status as any } : entry
+          entry.id === entryId ? { ...entry, status: status as any } : entry,
         ),
       },
     });
@@ -339,7 +349,10 @@ export const useMessageStore = create<MessageState>((set, get) => ({
 
   setSummary: (conversationId, tally) => {
     set((state) => ({
-      summaryByConversation: { ...state.summaryByConversation, [conversationId]: tally },
+      summaryByConversation: {
+        ...state.summaryByConversation,
+        [conversationId]: tally,
+      },
     }));
   },
 
@@ -374,7 +387,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
 
   resetCurrentStream: () => {
     set({
-      currentThinking: '',
+      currentThinking: "",
       currentThinkingProcess: null,
       currentThinkingMeta: null,
       currentToolCalls: [],
@@ -392,27 +405,32 @@ export const useMessageStore = create<MessageState>((set, get) => ({
     
     const lastMessage = state.messages[state.messages.length - 1];
     if (lastMessage.role !== 'assistant') return;
+
+    const nextContent = (lastMessage.content ?? '') + content;
     
     set((state) => ({
       messages: state.messages.map((msg, idx) =>
         idx === state.messages.length - 1
-          ? { ...msg, content: msg.content + content }
+          ? { ...msg, content: nextContent }
           : msg
       ),
     }));
-    // T12: write through to the conversation store so the
-    // items derivation (which reads from useConversationStore,
-    // not from this messageStore) sees the live streamed
-    // content. Without this, the assistant message's
-    // `content` only updates at ai-stream-end, so during the
-    // stream the assistant bubble renders empty and the
-    // ai-stream-end fallback path triggers the
-    // "no response from CLI" message even when the CLI
-    // returned a perfectly good answer.
-    useConversationStore.getState().updateLastMessage({ content: (() => {
-      const s = useMessageStore.getState();
-      const last = s.messages[s.messages.length - 1];
-      return (last?.content ?? "");
-    })() });
+    useConversationStore.getState().updateLastMessage({ content: nextContent });
+  },
+
+  replaceContent: (content) => {
+    const state = get();
+    if (state.messages.length === 0) return;
+    const lastMessage = state.messages[state.messages.length - 1];
+    if (lastMessage.role !== 'assistant') return;
+
+    set((current) => ({
+      messages: current.messages.map((message, index) =>
+        index === current.messages.length - 1
+          ? { ...message, content }
+          : message
+      ),
+    }));
+    useConversationStore.getState().updateLastMessage({ content });
   },
 }));

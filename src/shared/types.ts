@@ -33,7 +33,8 @@ export interface Plan {
   file_path?: string;
 }
 
-export type AICLI = "claude-code" | "gemini" | "codex" | "opencode" | "openclaw";
+export type AICLI =
+  "claude-code" | "gemini" | "codex" | "opencode" | "openclaw";
 
 export type AppId = AICLI | "claude" | "hermes";
 
@@ -129,7 +130,7 @@ export interface KnowledgeBase {
   description: string;
   provider: string;
   apiBase: string;
-  apiKey: string;
+  hasApiKey: boolean;
   embedModel: string;
   chunkSize: number;
   chunkOverlap: number;

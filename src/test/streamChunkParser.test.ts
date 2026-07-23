@@ -185,7 +185,13 @@ describe("parseStreamChunk", () => {
             },
           }),
         ),
-      ).toEqual([{ kind: "thinking", text: "the user wants me to say hi" }]);
+      ).toEqual([
+        {
+          kind: "thinking",
+          text: "the user wants me to say hi",
+          mode: "snapshot",
+        },
+      ]);
     });
 
     it("fans a text-only assistant event into a single chunk", () => {
@@ -193,10 +199,13 @@ describe("parseStreamChunk", () => {
         parseStreamChunk(
           JSON.stringify({
             type: "assistant",
-            message: { role: "assistant", content: [{ type: "text", text: "Hello!" }] },
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: "Hello!" }],
+            },
           }),
         ),
-      ).toEqual([{ kind: "text", text: "Hello!" }]);
+      ).toEqual([{ kind: "text", text: "Hello!", mode: "snapshot" }]);
     });
 
     it("fans a tool_use-only assistant event into a single chunk", () => {
@@ -252,8 +261,8 @@ describe("parseStreamChunk", () => {
         }),
       );
       expect(chunks).toEqual([
-        { kind: "thinking", text: "let me check the file" },
-        { kind: "text", text: "Reading the file now." },
+        { kind: "thinking", text: "let me check the file", mode: "snapshot" },
+        { kind: "text", text: "Reading the file now.", mode: "snapshot" },
         {
           kind: "tool_call",
           tool: expect.objectContaining({
@@ -374,7 +383,9 @@ describe("parseStreamChunk", () => {
           },
         }),
       );
-      expect(chunks).toEqual([{ kind: "text", text: "visible" }]);
+      expect(chunks).toEqual([
+        { kind: "text", text: "visible", mode: "snapshot" },
+      ]);
     });
 
     it("returns [] for an assistant event with no recognisable content", () => {
@@ -397,7 +408,9 @@ describe("parseStreamChunk", () => {
     it("parses generic text event", () => {
       expect(
         first(
-          parseStreamChunk(JSON.stringify({ type: "text", text: "streamed response" })),
+          parseStreamChunk(
+            JSON.stringify({ type: "text", text: "streamed response" }),
+          ),
         ),
       ).toEqual({ kind: "text", text: "streamed response" });
     });
@@ -405,7 +418,9 @@ describe("parseStreamChunk", () => {
     it("parses generic thinking event (text field)", () => {
       expect(
         first(
-          parseStreamChunk(JSON.stringify({ type: "thinking", text: "reasoning..." })),
+          parseStreamChunk(
+            JSON.stringify({ type: "thinking", text: "reasoning..." }),
+          ),
         ),
       ).toEqual({ kind: "thinking", text: "reasoning..." });
     });
@@ -413,7 +428,9 @@ describe("parseStreamChunk", () => {
     it("parses generic thinking event (thinking field)", () => {
       expect(
         first(
-          parseStreamChunk(JSON.stringify({ type: "thinking", thinking: "reasoning..." })),
+          parseStreamChunk(
+            JSON.stringify({ type: "thinking", thinking: "reasoning..." }),
+          ),
         ),
       ).toEqual({ kind: "thinking", text: "reasoning..." });
     });
@@ -463,7 +480,11 @@ describe("parseStreamChunk", () => {
 
     it("falls back to args / parameters / input field names for tool args", () => {
       const chunks = parseStreamChunk(
-        JSON.stringify({ type: "tool_call", name: "Read", parameters: { p: "/a" } }),
+        JSON.stringify({
+          type: "tool_call",
+          name: "Read",
+          parameters: { p: "/a" },
+        }),
       );
       expect(chunks).toHaveLength(1);
       const c = chunks[0]!;
@@ -537,7 +558,13 @@ describe("parseStreamChunk", () => {
     it("parses approval_request as permission", () => {
       expect(
         first(
-          parseStreamChunk(JSON.stringify({ type: "approval_request", id: "p2", tool_name: "Edit" })),
+          parseStreamChunk(
+            JSON.stringify({
+              type: "approval_request",
+              id: "p2",
+              tool_name: "Edit",
+            }),
+          ),
         ),
       ).toEqual({
         kind: "permission",
@@ -550,7 +577,9 @@ describe("parseStreamChunk", () => {
 
   describe("unrecognized events", () => {
     it("returns [] for unknown type field", () => {
-      expect(parseStreamChunk(JSON.stringify({ type: "something_new" }))).toEqual([]);
+      expect(
+        parseStreamChunk(JSON.stringify({ type: "something_new" })),
+      ).toEqual([]);
     });
 
     it("returns [] for missing type field on object", () => {
@@ -633,7 +662,9 @@ describe("parseStreamChunk", () => {
 
     it("classifies a status code + failure-phrase pair as error notice", () => {
       expect(
-        parseStreamChunk("authentication failed (HTTP 401) for provider=anthropic"),
+        parseStreamChunk(
+          "authentication failed (HTTP 401) for provider=anthropic",
+        ),
       ).toEqual([
         {
           kind: "notice",
@@ -668,7 +699,9 @@ describe("parseStreamChunk", () => {
     it("does not classify a failure phrase without a status code as a notice", () => {
       // "permission denied" alone is too generic — the parser
       // would mis-fire on any chat reply that uses the phrase.
-      expect(parseStreamChunk("permission denied by the file mode")).toEqual([]);
+      expect(parseStreamChunk("permission denied by the file mode")).toEqual(
+        [],
+      );
     });
 
     it("does not reclassify JSON error events that already have a type field", () => {
@@ -680,7 +713,10 @@ describe("parseStreamChunk", () => {
       // contract). The point of the assertion is just to
       // confirm we don't accidentally route JSON through the
       // Hermes detector.
-      const json = JSON.stringify({ type: "error", message: "401 authentication failed" });
+      const json = JSON.stringify({
+        type: "error",
+        message: "401 authentication failed",
+      });
       const chunks = parseStreamChunk(json);
       // Result may be empty or any non-notice shape; we just
       // care that it is NOT a notice.
@@ -696,31 +732,36 @@ describe("parseStreamChunk", () => {
     // actual chunk shape.
 
     it("routes thread.started / turn.started to no-op control events", () => {
-      expect(parseStreamChunk(
+      expect(
+        parseStreamChunk(
         JSON.stringify({
           type: "thread.started",
           thread_id: "019ea57a-31d3-7ee0-9fed-38c5e3b3c5d8",
         }),
-      )).toEqual([{ kind: "control", event: "thread.started" }]);
-      expect(parseStreamChunk(
-        JSON.stringify({ type: "turn.started" }),
-      )).toEqual([{ kind: "control", event: "turn.started" }]);
+        ),
+      ).toEqual([{ kind: "control", event: "thread.started" }]);
+      expect(
+        parseStreamChunk(JSON.stringify({ type: "turn.started" })),
+      ).toEqual([{ kind: "control", event: "turn.started" }]);
     });
 
     it("routes turn.completed to a turn_completed control event", () => {
       // Usage block is preserved for the Loom panel / usage
       // store to read off the same payload; the parser just
       // surfaces a control marker.
-      expect(parseStreamChunk(
+      expect(
+        parseStreamChunk(
         JSON.stringify({
           type: "turn.completed",
           usage: { input_tokens: 1, output_tokens: 1 },
         }),
-      )).toEqual([{ kind: "control", event: "turn_completed" }]);
+        ),
+      ).toEqual([{ kind: "control", event: "turn_completed" }]);
     });
 
     it("routes item.completed / item.type=reasoning to a thinking chunk", () => {
-      expect(parseStreamChunk(
+      expect(
+        parseStreamChunk(
         JSON.stringify({
           type: "item.completed",
           item: {
@@ -729,19 +770,25 @@ describe("parseStreamChunk", () => {
             text: "The user asks me to say the single word hi.",
           },
         }),
-      )).toEqual([{
+        ),
+      ).toEqual([
+        {
         kind: "thinking",
         text: "The user asks me to say the single word hi.",
-      }]);
+          mode: "snapshot",
+        },
+      ]);
     });
 
     it("routes item.completed / item.type=agent_message to a text chunk", () => {
-      expect(parseStreamChunk(
+      expect(
+        parseStreamChunk(
         JSON.stringify({
           type: "item.completed",
           item: { id: "item_1", type: "agent_message", text: "hi" },
         }),
-      )).toEqual([{ kind: "text", text: "hi" }]);
+        ),
+      ).toEqual([{ kind: "text", text: "hi", mode: "snapshot" }]);
     });
 
     it("routes unknown item subtypes (function_call, etc.) to a tool_call chunk", () => {
@@ -757,9 +804,10 @@ describe("parseStreamChunk", () => {
         name: "Read",
         arguments: { file_path: "/tmp/foo.txt" },
       };
-      expect(parseStreamChunk(
-        JSON.stringify({ type: "item.completed", item }),
-      )).toEqual([{
+      expect(
+        parseStreamChunk(JSON.stringify({ type: "item.completed", item })),
+      ).toEqual([
+        {
         kind: "tool_call",
         tool: {
           id: "item_2",
@@ -768,16 +816,15 @@ describe("parseStreamChunk", () => {
           arguments: item,
           status: "completed",
         },
-      }]);
+        },
+      ]);
     });
 
     it("ignores item.completed events with a missing item payload", () => {
       // A future Codex revision might add a control-shaped
       // item.completed we haven't seen yet; the parser must
       // not crash and must not leak the raw line as text.
-      const out = parseStreamChunk(
-        JSON.stringify({ type: "item.completed" }),
-      );
+      const out = parseStreamChunk(JSON.stringify({ type: "item.completed" }));
       // Empty array is the contract for "don't render this";
       // the caller's raw-line fallback then keeps the line
       // out of the transcript instead of showing JSON.
@@ -800,21 +847,27 @@ describe("parseStreamChunk", () => {
     it("routes item.started / type=reasoning to a thinking chunk", () => {
       // Starts the live "正在思考..." timer at the right
       // moment, not when the reasoning is already done.
-      expect(parseStreamChunk(
+      expect(
+        parseStreamChunk(
         JSON.stringify({
           type: "item.started",
           item: { id: "item_0", type: "reasoning", text: "Let me think..." },
         }),
-      )).toEqual([{ kind: "thinking", text: "Let me think..." }]);
+        ),
+      ).toEqual([
+        { kind: "thinking", text: "Let me think...", mode: "snapshot" },
+      ]);
     });
 
     it("routes item.started / type=agent_message to a text chunk", () => {
-      expect(parseStreamChunk(
+      expect(
+        parseStreamChunk(
         JSON.stringify({
           type: "item.started",
           item: { id: "item_1", type: "agent_message", text: "draft..." },
         }),
-      )).toEqual([{ kind: "text", text: "draft..." }]);
+        ),
+      ).toEqual([{ kind: "text", text: "draft...", mode: "snapshot" }]);
     });
 
     it("routes item.started / type=command_execution to an in_progress tool_call", () => {
@@ -831,9 +884,10 @@ describe("parseStreamChunk", () => {
         command: "/bin/zsh -lc 'cat /tmp/codex-tooldemo/test.txt'",
         status: "in_progress",
       };
-      expect(parseStreamChunk(
-        JSON.stringify({ type: "item.started", item }),
-      )).toEqual([{
+      expect(
+        parseStreamChunk(JSON.stringify({ type: "item.started", item })),
+      ).toEqual([
+        {
         kind: "tool_call",
         tool: {
           id: "item_2",
@@ -842,7 +896,8 @@ describe("parseStreamChunk", () => {
           arguments: item,
           status: "in_progress",
         },
-      }]);
+        },
+      ]);
     });
 
     it("routes item.completed / type=command_execution to a tool_response with the rich payload", () => {
@@ -859,9 +914,10 @@ describe("parseStreamChunk", () => {
         exit_code: 0,
         status: "completed",
       };
-      expect(parseStreamChunk(
-        JSON.stringify({ type: "item.completed", item }),
-      )).toEqual([{
+      expect(
+        parseStreamChunk(JSON.stringify({ type: "item.completed", item })),
+      ).toEqual([
+        {
         kind: "tool_response",
         id: "item_2",
         result: {
@@ -870,7 +926,8 @@ describe("parseStreamChunk", () => {
           exit_code: 0,
           status: "completed",
         },
-      }]);
+        },
+      ]);
     });
   });
 });
