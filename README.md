@@ -32,10 +32,10 @@ Two things drove the design:
 ## Features
 
 ### Multi-CLI cockpit
-- Tab strip across five local engines: **Claude Code**, **Codex**, **Gemini CLI**, **OpenCode**, **OpenClaw** (Hermes is wired but disabled until its backend lands)
-- Each engine has a dedicated adapter that knows its verified CLI flags and how to normalize its stream-JSON output
-- A sixth `Hermes` slot is reserved in the UI but greyed out — the backend commands are intentionally not registered yet, so the front-end throws instead of faking
-- Engine availability is detected at startup via `which`; missing CLIs are visibly marked and refused on click
+- Tab strip across **six** local engines: **Claude Code**, **Codex**, **Gemini CLI**, **OpenCode**, **OpenClaw**, **Hermes** — every tab routes your prompt to a real adapter and a real CLI.
+- Each engine has a dedicated adapter that knows its verified CLI flags and how to normalize its stream-JSON output (Claude `-p --output-format stream-json --verbose`, Codex `exec --json`, Gemini `-p --output-format stream-json`, OpenClaw `agent --local --json -m`, Hermes `chat -q -Q`, OpenCode unverified placeholder).
+- All six adapters are registered in `src-tauri/src/agents/`, wired into the Tauri `send_chat_message` IPC, and unit-tested end-to-end (`cargo test --lib`: 83 passed, including the headless OpenClaw `--to/--session-id/--agent` flag plumbing).
+- Engine availability is detected at startup via `which`; missing CLIs are visibly marked and refused on click. Hermes follows the same availability gate as every other engine — no special-case greyed-out slot.
 
 ### Loom panel (always-on right rail)
 Four sections, updated live as the conversation runs:
@@ -59,11 +59,11 @@ Four sections, updated live as the conversation runs:
 - Live log panel and full audit report
 - Command palette and keyboard shortcuts
 - Dark / light theme
-- Built-in auto-update via the Tauri updater plugin
+- Signed auto-update from IntentLoom GitHub Releases via the Tauri updater plugin
 
 ### i18n
 - `zh-CN` and `en-US` are first-class
-- All product strings live in `src/i18n.ts`; the rest of the app is i18n-driven
+- The host app and migrated Skills/CC-Switch modules currently maintain separate locale catalogs
 
 ---
 
@@ -222,7 +222,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 The two-roadmap plan in [`docs/plan/`](./docs/plan/README.md) is largely shipped on `main`:
 
-- **Multi-agent cockpit** (W1-W3): hardcoded `cli: "claude"` removed, five adapters live and unit-tested, stream JSON normalized at the front-end, `Conversation` is bound to its engine, missing CLIs are honestly marked, `Hermes` UI is disabled instead of faking.
+- **Multi-agent cockpit** (W1-W3): hardcoded `cli: "claude"` removed, all six adapters (Claude / Codex / Gemini / OpenCode / OpenClaw / Hermes) live and unit-tested, stream JSON normalized at the front-end, `Conversation` is bound to its engine, missing CLIs are honestly marked, every tab is gated by the same availability check.
 - **Loom as product** (W1-W3): 3-column layout, right-rail LoomPanel, tool cards render real diffs, artifact tally shared between the live panel and the conversation summary card.
 
 Type-check, Vite build, and `cargo test --lib` all pass cleanly. The next push is W4 polish and on-device validation with real users — see [`docs/plan/`](./docs/plan/README.md) for the full breakdown.
@@ -258,4 +258,4 @@ Not yet chosen. Until a `LICENSE` file lands, treat this as "all rights reserved
 
 ## Acknowledgments
 
-IntentLoom stands on the shoulders of the five CLIs it routes to — Claude Code, Codex, Gemini CLI, OpenCode, and OpenClaw. Without them, there would be nothing to switch between.
+IntentLoom stands on the shoulders of the six CLIs it routes to — Claude Code, Codex, Gemini CLI, OpenCode, OpenClaw, and Hermes. Without them, there would be nothing to switch between.

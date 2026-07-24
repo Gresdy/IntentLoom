@@ -1,7 +1,7 @@
 import {
   X, Sun, Moon, Monitor, Palette, Type, Keyboard, Info, Cpu, ChartBar, ScrollText,
   Bot, Sparkles, Users, FileCode, Server, MessageSquare, Search as SearchIcon,
-  Settings as SettingsIcon,
+  Settings as SettingsIcon, BookOpen,
 } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useThemeStore, ACCENT_COLORS_LIST, FONT_SIZE_OPTIONS } from "../../stores/useThemeStore";
@@ -22,8 +22,8 @@ const LogsPanel = lazy(() =>
 const AgentsPanel = lazy(() =>
   import("../LeftPanel/AgentsPanel").then(m => ({ default: m.AgentsPanel })),
 );
-const SkillsPanel = lazy(() =>
-  import("../LeftPanel/SkillsPanel").then(m => ({ default: m.SkillsPanel })),
+const SkillsManager = lazy(() =>
+  import("../Skills/SkillsManager").then(m => ({ default: m.SkillsManager })),
 );
 const PromptsPanel = lazy(() =>
   import("../LeftPanel/PromptsPanel").then(m => ({ default: m.PromptsPanel })),
@@ -39,6 +39,9 @@ const SessionsPanel = lazy(() =>
 );
 const SearchPanel = lazy(() =>
   import("../LeftPanel/SearchPanel").then(m => ({ default: m.SearchPanel })),
+);
+const KnowledgeBasePanel = lazy(() =>
+  import("../LeftPanel/KnowledgeBasePanel").then(m => ({ default: m.KnowledgeBasePanel })),
 );
 
 interface SettingsDrawerProps {
@@ -60,6 +63,7 @@ export type SettingsTab =
   | "mcp"
   | "sessions"
   | "search"
+  | "knowledge"
   | "usage"
   | "logs"
   | "shortcuts"
@@ -67,7 +71,7 @@ export type SettingsTab =
 
 const SETTINGS_TAB_IDS: readonly SettingsTab[] = [
   "appearance", "agents", "model", "prompts", "skills", "expert", "mcp",
-  "sessions", "search", "usage", "logs", "shortcuts", "about",
+  "sessions", "search", "knowledge", "usage", "logs", "shortcuts", "about",
 ];
 
 export function isSettingsTab(value: string | null | undefined): value is SettingsTab {
@@ -109,6 +113,7 @@ export function SettingsDrawer({
       label: "AI 与扩展",
       items: [
         { id: "agents",  label: "AI 助手", icon: <Bot size={14} /> },
+        { id: "knowledge", label: "知识库", icon: <BookOpen size={14} /> },
         { id: "model",   label: "模型",    icon: <Cpu size={14} /> },
         { id: "prompts", label: "Prompts", icon: <FileCode size={14} /> },
         { id: "skills",  label: "Skills",  icon: <Sparkles size={14} /> },
@@ -197,7 +202,7 @@ export function SettingsDrawer({
 
             {activeTab === "skills" && (
               <Suspense fallback={<SettingsPanelFallback />}>
-                <SkillsPanel />
+                <SkillsManager />
               </Suspense>
             )}
 
@@ -228,6 +233,12 @@ export function SettingsDrawer({
             {activeTab === "search" && (
               <Suspense fallback={<SettingsPanelFallback />}>
                 <SearchPanel />
+              </Suspense>
+            )}
+
+            {activeTab === "knowledge" && (
+              <Suspense fallback={<SettingsPanelFallback />}>
+                <KnowledgeBasePanel />
               </Suspense>
             )}
 

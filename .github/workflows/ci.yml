@@ -22,11 +22,13 @@ jobs:
         run: npm run typecheck
       - name: Unit tests
         run: npm run test
+      - name: Dependency audit
+        run: npm audit --audit-level=high
       - name: Build
         run: npm run build
 
   backend:
-    name: Backend (cargo check)
+    name: Backend (check + test)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,3 +41,6 @@ jobs:
       - name: Check
         working-directory: src-tauri
         run: cargo check --message-format=short
+      - name: Unit tests
+        working-directory: src-tauri
+        run: cargo test --lib

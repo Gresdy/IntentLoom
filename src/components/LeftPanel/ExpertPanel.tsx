@@ -4,7 +4,32 @@ import { useAgencyExpertStore } from "../../stores/agencyExpertStore";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { Expert } from "../../shared/types";
 import type { AgencyExpert, ExpertDepartment } from "../../shared/agencyExpert";
-import { Briefcase, BookOpen, Box, Check, ChevronDown, ChevronRight, Code2, Download, ExternalLink, FolderOpen, Gamepad2, MoreHorizontal, Pencil, Plus, Radio, Search, Server, Star, Trash2, TrendingUp, User, X, Zap, FlaskConical } from "lucide-react";
+import {
+  Briefcase,
+  BookOpen,
+  Box,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Code2,
+  Download,
+  ExternalLink,
+  FolderOpen,
+  Gamepad2,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Radio,
+  Search,
+  Server,
+  Star,
+  Trash2,
+  TrendingUp,
+  User,
+  X,
+  Zap,
+  FlaskConical,
+} from "lucide-react";
 import {
   DEPARTMENTS,
   getColorHex,
@@ -16,8 +41,14 @@ interface Props {
 }
 
 const EXPERT_COLORS = [
-  "#6366f1", "#06b6d4", "#10b981", "#f59e0b",
-  "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6",
+  "#6366f1",
+  "#06b6d4",
+  "#10b981",
+  "#f59e0b",
+  "#ef4444",
+  "#8b5cf6",
+  "#ec4899",
+  "#14b8a6",
 ];
 
 type ViewMode = "my-experts" | "agency-library";
@@ -88,21 +119,33 @@ export function ExpertPanel(_props: Props) {
   }, [viewMode]);
 
   // Toast state
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "warning" } | null>(null);
-  const showToast = useCallback((message: string, type: "success" | "error" | "warning" = "success") => {
+  const [toast, setToast] = useState<{
+    message: string;
+    type: "success" | "error" | "warning";
+  } | null>(null);
+  const showToast = useCallback(
+    (message: string, type: "success" | "error" | "warning" = "success") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
-  }, []);
+    },
+    [],
+  );
 
   // PRIORITY_EXPERTS 的 id 集合
-  const priorityIdSet = useMemo(() => new Set(PRIORITY_EXPERTS.map((p) => p.id)), []);
+  const priorityIdSet = useMemo(
+    () => new Set(PRIORITY_EXPERTS.map((p) => p.id)),
+    [],
+  );
 
   // 已导入专家名称集合
-  const importedNames = useMemo(() => new Set(experts.map((e) => e.name)), [experts]);
+  const importedNames = useMemo(
+    () => new Set(experts.map((e) => e.name)),
+    [experts],
+  );
 
   const isImported = useCallback(
     (expert: AgencyExpert) => importedNames.has(expert.metadata.name),
-    [importedNames]
+    [importedNames],
   );
 
   // Agency 过滤
@@ -119,7 +162,9 @@ export function ExpertPanel(_props: Props) {
     }
     // 按部门内名称排序
     for (const key of Object.keys(groups)) {
-      groups[key].sort((a, b) => a.metadata.name.localeCompare(b.metadata.name, "zh"));
+      groups[key].sort((a, b) =>
+        a.metadata.name.localeCompare(b.metadata.name, "zh"),
+      );
     }
     return groups;
   }, [filteredAgency]);
@@ -154,8 +199,14 @@ export function ExpertPanel(_props: Props) {
       description: description.trim(),
       systemPrompt: systemPrompt.trim(),
       color,
-      skills: skills.split(",").map((s) => s.trim()).filter(Boolean),
-      mcpServers: mcpServers.split(",").map((s) => s.trim()).filter(Boolean),
+      skills: skills
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      mcpServers: mcpServers
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
     };
 
     if (editing) {
@@ -217,7 +268,6 @@ export function ExpertPanel(_props: Props) {
       } catch (e) {
         failed++;
         console.error(`[ExpertPanel] 导入专家失败 id=${id}:`, e);
-        showToast(`导入失败：${e}`, "error");
       }
       setImportProgress({ total: ids.length, done, failed });
     }
@@ -237,9 +287,9 @@ export function ExpertPanel(_props: Props) {
 
   // 一键导入优先专家（不依赖项目ID）
   async function handleImportPriority() {
-    const availableIds = PRIORITY_EXPERTS
-      .filter((p) => agencyExperts.some((e) => e.id === p.id))
-      .map((p) => p.id);
+    const availableIds = PRIORITY_EXPERTS.filter((p) =>
+      agencyExperts.some((e) => e.id === p.id),
+    ).map((p) => p.id);
 
     if (availableIds.length === 0) return;
 
@@ -287,13 +337,25 @@ export function ExpertPanel(_props: Props) {
     <div className="h-full flex flex-col ilo-bg-soft">
       {/* Toast */}
       {toast && (
-        <div style={{
-          position: "fixed", top: 16, right: 16, zIndex: 100,
+        <div
+          style={{
+            position: "fixed",
+            top: 16,
+            right: 16,
+            zIndex: 100,
           padding: "8px 16px",
-          background: toast.type === "error" ? "var(--err)" : toast.type === "warning" ? "var(--warn)" : "var(--ok)",
-          color: "#fff", borderRadius: "var(--radius)", fontSize: 13,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
-        }}>
+            background:
+              toast.type === "error"
+                ? "var(--err)"
+                : toast.type === "warning"
+                  ? "var(--warn)"
+                  : "var(--ok)",
+            color: "#fff",
+            borderRadius: "var(--radius)",
+            fontSize: 13,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+          }}
+        >
           {toast.message}
         </div>
       )}
@@ -302,7 +364,9 @@ export function ExpertPanel(_props: Props) {
         <div className="flex items-center gap-2">
           <h2 className="font-semibold ilo-fg-faint">专家中心</h2>
           <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs rounded-full">
-            {viewMode === "my-experts" ? `${experts.length} 个` : `${agencyExperts.length} 个`}
+            {viewMode === "my-experts"
+              ? `${experts.length} 个`
+              : `${agencyExperts.length} 个`}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -469,7 +533,11 @@ export function ExpertPanel(_props: Props) {
                         }`}
                         title={expert.isActive ? "停用" : "启用"}
                       >
-                        {expert.isActive ? <Check size={14} /> : <Radio size={14} />}
+                        {expert.isActive ? (
+                          <Check size={14} />
+                        ) : (
+                          <Radio size={14} />
+                        )}
                       </button>
                       <button
                         onClick={() => setDeleting(expert.id)}
@@ -568,13 +636,15 @@ export function ExpertPanel(_props: Props) {
                 <button
                   onClick={toggleSelectAll}
                   className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-md transition-colors ${
-                    selectedIds.size === filteredAgency.length && filteredAgency.length > 0
+                    selectedIds.size === filteredAgency.length &&
+                    filteredAgency.length > 0
                       ? "bg-indigo-100 text-indigo-700"
                       : "ilo-fg-dim hover:ilo-bg-elev-2"
                   }`}
                 >
                   <Check size={14} />
-                  {selectedIds.size === filteredAgency.length && filteredAgency.length > 0
+                  {selectedIds.size === filteredAgency.length &&
+                  filteredAgency.length > 0
                     ? "取消全选"
                     : "全选"}
                 </button>
@@ -619,7 +689,10 @@ export function ExpertPanel(_props: Props) {
                 </span>
                 {importProgress.done < importProgress.total && (
                   <span className="text-xs text-indigo-500">
-                    {Math.round((importProgress.done / importProgress.total) * 100)}%
+                    {Math.round(
+                      (importProgress.done / importProgress.total) * 100,
+                    )}
+                    %
                   </span>
                 )}
               </div>
@@ -664,7 +737,10 @@ export function ExpertPanel(_props: Props) {
               </div>
             )}
 
-            {!agencyLoading && !agencyError && filteredAgency.length === 0 && agencyExperts.length > 0 && (
+            {!agencyLoading &&
+              !agencyError &&
+              filteredAgency.length === 0 &&
+              agencyExperts.length > 0 && (
               <div className="text-center py-8 ilo-fg-dim text-sm">
                 没有匹配的专家
               </div>
@@ -676,7 +752,8 @@ export function ExpertPanel(_props: Props) {
                 {activeDepartment === "all" ? (
                   Object.entries(groupedByDept).map(([dept, deptExperts]) => {
                     const collapsed = collapsedDepts.has(dept);
-                    const deptName = DEPARTMENTS[dept as ExpertDepartment]?.name ?? "其他";
+                    const deptName =
+                      DEPARTMENTS[dept as ExpertDepartment]?.name ?? "其他";
                     return (
                       <div key={dept}>
                         {/* 部门标题 */}
@@ -685,9 +762,15 @@ export function ExpertPanel(_props: Props) {
                           className="flex items-center gap-2 mb-2 w-full text-left group"
                         >
                           {collapsed ? (
-                            <ChevronRight size={14} className="ilo-fg-dim group-hover:ilo-fg-faint transition-colors" />
+                            <ChevronRight
+                              size={14}
+                              className="ilo-fg-dim group-hover:ilo-fg-faint transition-colors"
+                            />
                           ) : (
-                            <ChevronDown size={14} className="ilo-fg-dim group-hover:ilo-fg-faint transition-colors" />
+                            <ChevronDown
+                              size={14}
+                              className="ilo-fg-dim group-hover:ilo-fg-faint transition-colors"
+                            />
                           )}
                           <span className="text-xs font-semibold ilo-fg-faint group-hover:ilo-fg-faint transition-colors">
                             {deptName}
@@ -765,7 +848,9 @@ export function ExpertPanel(_props: Props) {
       {deleting && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="ilo-bg-elev rounded-xl w-[360px] p-6">
-            <h3 className="font-semibold ilo-fg-faint text-lg mb-2">确认删除</h3>
+            <h3 className="font-semibold ilo-fg-faint text-lg mb-2">
+              确认删除
+            </h3>
             <p className="text-sm ilo-fg-dim mb-6">
               确定要删除这个专家吗？此操作无法撤销。
             </p>
@@ -796,12 +881,13 @@ export function ExpertPanel(_props: Props) {
           expert={detailExpert}
           onClose={() => setDetailExpert(null)}
           onImport={() => {
-                  importToProject(detailExpert.id, undefined, createExpert).then(() => {
+            importToProject(detailExpert.id, undefined, createExpert).then(
+              () => {
                     loadExperts();
                     setDetailExpert(null);
-                  });
-                }
-          }
+              },
+            );
+          }}
           imported={isImported(detailExpert)}
           isPriority={PRIORITY_EXPERTS.some((p) => p.id === detailExpert.id)}
         />
@@ -925,7 +1011,9 @@ function AgencyExpertDetail({
   imported?: boolean;
   isPriority?: boolean;
 }) {
-  const [activeTab, setActiveTab] = useState<"overview" | "rules" | "workflow" | "raw">("overview");
+  const [activeTab, setActiveTab] = useState<
+    "overview" | "rules" | "workflow" | "raw"
+  >("overview");
   const [importing, setImporting] = useState(false);
 
   const hex = getColorHex(expert.metadata.color);
@@ -935,14 +1023,24 @@ function AgencyExpertDetail({
     { key: "identity", label: "身份与记忆", content: expert.content.identity },
     { key: "mission", label: "核心使命", content: expert.content.mission },
     { key: "rules", label: "关键规则", content: expert.content.rules },
-    { key: "deliverables", label: "技术交付物", content: expert.content.deliverables },
+    {
+      key: "deliverables",
+      label: "技术交付物",
+      content: expert.content.deliverables,
+    },
     { key: "workflow", label: "工作流程", content: expert.content.workflow },
-    { key: "communication", label: "沟通风格", content: expert.content.communication },
+    {
+      key: "communication",
+      label: "沟通风格",
+      content: expert.content.communication,
+    },
     { key: "memory", label: "学习与记忆", content: expert.content.memory },
     { key: "metrics", label: "成功指标", content: expert.content.metrics },
   ];
 
-  const visibleSections = allSections.filter((s) => s.content.trim().length > 0);
+  const visibleSections = allSections.filter(
+    (s) => s.content.trim().length > 0,
+  );
   const hasContent = visibleSections.length > 0;
 
   async function handleImport() {
@@ -971,7 +1069,10 @@ function AgencyExpertDetail({
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="ilo-bg-elev rounded-xl w-[720px] max-h-[85vh] overflow-hidden flex flex-col">
         {/* 头部 */}
-        <div className="px-6 py-4 border-b flex items-center justify-between shrink-0" style={{ borderColor: `${hex}40` }}>
+        <div
+          className="px-6 py-4 border-b flex items-center justify-between shrink-0"
+          style={{ borderColor: `${hex}40` }}
+        >
           <div className="flex items-center gap-4">
             <div
               className="w-14 h-14 rounded-xl flex items-center justify-center relative"
@@ -985,9 +1086,13 @@ function AgencyExpertDetail({
               )}
             </div>
             <div>
-              <h2 className="text-lg font-bold ilo-fg-faint">{expert.metadata.name}</h2>
+              <h2 className="text-lg font-bold ilo-fg-faint">
+                {expert.metadata.name}
+              </h2>
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                <span className="text-xs ilo-fg-dim">{expert.metadata.description}</span>
+                <span className="text-xs ilo-fg-dim">
+                  {expert.metadata.description}
+                </span>
                 <span className="px-1.5 py-0.5 ilo-bg-soft ilo-fg-dim text-[10px] rounded">
                   {DEPARTMENTS[expert.department]?.name ?? "其他"}
                 </span>
@@ -1020,7 +1125,13 @@ function AgencyExpertDetail({
                     : "ilo-fg-dim hover:ilo-bg-soft"
                 }`}
               >
-                {tab === "overview" ? "概览" : tab === "rules" ? "规则与交付" : tab === "workflow" ? "流程与沟通" : "原始内容"}
+                {tab === "overview"
+                  ? "概览"
+                  : tab === "rules"
+                    ? "规则与交付"
+                    : tab === "workflow"
+                      ? "流程与沟通"
+                      : "原始内容"}
               </button>
             ))}
           </div>
@@ -1035,7 +1146,12 @@ function AgencyExpertDetail({
           ) : activeTab === "overview" ? (
             <div className="space-y-4">
               {visibleSections.slice(0, 3).map((s) => (
-                <SectionBlock key={s.key} title={s.label} content={s.content} color={hex} />
+                <SectionBlock
+                  key={s.key}
+                  title={s.label}
+                  content={s.content}
+                  color={hex}
+                />
               ))}
             </div>
           ) : activeTab === "rules" ? (
@@ -1043,15 +1159,29 @@ function AgencyExpertDetail({
               {visibleSections
                 .filter((s) => ["rules", "deliverables"].includes(s.key))
                 .map((s) => (
-                  <SectionBlock key={s.key} title={s.label} content={s.content} color={hex} />
+                  <SectionBlock
+                    key={s.key}
+                    title={s.label}
+                    content={s.content}
+                    color={hex}
+                  />
                 ))}
             </div>
           ) : activeTab === "workflow" ? (
             <div className="space-y-4">
               {visibleSections
-                .filter((s) => ["workflow", "communication", "memory", "metrics"].includes(s.key))
+                .filter((s) =>
+                  ["workflow", "communication", "memory", "metrics"].includes(
+                    s.key,
+                  ),
+                )
                 .map((s) => (
-                  <SectionBlock key={s.key} title={s.label} content={s.content} color={hex} />
+                  <SectionBlock
+                    key={s.key}
+                    title={s.label}
+                    content={s.content}
+                    color={hex}
+                  />
                 ))}
             </div>
           ) : (
@@ -1129,7 +1259,10 @@ function SectionBlock({
   return (
     <div className="rounded-lg border ilo-border-soft overflow-hidden">
       <div className="px-4 py-2 text-xs font-semibold ilo-fg-faint ilo-bg-soft flex items-center gap-2">
-        <div className="w-1.5 h-4 rounded-full" style={{ backgroundColor: color }} />
+        <div
+          className="w-1.5 h-4 rounded-full"
+          style={{ backgroundColor: color }}
+        />
         {title}
       </div>
       <div className="px-4 py-3 text-xs ilo-fg-faint leading-relaxed whitespace-pre-wrap max-h-[300px] overflow-y-auto">
@@ -1189,7 +1322,10 @@ function ExpertFormModal({
           </button>
         </header>
 
-        <div className="drawer__body drawer__body--single" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div
+          className="drawer__body drawer__body--single"
+          style={{ display: "flex", flexDirection: "column", gap: 14 }}
+        >
           <div>
             <label className="block text-sm font-medium ilo-fg-faint mb-1.5">
               名称 <span style={{ color: "var(--err)" }}>*</span>
@@ -1240,7 +1376,9 @@ function ExpertFormModal({
                   key={c}
                   onClick={() => onColorChange(c)}
                   className={`w-8 h-8 rounded-lg transition-all ${
-                    color === c ? "ring-2 ring-offset-2 ring-gray-400 scale-110" : ""
+                    color === c
+                      ? "ring-2 ring-offset-2 ring-gray-400 scale-110"
+                      : ""
                   }`}
                   style={{ backgroundColor: c }}
                 />
@@ -1276,10 +1414,7 @@ function ExpertFormModal({
         </div>
 
         <footer className="drawer__actions">
-          <button
-            className="btn"
-            onClick={onClose}
-          >
+          <button className="btn" onClick={onClose}>
             取消
           </button>
           <button

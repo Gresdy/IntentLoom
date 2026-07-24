@@ -147,6 +147,39 @@ describe("streaming passthrough to conversation store (T12)", () => {
     });
   });
 
+  it("upserts repeated tool events in place without changing execution order", () => {
+    seedAssistant();
+    const first: ToolCall = {
+      id: "first",
+      name: "Read",
+      kind: "read",
+      arguments: { path: "first.ts" },
+      status: "in_progress",
+    };
+    const second: ToolCall = {
+      id: "second",
+      name: "Bash",
+      kind: "execute",
+      arguments: { command: "npm test" },
+      status: "in_progress",
+    };
+
+    useMessageStore.getState().addToolCall(first);
+    useMessageStore.getState().addToolCall(second);
+    useMessageStore.getState().addToolCall({
+      ...first,
+      status: "completed",
+      result: "first contents",
+    });
+
+    expect(useMessageStore.getState().currentToolCalls).toHaveLength(2);
+    expect(lastConvoMessage().toolCalls?.map((tool) => tool.id)).toEqual(["first", "second"]);
+    expect(lastConvoMessage().toolCalls?.[0]).toMatchObject({
+      status: "completed",
+      result: "first contents",
+    });
+  });
+
   it("setPlan posts the plan to the conversation store live", () => {
     seedAssistant();
     const plan: PlanState = {

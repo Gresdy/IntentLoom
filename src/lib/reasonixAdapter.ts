@@ -6,7 +6,11 @@ import { useConversationStore } from "@/stores/conversationStore";
 import { useMessageStore } from "@/stores/messageStore";
 import { useModelStore, effectiveModelForCli } from "@/stores/useModelStore";
 import { useAgentStore } from "@/lib/useAgents";
-import { resolveModeId, resolveReasoningId, useComposerPrefsStore } from "@/stores/useComposerPrefsStore";
+import {
+  resolveModeId,
+  resolveReasoningId,
+  useComposerPrefsStore,
+} from "@/stores/useComposerPrefsStore";
 import { resolveOpenclawSession } from "@/stores/useOpenclawSessionStore";
 import { buildArtifactSummary, hasAnyArtifact } from "@/lib/artifactTally";
 import type { ArtifactTally } from "@/lib/artifactTally";
@@ -21,27 +25,130 @@ import type { ToolCall } from "@/types/message";
 export type Mode = "normal" | "plan" | "yolo";
 
 export type ReasonixItem =
-  | { kind: "user"; id: string; text: string; agentId?: string }
-  | { kind: "assistant"; id: string; text: string; streaming?: boolean; reasoning?: string; agentId?: string }
-  | { kind: "tool"; id: string; name: string; args: any; status: string; result?: any; diff?: any[]; kind2?: string; agentId?: string }
+  | {
+      kind: "user";
+      id: string;
+      text: string;
+      agentId?: string;
+      createdAt?: number;
+    }
+  | {
+      kind: "assistant";
+      id: string;
+      text: string;
+      streaming?: boolean;
+      reasoning?: string;
+      toolCalls?: ToolCall[];
+      agentId?: string;
+      createdAt?: number;
+    }
+  | {
+      kind: "tool";
+      id: string;
+      name: string;
+      args: any;
+      status: string;
+      result?: any;
+      diff?: any[];
+      kind2?: string;
+      agentId?: string;
+    }
   | { kind: "tool_group"; id: string; tools: ReasonixItem[]; agentId?: string }
   | { kind: "phase"; id: string; text: string; agentId?: string }
-  | { kind: "notice"; id: string; level: string; text: string; agentId?: string }
+  | {
+      kind: "notice";
+      id: string;
+      level: string;
+      text: string;
+      agentId?: string;
+    }
   | { kind: "summary"; id: string; tally: ArtifactTally; agentId?: string }
-  | { kind: "permission"; id: string; toolName: string; args: any; reason?: string; status: "pending" | "approved" | "denied"; agentId?: string }
+  | {
+      kind: "permission";
+      id: string;
+      toolName: string;
+      args: any;
+      reason?: string;
+      status: "pending" | "approved" | "denied";
+      agentId?: string;
+    }
   // === AionUi port (Phase 2) — new message kinds ===
   /** Agent session lifecycle badge: connecting / connected / authenticated / session_active / error. */
-  | { kind: "agent_status"; id: string; backend: string; status: "connecting" | "connected" | "authenticated" | "session_active" | "error"; agentName?: string; agentId?: string; createdAt?: number }
+  | {
+      kind: "agent_status";
+      id: string;
+      backend: string;
+      status:
+        | "connecting"
+        | "connected"
+        | "authenticated"
+        | "session_active"
+        | "error";
+      agentName?: string;
+      agentId?: string;
+      createdAt?: number;
+    }
   /** Structured tip / error / warning / success with optional JSON body. */
-  | { kind: "tips"; id: string; level: "info" | "success" | "warning" | "error"; text: string; code?: string; structuredError?: { message: string; code?: string; ownership?: "aionui" | "user_agent" | "user_llm_provider" | "unknown_upstream"; retryable?: boolean; detail?: string; resolution?: string; workspacePath?: string }; agentId?: string; createdAt?: number }
+  | {
+      kind: "tips";
+      id: string;
+      level: "info" | "success" | "warning" | "error";
+      text: string;
+      code?: string;
+      structuredError?: {
+        message: string;
+        code?: string;
+        ownership?:
+          "aionui" | "user_agent" | "user_llm_provider" | "unknown_upstream";
+        retryable?: boolean;
+        detail?: string;
+        resolution?: string;
+        workspacePath?: string;
+      };
+      agentId?: string;
+      createdAt?: number;
+    }
   /** Inline plan / todo list rendered in the transcript. */
-  | { kind: "plan"; id: string; title?: string; entries: Array<{ id: string; content: string; status: "pending" | "in_progress" | "completed" | "skipped" }>; agentId?: string; createdAt?: number }
+  | {
+      kind: "plan";
+      id: string;
+      title?: string;
+      entries: Array<{
+        id: string;
+        content: string;
+        status: "pending" | "in_progress" | "completed" | "skipped";
+      }>;
+      agentId?: string;
+      createdAt?: number;
+    }
   /** Skill suggestion card (e.g. "try /code-review"). */
-  | { kind: "skill_suggest"; id: string; name: string; description: string; content?: string; agentId?: string; createdAt?: number }
+  | {
+      kind: "skill_suggest";
+      id: string;
+      name: string;
+      description: string;
+      content?: string;
+      agentId?: string;
+      createdAt?: number;
+    }
   /** Cron / scheduled-task trigger card (e.g. "定时任务 #7 触发了"). */
-  | { kind: "cron_trigger"; id: string; cronJobId?: string; cronJobName?: string; triggeredAt?: number; agentId?: string; createdAt?: number }
+  | {
+      kind: "cron_trigger";
+      id: string;
+      cronJobId?: string;
+      cronJobName?: string;
+      triggeredAt?: number;
+      agentId?: string;
+      createdAt?: number;
+    }
   /** Slash commands the active CLI natively supports (AionUi `available_commands` port). */
-  | { kind: "available_commands"; id: string; commands: Array<{ name: string; description: string; hint?: string }>; agentId?: string; createdAt?: number };
+  | {
+      kind: "available_commands";
+      id: string;
+      commands: Array<{ name: string; description: string; hint?: string }>;
+      agentId?: string;
+      createdAt?: number;
+    };
 
 export interface ReasonixMeta {
   label: string;
@@ -60,7 +167,12 @@ export interface ReasonixState {
   running: boolean;
   meta: ReasonixMeta | null;
   context: any;
-  usage: { promptTokens: number; completionTokens: number; cacheHitTokens: number; cacheMissTokens: number } | null;
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    cacheHitTokens: number;
+    cacheMissTokens: number;
+  } | null;
   balance: any;
   jobs: any[];
   approval: { id: string; tool: string; args: string } | null;
@@ -103,23 +215,6 @@ function writePersistedCwd(cwd: string | undefined): void {
     // Same as readPersistedCwd: swallow storage failures rather
     // than blocking the UI on a transient storage error.
   }
-}
-
-// Convert a ToolCall from messageStore into the wire shape used by
-// the `tool` ReasonixItem. Kept tiny because the Transcript side
-// already has its own `tool.diff` / `tool.kind` accessors.
-function toolCallToItem(tc: ToolCall, idSuffix: string, agentId?: string): ReasonixItem {
-  return {
-    kind: "tool",
-    id: idSuffix,
-    name: tc.name,
-    args: tc.arguments,
-    status: tc.status,
-    result: tc.result,
-    diff: tc.diff,
-    kind2: tc.kind,
-    agentId,
-  };
 }
 
 /**
@@ -250,13 +345,11 @@ export function useReasonixController() {
     updateConversation,
   } = useConversationStore();
 
-  const {
-    currentProviderId,
-    providers,
-    switchProvider,
-    setCurrentApp,
-  } = useModelStore();
-  const currentProvider = currentProviderId ? providers[currentProviderId] : null;
+  const { currentProviderId, providers, switchProvider, setCurrentApp } =
+    useModelStore();
+  const currentProvider = currentProviderId
+    ? providers[currentProviderId]
+    : null;
 
   const {
     isStreaming,
@@ -272,6 +365,8 @@ export function useReasonixController() {
     setPlan,
     setPermission,
     appendContent,
+    replaceContent,
+    updateThinkingContent,
     appendThinking,
     beginThinking,
     finishThinking,
@@ -295,7 +390,11 @@ export function useReasonixController() {
     // message rendering without a live CLI stream.
     if (injectedItems.length > 0) {
       // eslint-disable-next-line no-console
-      console.log("[reasonixAdapter] injecting", injectedItems.length, "test items");
+      console.log(
+        "[reasonixAdapter] injecting",
+        injectedItems.length,
+        "test items",
+      );
       for (const it of injectedItems) result.push(it);
     } else {
       // eslint-disable-next-line no-console
@@ -315,8 +414,14 @@ export function useReasonixController() {
       currentConversation?.metadata?.agentId ??
       useModelStore.getState().currentApp ??
       "claude";
-    const messageAgentId = (m: { agentId?: string; metadata?: { agentId?: string } }) =>
-      m.agentId ?? m.metadata?.agentId;
+    const messageAgentId = (m: {
+      agentId?: string;
+      metadata?: { agentId?: string };
+    }) => m.agentId ?? m.metadata?.agentId;
+
+    const liveAssistantId = isStreaming
+      ? conversationMessages[conversationMessages.length - 1]?.id
+      : undefined;
 
     for (const msg of conversationMessages) {
       if (msg.role === "user") {
@@ -325,26 +430,30 @@ export function useReasonixController() {
           id: msg.id,
           text: msg.content,
           agentId: messageAgentId(msg) ?? fallbackAgentId,
+          createdAt: msg.timestamp,
         });
       } else if (msg.role === "assistant") {
+        const isLiveAssistant = msg.id === liveAssistantId;
         result.push({
           kind: "assistant",
           id: msg.id,
           text: msg.content,
-          streaming: false,
-          reasoning: msg.thinking,
+          streaming: isLiveAssistant,
+          reasoning: isLiveAssistant
+            ? currentThinking || msg.thinking
+            : msg.thinking,
+          // Tool calls belong to the assistant turn that produced them.
+          // Keeping them on the same item lets the transcript render the
+          // stable sequence: thinking -> tools/results -> final answer.
+          // The live store is only a fallback for the tiny interval before
+          // its write-through reaches the persisted conversation message.
+          toolCalls:
+            isLiveAssistant && currentToolCalls.length > 0
+            ? currentToolCalls
+            : msg.toolCalls,
           agentId: messageAgentId(msg) ?? fallbackAgentId,
+          createdAt: msg.timestamp,
         });
-        // Persisted tool calls on the assistant message become ToolCards
-        // in the transcript. W3 of the-loom-as-product.md: this is what
-        // makes "文件改动内联展示" work after the stream ends — the
-        // live stream lights up LoomPanel, the persisted mirror shows
-        // the same content inline in chat history.
-        if (msg.toolCalls && msg.toolCalls.length > 0) {
-          for (const tc of msg.toolCalls) {
-            result.push(toolCallToItem(tc, `${msg.id}-tc-${tc.id}`, messageAgentId(msg) ?? fallbackAgentId));
-          }
-        }
         // Persisted permission requests render as inline permission cards
         // so the user can see what was approved / denied in history.
         if (msg.permission && msg.permission.status === "pending") {
@@ -361,29 +470,12 @@ export function useReasonixController() {
       }
     }
 
-    if (isStreaming && currentConversation?.messages.length) {
-      const lastMsg = currentConversation.messages[currentConversation.messages.length - 1];
-      if (lastMsg && lastMsg.role === "assistant") {
-        result.push({
-          kind: "assistant",
-          id: "streaming",
-          text: lastMsg.content,
-          streaming: true,
-          reasoning: currentThinking,
-          agentId: messageAgentId(lastMsg) ?? fallbackAgentId,
-        });
-        // Live tool cards: the in-flight tool calls from messageStore.
-        // After stream-end these get persisted onto the assistant
-        // message (see ai-stream-end handler) and the live snapshot
-        // resets, so we don't double-render.
-        for (const tc of currentToolCalls) {
-          result.push(toolCallToItem(tc, `live-tc-${tc.id}`, fallbackAgentId));
-        }
-      }
-    }
-
     // Live permission request — show as an inline approval card.
-    if (isStreaming && currentPermission && currentPermission.status === "pending") {
+    if (
+      isStreaming &&
+      currentPermission &&
+      currentPermission.status === "pending"
+    ) {
       result.push({
         kind: "permission",
         id: `perm-live-${currentPermission.id}`,
@@ -414,7 +506,13 @@ export function useReasonixController() {
     // natural place to look. The Transcript already styles
     // the `notice` kind with a red border / soft background.
     for (const n of notices) {
-      result.push({ kind: "notice", id: n.id, level: n.level, text: n.text, agentId: fallbackAgentId });
+      result.push({
+        kind: "notice",
+        id: n.id,
+        level: n.level,
+        text: n.text,
+        agentId: fallbackAgentId,
+      });
     }
 
     // AionUI-style grouping: consecutive `tool` items get
@@ -464,7 +562,7 @@ export function useReasonixController() {
       turnStartAt: isStreaming ? Date.now() : null,
       turnTokens: 0,
     }),
-    [items, isStreaming, meta]
+    [items, isStreaming, meta],
   );
 
   // === Dev hook: expose controller state for Playwright / devtools.
@@ -472,7 +570,14 @@ export function useReasonixController() {
   // through DOM inspection alone.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    (window as any).__controllerState = { itemsLen: items.length, injectedLen: injectedItems.length, kindCounts: items.reduce<Record<string, number>>((acc, i) => { acc[i.kind] = (acc[i.kind] ?? 0) + 1; return acc; }, {}) };
+    (window as any).__controllerState = {
+      itemsLen: items.length,
+      injectedLen: injectedItems.length,
+      kindCounts: items.reduce<Record<string, number>>((acc, i) => {
+        acc[i.kind] = (acc[i.kind] ?? 0) + 1;
+        return acc;
+      }, {}),
+    };
   }, [items, injectedItems]);
 
   // Hoisted out of the useEffect so the catch block in
@@ -534,7 +639,12 @@ export function useReasonixController() {
             // kept around (status: "done") so the user can
             // still re-open it to read the reasoning.
             finishThinking();
-            appendContent(stripSkillSuggest(stripThinkTags(parsed.text)));
+              const text = stripSkillSuggest(stripThinkTags(parsed.text));
+              if (parsed.mode === "snapshot") {
+                replaceContent(text);
+              } else {
+                appendContent(text);
+              }
             break;
           case "thinking":
             // Open the live ThinkingDisplay card on the
@@ -545,7 +655,11 @@ export function useReasonixController() {
             // the first delta does not double-count elapsed
             // seconds.
             beginThinking();
+              if (parsed.mode === "snapshot") {
+                updateThinkingContent(parsed.text);
+              } else {
             appendThinking(parsed.text);
+              }
             break;
           case "tool_call":
             addToolCall(parsed.tool);
@@ -626,7 +740,8 @@ export function useReasonixController() {
             // channel above would have already shown the root
             // cause; this is the "the assistant bubble is not
             // actually empty" affordance.
-            const fallback = lastMsg.content && lastMsg.content.length > 0
+            const fallback =
+              lastMsg.content && lastMsg.content.length > 0
               ? lastMsg.content
               : "_(no response from CLI — see the red notice above for details)_";
             updateLastMessage({
@@ -688,6 +803,8 @@ export function useReasonixController() {
     updateLastMessage,
     setStreaming,
     appendContent,
+    replaceContent,
+    updateThinkingContent,
     appendThinking,
     addToolCall,
     addToolResponse,
@@ -761,6 +878,23 @@ export function useReasonixController() {
         metadata: { agentId: cli },
       };
       addMessageToCurrent(userMessage);
+      // Keep messageStore.messages in lockstep with the
+      // conversation store. The per-chunk streaming
+      // functions (appendContent / appendThinking /
+      // updateThinkingContent) guard on
+      // `state.messages.length === 0`; if we never push
+      // the user + assistant messages into this mirror,
+      // the guard bails out and the streamed text never
+      // reaches either store. When ai-stream-end then
+      // sees an empty assistant content, it writes the
+      // "no response from CLI" placeholder — even though
+      // the CLI returned a perfectly good answer. This
+      // is exactly the T12 regression: the seedAssistant
+      // helper in streamingPassthrough.test.ts mirrors
+      // explicitly because it knows the real send() has
+      // to. (T12 itself only fixed the write-through
+      // side, assuming this mirror already happened.)
+      useMessageStore.getState().addMessage(userMessage);
 
       const assistantMessage = {
         id: generateId(),
@@ -773,6 +907,7 @@ export function useReasonixController() {
         metadata: { agentId: cli },
       };
       addMessageToCurrent(assistantMessage);
+      useMessageStore.getState().addMessage(assistantMessage);
 
       // Keep the conversation-level agentId in sync with the
       // CLI that actually handled the new turn. The per-message
@@ -879,11 +1014,13 @@ export function useReasonixController() {
           conversationId: conv.id,
           projectPath: cwd ?? null,
           mode: resolveModeId(cli as AppId, composerState.modeByCli),
-          reasoning: resolveReasoningId(cli as AppId, composerState.reasoningByCli),
+          reasoning: resolveReasoningId(
+            cli as AppId,
+            composerState.reasoningByCli,
+          ),
           model: modelId && modelId.length > 0 ? modelId : null,
           env: Object.keys(env).length > 0 ? env : null,
-          openclawSession:
-            cli === "openclaw" ? resolveOpenclawSession() : null,
+          openclawSession: cli === "openclaw" ? resolveOpenclawSession() : null,
         });
       } catch (error) {
         // The old behaviour folded the error string into the
@@ -962,7 +1099,7 @@ export function useReasonixController() {
       resetCurrentStream,
       addNotice,
       cwd,
-    ]
+    ],
   );
 
   const cancel = useCallback(() => {
@@ -1015,13 +1152,19 @@ export function useReasonixController() {
     }));
   }, [conversations]);
 
-  const resumeSession = useCallback((path: string) => {
+  const resumeSession = useCallback(
+    (path: string) => {
     selectConversation(path);
-  }, [selectConversation]);
+    },
+    [selectConversation],
+  );
 
-  const deleteSessionFn = useCallback((path: string) => {
+  const deleteSessionFn = useCallback(
+    (path: string) => {
     deleteConversation(path);
-  }, [deleteConversation]);
+    },
+    [deleteConversation],
+  );
 
   const renameSessionFn = useCallback(
     (path: string, title: string): boolean => {
@@ -1116,7 +1259,10 @@ export function useReasonixController() {
     // return key together.
   }, []);
 
-  const answerQuestion = useCallback((_id: string, _choices: string[]) => {}, []);
+  const answerQuestion = useCallback(
+    (_id: string, _choices: string[]) => {},
+    [],
+  );
 
   const refreshMeta = useCallback(async () => {}, []);
 

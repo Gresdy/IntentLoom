@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::utils::path::{normalize_path, sanitize_dir_name};
 use crate::utils::security::is_within_directory;
 use std::fs;

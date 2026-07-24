@@ -11,7 +11,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useThemeStore } from "@/stores/useThemeStore";
-import { Loader2, ListChecks, ChevronRight } from "lucide-react";
+import { Loader2, ChevronRight, CheckCircle2, Circle, XCircle } from "lucide-react";
 import type { ToolCall } from "@/types/message";
 
 export interface ToolExecutionDisplayProps {
@@ -29,6 +29,19 @@ function getToolsSummary(tools: ToolCall[]): string {
     return names.join(", ") + ` (+${tools.length - 3} more)`;
   }
   return names.join(", ");
+}
+
+function hasValue(value: unknown): boolean {
+  return value !== undefined && value !== null;
+}
+
+function formatValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    return String(value);
+  }
 }
 
 /** Format milliseconds as Xs or Xm Ys */
@@ -56,7 +69,7 @@ function getToolArgPreview(tool: ToolCall): string {
   }
   
   // Fall back to first string field
-  for (const [key, value] of Object.entries(args)) {
+  for (const [, value] of Object.entries(args)) {
     if (typeof value === "string" && value.length > 0) {
       return value.length > 50 ? value.slice(0, 47) + "..." : value;
     }
@@ -65,40 +78,12 @@ function getToolArgPreview(tool: ToolCall): string {
   return "";
 }
 
-/** Get the result as a preview string */
-function getToolResultPreview(tool: ToolCall): string {
-  const result = tool.result;
-  if (!result) return "";
-  if (typeof result === "string") {
-    return result.length > 100 ? result.slice(0, 97) + "..." : result;
-  }
-  if (typeof result === "object") {
-    // Try to get useful fields from result
-    const fields = ["content", "output", "data", "files", "matches"];
-    for (const field of fields) {
-      if (field in result && result[field]) {
-        const value = result[field];
-        if (typeof value === "string") {
-          return value.length > 100 ? value.slice(0, 97) + "..." : value;
-        }
-        if (Array.isArray(value)) {
-          return `${value.length} items`;
-        }
-      }
-    }
-    // Fall back to JSON
-    const json = JSON.stringify(result);
-    return json.length > 100 ? json.slice(0, 97) + "..." : json;
-  }
-  return String(result).slice(0, 100);
-}
-
 export function ToolExecutionDisplay(props: ToolExecutionDisplayProps) {
   const { tools, startTime } = props;
   const themeMode = useThemeStore((s) => s.mode);
   
-  const hasRunning = tools.some(t => t.status === "running" || t.status === "in_progress");
-  const isDone = !hasRunning && tools.length > 0;
+  const hasRunning = tools.some(t => t.status === "pending" || t.status === "in_progress");
+  const isDone = tools.length > 0 && tools.every(t => t.status === "completed" || t.status === "error");
   const [expanded, setExpanded] = useState(!isDone);
   const [now, setNow] = useState(() => Date.now());
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
@@ -159,7 +144,7 @@ export function ToolExecutionDisplay(props: ToolExecutionDisplayProps) {
     : "linear-gradient(90deg, #F0F3FF 0%, #F2F2F2 100%)";
 
   // Calculate elapsed time
-  const elapsedMs = isDone ? 0 : Math.max(0, now - startTime);
+  const elapsedMs = Math.max(0, now - startTime);
 
   return (
     <div
@@ -174,44 +159,48 @@ export function ToolExecutionDisplay(props: ToolExecutionDisplayProps) {
         aria-expanded={expanded}
       >
         <span className={`tool-execution__chevron ${expanded ? "tool-execution__chevron--open" : ""}`}>
-          ▶
+          <ChevronRight size={12} />
         </span>
         {hasRunning && (
           <span className="tool-execution__spinner" />
         )}
         <span className="tool-execution__subject">
-          {isDone ? "执行完成" : "执行中"}
+          {isDone ? "工具调用完成" : "正在调用工具"}
         </span>
         {isDone && tools.length > 0 && (
           <span className="tool-execution__preview">— {getToolsSummary(tools)}</span>
         )}
         <span className="tool-execution__duration">
-          {tools.length} 个步骤 · {formatDurationMs(elapsedMs)}
+          {tools.length} 个步骤{hasRunning ? ` · ${formatDurationMs(elapsedMs)}` : ""}
         </span>
       </button>
       {expanded && (
         <div ref={bodyRef} className="tool-execution__body">
           {tools.map((tool) => {
             const isExpanded = expandedTools.has(tool.id);
-            const hasDetail = tool.arguments || tool.result;
+            const hasInput = hasValue(tool.arguments);
+            const hasResult = hasValue(tool.result);
+            const hasDetail = hasInput || hasResult;
             const argPreview = getToolArgPreview(tool);
-            const resultPreview = getToolResultPreview(tool);
             
             return (
-              <div key={tool.id} className="tool-execution__item">
-                <div 
+              <div key={tool.id} className="tool-execution__item" data-tool-id={tool.id}>
+                <button
+                  type="button"
                   className={`tool-execution__item-header ${hasDetail ? "tool-execution__item-header--clickable" : ""}`}
                   onClick={hasDetail ? () => toggleToolExpanded(tool.id) : undefined}
+                  aria-expanded={hasDetail ? isExpanded : undefined}
+                  disabled={!hasDetail}
                 >
                   <span className="tool-execution__item-icon">
-                    {tool.status === "running" || tool.status === "in_progress" ? (
+                    {tool.status === "in_progress" ? (
                       <Loader2 size={10} className="spin" />
-                    ) : tool.status === "completed" || tool.status === "success" ? (
-                      <span className="ilo-fg-ok">✓</span>
+                    ) : tool.status === "completed" ? (
+                      <CheckCircle2 size={11} className="ilo-fg-ok" />
                     ) : tool.status === "error" ? (
-                      <span className="ilo-fg-err">✗</span>
+                      <XCircle size={11} className="ilo-fg-err" />
                     ) : (
-                      <span className="ilo-fg-faint">○</span>
+                      <Circle size={10} className="ilo-fg-faint" />
                     )}
                   </span>
                   <span className="tool-execution__item-name">{tool.name || "Tool"}</span>
@@ -223,26 +212,22 @@ export function ToolExecutionDisplay(props: ToolExecutionDisplayProps) {
                       <ChevronRight size={10} />
                     </span>
                   )}
-                </div>
+                </button>
                 {isExpanded && hasDetail && (
                   <div className="tool-execution__item-detail">
-                    {tool.arguments && (
+                    {hasInput && (
                       <div className="tool-execution__detail-section">
                         <div className="tool-execution__detail-label">输入</div>
-                        <pre className="tool-execution__detail-content">
-                          {typeof tool.arguments === "string" 
-                            ? tool.arguments 
-                            : JSON.stringify(tool.arguments, null, 2)}
+                        <pre className="tool-execution__detail-content" data-testid={`tool-input-${tool.id}`}>
+                          {formatValue(tool.arguments)}
                         </pre>
                       </div>
                     )}
-                    {tool.result && (
+                    {hasResult && (
                       <div className="tool-execution__detail-section">
                         <div className="tool-execution__detail-label">输出</div>
-                        <pre className="tool-execution__detail-content">
-                          {typeof tool.result === "string" 
-                            ? tool.result 
-                            : JSON.stringify(tool.result, null, 2)}
+                        <pre className="tool-execution__detail-content" data-testid={`tool-output-${tool.id}`}>
+                          {formatValue(tool.result)}
                         </pre>
                       </div>
                     )}

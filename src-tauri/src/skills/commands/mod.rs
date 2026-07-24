@@ -1,0 +1,12 @@
+#![allow(dead_code)]
+
+pub mod agent_workspace;
+pub mod browse;
+pub mod git_backup;
+pub mod projects;
+pub mod scan;
+pub mod presets;
+pub mod settings;
+pub mod skills;
+pub mod sync;
+pub mod tools;

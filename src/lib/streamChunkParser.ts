@@ -50,8 +50,8 @@ import { inferToolKind, parseDiff } from "@/utils/toolCallParser";
 import type { PlanState, ToolCall } from "@/types/message";
 
 export type ParsedChunk =
-  | { kind: "text"; text: string }
-  | { kind: "thinking"; text: string }
+  | { kind: "text"; text: string; mode?: "delta" | "snapshot" }
+  | { kind: "thinking"; text: string; mode?: "delta" | "snapshot" }
   | { kind: "tool_call"; tool: ToolCall }
   | { kind: "tool_response"; id: string; result: unknown }
   | { kind: "plan"; plan: PlanState }
@@ -71,7 +71,9 @@ export type ParsedChunk =
  * so the per-chunk pipeline in `reasonixAdapter` still works
  * without stateful re-parsing.
  */
-export function parseStreamChunk(raw: string | null | undefined): ParsedChunk[] {
+export function parseStreamChunk(
+  raw: string | null | undefined,
+): ParsedChunk[] {
   if (!raw) return [];
   const trimmed = raw.trim();
   if (!trimmed) return [];
@@ -136,7 +138,11 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk[] 
   // Code's `tool_use` block lives under `message.content[i]`
   // and we want the content-array walk, not the generic
   // top-level matcher.
-  if (event.type === "assistant" && event.message && Array.isArray(event.message.content)) {
+  if (
+    event.type === "assistant" &&
+    event.message &&
+    Array.isArray(event.message.content)
+  ) {
     const chunks = parseAssistantContent(event.message.content);
     if (chunks.length > 0) return chunks;
     // Fall through: an assistant event with no recognised
@@ -145,7 +151,11 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk[] 
     // here. That keeps the historical "raw line is text"
     // fallback for actual plain-text payloads.
   }
-  if (event.type === "user" && event.message && Array.isArray(event.message.content)) {
+  if (
+    event.type === "user" &&
+    event.message &&
+    Array.isArray(event.message.content)
+  ) {
     const chunks = parseUserContent(event.message.content);
     if (chunks.length > 0) return chunks;
   }
@@ -209,7 +219,11 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk[] 
     // panel already reads the same hook for its usage line.
     return [{ kind: "control", event: "turn_completed" }];
   }
-  if (event.type === "item.started" && event.item && typeof event.item === "object") {
+  if (
+    event.type === "item.started" &&
+    event.item &&
+    typeof event.item === "object"
+  ) {
     // Live "in progress" hook. Without this, the user only
     // sees a Codex tool call when the corresponding
     // `item.completed` lands — by which point the model has
@@ -220,10 +234,10 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk[] 
     // what the controller threads through to the UI.
     const item = event.item;
     if (item.type === "reasoning" && typeof item.text === "string") {
-      return [{ kind: "thinking", text: item.text }];
+      return [{ kind: "thinking", text: item.text, mode: "snapshot" }];
     }
     if (item.type === "agent_message" && typeof item.text === "string") {
-      return [{ kind: "text", text: item.text }];
+      return [{ kind: "text", text: item.text, mode: "snapshot" }];
     }
     // `command_execution` and other tool subtypes are
     // forwarded as a `tool_call` with `status: "in_progress"`.
@@ -233,7 +247,8 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk[] 
     // path, which calls `updateToolCall(id, { status:
     // "completed" })` to mark the same card done.
     const name = typeof item.type === "string" ? item.type : "unknown";
-    return [{
+    return [
+      {
       kind: "tool_call",
       tool: {
         id: String(item.id ?? cryptoRandomId()),
@@ -242,15 +257,20 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk[] 
         arguments: item,
         status: "in_progress",
       },
-    }];
+      },
+    ];
   }
-  if (event.type === "item.completed" && event.item && typeof event.item === "object") {
+  if (
+    event.type === "item.completed" &&
+    event.item &&
+    typeof event.item === "object"
+  ) {
     const item = event.item;
     if (item.type === "reasoning" && typeof item.text === "string") {
-      return [{ kind: "thinking", text: item.text }];
+      return [{ kind: "thinking", text: item.text, mode: "snapshot" }];
     }
     if (item.type === "agent_message" && typeof item.text === "string") {
-      return [{ kind: "text", text: item.text }];
+      return [{ kind: "text", text: item.text, mode: "snapshot" }];
     }
     if (item.type === "command_execution") {
       // `command_execution` carries a richer payload than the
@@ -262,7 +282,8 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk[] 
       // `status: "completed"`. The `id` is the same as the
       // `item.started` we emitted moments earlier, so the
       // controller's `updateToolCall` finds the right card.
-      return [{
+      return [
+        {
         kind: "tool_response",
         id: String(item.id ?? ""),
         result: {
@@ -271,7 +292,8 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk[] 
           exit_code: item.exit_code,
           status: item.status,
         },
-      }];
+        },
+      ];
     }
     // Anything else (`function_call`, `web_search`, `file_edit`,
     // …) is forwarded as a tool call with the full item payload
@@ -279,7 +301,8 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk[] 
     // Claude's `tool_use` block. The kind / title mapping in
     // `inferToolKind` already covers the common tool names.
     const name = typeof item.type === "string" ? item.type : "unknown";
-    return [{
+    return [
+      {
       kind: "tool_call",
       tool: {
         id: String(item.id ?? cryptoRandomId()),
@@ -288,7 +311,8 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk[] 
         arguments: item,
         status: "completed",
       },
-    }];
+      },
+    ];
   }
 
   // Short alias for the event type — used by all subsequent sections.
@@ -326,7 +350,8 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk[] 
     }
     if (t === "gemini_tool_call") {
       const name = typeof event.name === "string" ? event.name : "unknown";
-      return [{
+      return [
+        {
         kind: "tool_call",
         tool: {
           id: String(event.id ?? cryptoRandomId()),
@@ -335,14 +360,17 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk[] 
           arguments: event.args ?? event.arguments ?? event.input ?? {},
           status: "in_progress",
         },
-      }];
+        },
+      ];
     }
     if (t === "gemini_tool_result") {
-      return [{
+      return [
+        {
         kind: "tool_response",
         id: String(event.id ?? event.tool_use_id ?? ""),
         result: event.result ?? event.content ?? null,
-      }];
+        },
+      ];
     }
     // Unrecognised gemini_* event — try to extract text.
     if (typeof event.text === "string" && event.text) {
@@ -364,7 +392,7 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk[] 
     // Extract text content
     const content = event.content ?? event.text ?? event.message;
     if (typeof content === "string" && content) {
-      chunks.push({ kind: "text", text: content });
+      chunks.push({ kind: "text", text: content, mode: "snapshot" });
     } else if (Array.isArray(content)) {
       for (const block of content) {
         if (typeof block === "string") {
@@ -373,7 +401,8 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk[] 
           if (block.type === "text" && typeof block.text === "string") {
             chunks.push({ kind: "text", text: block.text });
           } else if (block.type === "tool_use" || block.type === "tool_call") {
-            const name = typeof block.name === "string" ? block.name : "unknown";
+            const name =
+              typeof block.name === "string" ? block.name : "unknown";
             chunks.push({
               kind: "tool_call",
               tool: {
@@ -429,22 +458,26 @@ export function parseStreamChunk(raw: string | null | undefined): ParsedChunk[] 
     return [parseGenericToolCall(event)];
   }
   if (t === "tool_response" || t === "tool_result") {
-    return [{
+    return [
+      {
       kind: "tool_response",
       id: String(event.id ?? ""),
       result: event.result ?? event.content ?? null,
-    }];
+      },
+    ];
   }
   if (t === "plan") {
     return [{ kind: "plan", plan: normalizePlan(event) }];
   }
   if (t === "permission" || t === "approval_request") {
-    return [{
+    return [
+      {
       kind: "permission",
       id: String(event.id ?? ""),
       tool: String(event.tool ?? event.tool_name ?? ""),
       args: event.args ?? event.arguments ?? {},
-    }];
+      },
+    ];
   }
   return [];
 }
@@ -458,11 +491,11 @@ function parseAssistantContent(content: any[]): ParsedChunk[] {
   for (const block of content) {
     if (!block || typeof block !== "object") continue;
     if (block.type === "thinking" && typeof block.thinking === "string") {
-      out.push({ kind: "thinking", text: block.thinking });
+      out.push({ kind: "thinking", text: block.thinking, mode: "snapshot" });
       continue;
     }
     if (block.type === "text" && typeof block.text === "string") {
-      out.push({ kind: "text", text: block.text });
+      out.push({ kind: "text", text: block.text, mode: "snapshot" });
       continue;
     }
     if (block.type === "tool_use") {
@@ -502,10 +535,12 @@ function parseUserContent(content: any[]): ParsedChunk[] {
         ? raw
         : Array.isArray(raw)
           ? raw
-              .filter((b: any) => b && typeof b === "object" && b.type === "text")
+              .filter(
+                (b: any) => b && typeof b === "object" && b.type === "text",
+              )
               .map((b: any) => String(b.text ?? ""))
               .join("\n")
-          : raw ?? null;
+          : (raw ?? null);
     out.push({
       kind: "tool_response",
       id: String(block.tool_use_id ?? ""),
@@ -576,7 +611,8 @@ function normalizePlan(event: any): PlanState {
       status: (e.status ?? "pending") as PlanState["entries"][number]["status"],
       dependencies: e.dependencies,
     })),
-    currentIndex: typeof event.currentIndex === "number" ? event.currentIndex : -1,
+    currentIndex:
+      typeof event.currentIndex === "number" ? event.currentIndex : -1,
     isRunning: Boolean(event.isRunning),
   };
 }
@@ -644,9 +680,7 @@ export function detectHermesNotice(
  *
  * Returns a `ParsedChunk` when the line matches, `null` otherwise.
  */
-function detectHermesToolCall(
-  trimmed: string,
-): ParsedChunk | null {
+function detectHermesToolCall(trimmed: string): ParsedChunk | null {
   if (!trimmed) return null;
 
   // Tool invocation: 🔧 Using tool: ToolName(key="value", ...)
@@ -678,7 +712,8 @@ function detectHermesToolCall(
   if (simpleToolMatch) {
     const name = simpleToolMatch[1];
     // Don't match common English words that happen to follow 🔧
-    const knownTools = /^(Read|Write|Edit|Bash|Search|Fetch|Glob|Grep|MultiEdit|ListFiles|FileEdit|Command)$/i;
+    const knownTools =
+      /^(Read|Write|Edit|Bash|Search|Fetch|Glob|Grep|MultiEdit|ListFiles|FileEdit|Command)$/i;
     if (knownTools.test(name)) {
       return {
         kind: "tool_call",
@@ -709,7 +744,10 @@ function detectHermesToolCall(
 // crypto.randomUUID is available in modern browsers and Tauri WebView;
 // keep a tiny fallback for older runtimes.
 function cryptoRandomId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return crypto.randomUUID();
   }
   return Math.random().toString(36).slice(2) + Date.now().toString(36);

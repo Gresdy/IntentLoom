@@ -33,7 +33,8 @@ export interface Plan {
   file_path?: string;
 }
 
-export type AICLI = "claude-code" | "gemini" | "codex" | "opencode" | "openclaw";
+export type AICLI =
+  "claude-code" | "gemini" | "codex" | "opencode" | "openclaw";
 
 export type AppId = AICLI | "claude" | "hermes";
 
@@ -117,4 +118,71 @@ export interface ExpertTemplate {
   description: string;
   systemPrompt: string;
   color: string;
+}
+
+// ── Knowledge Base / Local RAG (v1) ─────────────────────────────────────
+// Mirror of `src-tauri/src/commands/knowledge.rs` types. Keep these in sync
+// whenever the Rust side adds a field — TypeScript only sees what we type.
+
+export interface KnowledgeBase {
+  id: string;
+  name: string;
+  description: string;
+  provider: string;
+  apiBase: string;
+  hasApiKey: boolean;
+  embedModel: string;
+  chunkSize: number;
+  chunkOverlap: number;
+  topK: number;
+  documentCount: number;
+  chunkCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type KbDocumentStatus = "pending" | "ingesting" | "ready" | "failed";
+
+export interface KbDocument {
+  id: string;
+  kbId: string;
+  name: string;
+  sourcePath: string;
+  mimeType: string;
+  sizeBytes: number;
+  charCount: number;
+  chunkCount: number;
+  status: KbDocumentStatus;
+  error: string | null;
+  createdAt: string;
+}
+
+export interface KbChunk {
+  id: string;
+  kbId: string;
+  docId: string;
+  ord: number;
+  content: string;
+  charStart: number;
+  charEnd: number;
+}
+
+export interface KbCitation {
+  docId: string;
+  docName: string;
+  chunkId: string;
+  ord: number;
+  score: number;
+  preview: string;
+}
+
+export interface KbAskResult {
+  question: string;
+  prompt: string;
+  citations: KbCitation[];
+}
+
+export interface KbIngestResult {
+  document: KbDocument;
+  chunkCount: number;
 }

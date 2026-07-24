@@ -1,7 +1,16 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { Check, Download, Link, RefreshCw, Terminal, X, Settings } from "lucide-react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import {
+  Check,
+  Download,
+  Link,
+  RefreshCw,
+  Terminal,
+  X,
+  Settings,
+} from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useAgentStore, type AgentConfig } from "../../lib/useAgents";
+import { toast } from "../../lib/useToast";
 import type { AgentInfo } from "../../lib/useAgents";
 
 /**
@@ -31,7 +40,9 @@ export const AgentsPanel: React.FC = () => {
   const loadAgents = useAgentStore((s) => s.loadAgents);
   const setAgentConfig = useAgentStore((s) => s.setAgentConfig);
   const clearAgentConfig = useAgentStore((s) => s.clearAgentConfig);
-  const [filter, setFilter] = useState<"all" | "available" | "unavailable">("all");
+  const [filter, setFilter] = useState<"all" | "available" | "unavailable">(
+    "all",
+  );
   // The set of agent ids whose settings card is expanded. The card
   // is closed by default to keep the panel scannable; users opt in
   // per-adapter.
@@ -98,7 +109,7 @@ export const AgentsPanel: React.FC = () => {
 
   const handleOpenUrl = useCallback(async (url: string) => {
     try {
-      await openExternal(url);
+      await openUrl(url);
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error("[AgentsPanel] failed to open install URL:", e);
@@ -132,7 +143,31 @@ export const AgentsPanel: React.FC = () => {
             </p>
           </div>
           <button
-            onClick={() => void loadAgents()}
+            onClick={async () => {
+              const beforeAvailable = useAgentStore
+                .getState()
+                .agents.filter((a) => a.available).length;
+              await loadAgents();
+              const after = useAgentStore.getState().agents;
+              const afterAvailable = after.filter((a) => a.available).length;
+              if (after.length === 0) {
+                toast.warning(
+                  "未检测到任何 AI 助手,请确认 PATH 中已安装 Claude/Codex/Gemini 等 CLI",
+                );
+                return;
+              }
+              const delta = afterAvailable - beforeAvailable;
+              const msg =
+                delta === 0
+                  ? `检测完成: ${afterAvailable} / ${after.length} 已就绪`
+                  : delta > 0
+                    ? `检测完成: 新增 ${delta} 个可用助手 (${beforeAvailable} → ${afterAvailable})`
+                    : `检测完成: ${-delta} 个助手变为不可用 (${beforeAvailable} → ${afterAvailable})`;
+              toast.success(msg);
+              if (beforeAvailable === 0 && afterAvailable > 0) {
+                toast.info("可开始聊天,默认 tab 会切到第一个可用引擎");
+              }
+            }}
             disabled={loading}
             className="p-2 text-[#6B7280] hover:text-[#7C3AED] hover:bg-[#EDE9FE] rounded-lg transition-colors disabled:opacity-50"
             title="刷新"
@@ -219,7 +254,9 @@ const AgentCard: React.FC<AgentCardProps> = ({
   onSaveConfig,
   onClearConfig,
 }) => {
-  const [cliPath, setCliPath] = useState<string>(agent.env && agent.path ? agent.path : "");
+  const [cliPath, setCliPath] = useState<string>(
+    agent.env && agent.path ? agent.path : "",
+  );
   const [envText, setEnvText] = useState<string>(() => {
     const entries = Object.entries(agent.env ?? {});
     return entries.map(([k, v]) => `${k}=${v}`).join("\n");
@@ -230,12 +267,14 @@ const AgentCard: React.FC<AgentCardProps> = ({
   const needsLogin = agent.setup.status === "needs_login";
   const misconfigured = agent.setup.status === "misconfigured";
 
-  const installCta = agent.setup.cta?.kind === "install_url"
+  const installCta =
+    agent.setup.cta?.kind === "install_url"
     ? { kind: "install_url" as const, url: agent.setup.cta.url }
     : agent.setup.cta?.kind === "install_command"
     ? { kind: "install_command" as const, command: agent.setup.cta.command }
     : null;
-  const loginCta = agent.setup.cta?.kind === "login_hint" ? agent.setup.cta.command : null;
+  const loginCta =
+    agent.setup.cta?.kind === "login_hint" ? agent.setup.cta.command : null;
 
   const authChip = () => {
     if (!agent.available) return null;
@@ -259,7 +298,10 @@ const AgentCard: React.FC<AgentCardProps> = ({
       case "unknown":
       default:
         return (
-          <span className="auth-chip auth-chip--muted" title={agent.auth.hint ?? undefined}>
+          <span
+            className="auth-chip auth-chip--muted"
+            title={agent.auth.hint ?? undefined}
+          >
             状态未知
           </span>
         );
@@ -304,7 +346,9 @@ const AgentCard: React.FC<AgentCardProps> = ({
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <h3 className="font-semibold text-[#1E1B4B]">{agent.display_name}</h3>
+            <h3 className="font-semibold text-[#1E1B4B]">
+              {agent.display_name}
+            </h3>
             {agent.available ? (
               <span className="px-2 py-0.5 text-xs rounded bg-green-100 text-green-700 flex items-center gap-1">
                 <Check size={10} />
@@ -323,8 +367,28 @@ const AgentCard: React.FC<AgentCardProps> = ({
               </span>
             )}
             {authChip()}
+            {/*
+              Surface the backend human-readable setup explanation
+              right next to the state chips so the user can see why
+              an adapter is not ready without scrolling to the CTA
+              row. Hidden for ready agents since the ready chip
+              already implies the explanation. The same muted gray
+              shape is used for any of the three non-ready states
+              (needs_install, needs_login, misconfigured) so the
+              affordance stays consistent with the rest of the row.
+            */}
+            {!ready && agent.setup.message && (
+              <span
+                className="px-2 py-0.5 text-xs rounded bg-[#F3F4F6] text-[#6B7280] max-w-[220px] truncate"
+                title={agent.setup.message}
+              >
+                {agent.setup.message}
+              </span>
+            )}
             {agent.supports_streaming && agent.available && (
-              <span className="px-2 py-0.5 text-xs rounded bg-[#CFFAFE] text-[#0891B2]">流式</span>
+              <span className="px-2 py-0.5 text-xs rounded bg-[#CFFAFE] text-[#0891B2]">
+                流式
+              </span>
             )}
           </div>
 
@@ -355,7 +419,9 @@ const AgentCard: React.FC<AgentCardProps> = ({
                   复制命令
                 </button>
               )}
-              <span className="text-xs text-[#9CA3AF]">{agent.setup.message}</span>
+              <span className="text-xs text-[#9CA3AF]">
+                {agent.setup.message}
+              </span>
             </div>
           )}
           {needsInstall && installCta?.kind === "install_command" && (
@@ -376,7 +442,9 @@ const AgentCard: React.FC<AgentCardProps> = ({
                   安装指南
                 </button>
               )}
-              <span className="text-xs text-[#9CA3AF]">{agent.setup.message}</span>
+              <span className="text-xs text-[#9CA3AF]">
+                {agent.setup.message}
+              </span>
             </div>
           )}
           {needsLogin && (
@@ -390,11 +458,15 @@ const AgentCard: React.FC<AgentCardProps> = ({
                   复制登录命令
                 </button>
               )}
-              <span className="text-xs text-[#9CA3AF]">{agent.setup.message}</span>
+              <span className="text-xs text-[#9CA3AF]">
+                {agent.setup.message}
+              </span>
             </div>
           )}
           {misconfigured && (
-            <p className="auth-hint auth-hint--warn mt-1">{agent.setup.message}</p>
+            <p className="auth-hint auth-hint--warn mt-1">
+              {agent.setup.message}
+            </p>
           )}
 
           {/* Auth-hint row (e.g. "needs ANTHROPIC_API_KEY"). Reuse the
@@ -418,7 +490,9 @@ const AgentCard: React.FC<AgentCardProps> = ({
               {agent.path && (
                 <div className="flex items-center gap-1">
                   <span className="text-[#A3A3A6]">路径：</span>
-                  <span className="font-mono truncate flex-1">{agent.path}</span>
+                  <span className="font-mono truncate flex-1">
+                    {agent.path}
+                  </span>
                   <button
                     onClick={() => onCopy(agent.path || "")}
                     className="p-1 hover:ilo-bg-soft rounded"
@@ -445,7 +519,9 @@ const AgentCard: React.FC<AgentCardProps> = ({
             {isExpanded && (
               <div className="mt-2 p-3 rounded-lg bg-white border border-[#DDD6FE] space-y-2">
                 <div>
-                  <label className="block text-xs text-[#6B7280] mb-1">CLI 路径覆盖</label>
+                  <label className="block text-xs text-[#6B7280] mb-1">
+                    CLI 路径覆盖
+                  </label>
                   <input
                     type="text"
                     value={cliPath}
@@ -461,7 +537,9 @@ const AgentCard: React.FC<AgentCardProps> = ({
                   <textarea
                     value={envText}
                     onChange={(e) => setEnvText(e.target.value)}
-                    placeholder={"ANTHROPIC_BASE_URL=https://proxy\nANTHROPIC_API_KEY=sk-..."}
+                    placeholder={
+                      "ANTHROPIC_BASE_URL=https://proxy\nANTHROPIC_API_KEY=sk-..."
+                    }
                     rows={4}
                     className="w-full px-2 py-1.5 text-xs font-mono border border-[#DDD6FE] rounded focus:outline-none focus:border-[#7C3AED]"
                   />
@@ -480,7 +558,9 @@ const AgentCard: React.FC<AgentCardProps> = ({
                     重置
                   </button>
                   {agent.env && Object.keys(agent.env).length > 0 && (
-                    <span className="text-xs text-[#9CA3AF]">已应用 {Object.keys(agent.env).length} 个环境变量</span>
+                    <span className="text-xs text-[#9CA3AF]">
+                      已应用 {Object.keys(agent.env).length} 个环境变量
+                    </span>
                   )}
                 </div>
               </div>

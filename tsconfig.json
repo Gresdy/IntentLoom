@@ -16,7 +16,9 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@cc-switch": ["./src/cc-switch/index"],
+      "@cc-switch/*": ["./src/cc-switch/*"]
     }
   },
   "include": ["src"],
