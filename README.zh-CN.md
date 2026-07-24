@@ -229,22 +229,20 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 ## 当前状态
 
-[`docs/plan/`](./docs/plan/README.md) 里描述的两条主线,在 `main` 分支上大部分已经落地:
+当前已追踪的计划和审计记录,在 `main` 分支上大部分已经落地:
 
-- **多 Agent 驾驶舱**(W1-W3):移除硬编码的 `cli: "claude"`;6 个 adapter(Claude / Codex / Gemini / OpenCode / OpenClaw / Hermes)全部建立并带单测;stream JSON 在前端归一化;`Conversation` 与引擎绑定;未安装 CLI 如实标记;每个 tab 走同一道可用性闸门。
+- **多 Agent 驾驶舱**(W1-W3):移除硬编码的 `cli: "claude"`;6 个 adapter(Claude / Codex / Gemini / OpenCode / OpenClaw / Hermes)已接入注册表并带单测;stream JSON 在前端归一化;`Conversation` 与引擎绑定;未安装 CLI 如实标记;每个 tab 走同一道可用性闸门。OpenCode 协议仍等待真实设备验证。
 - **Loom 作为产品形态**(W1-W3):3 列布局;右侧 LoomPanel 常驻;ToolCard 渲染真实 diff;live panel 与对话产物卡片共用同一份 artifact 累计。
 
-`typecheck`、Vite build、`cargo test --lib` 全部干净通过。下一阶段是 W4 的打磨与真实用户上机验证 —— 详细分解见 [`docs/plan/`](./docs/plan/README.md)。
+本地前端 `typecheck`、测试和 Vite build 均可通过；Rust 与桌面打包使用固定工具链在 CI 中验证。下一阶段是 W4 的打磨与真实用户上机验证。
 
 ---
 
 ## 文档
 
-- [`docs/plan/README.md`](./docs/plan/README.md) —— 当前双轴路线图,以及已落地 / 待办清单
-- [`docs/plan/multi-agent-cockpit.md`](./docs/plan/multi-agent-cockpit.md) —— 多 CLI 路由方案的深度展开
-- [`docs/plan/the-loom-as-product.md`](./docs/plan/the-loom-as-product.md) —— Loom 面板的设计理念
-- [`docs/planning/ADJUSTMENT_PLAN.md`](./docs/planning/ADJUSTMENT_PLAN.md) —— 跨栈调整方案,范围更广(P0/P1)
-- [`docs/reviews/full-audit-report-2026-06-04.md`](./docs/reviews/full-audit-report-2026-06-04.md) —— 催生这两份方案的全栈审计报告
+- [`docs/plan/2026-06-05-product-assessment.md`](./docs/plan/2026-06-05-product-assessment.md) —— 产品评估和优先级
+- [`docs/plan/2026-06-06-e2e-runbook.md`](./docs/plan/2026-06-06-e2e-runbook.md) —— 桌面端 E2E 运行手册
+- [`docs/reviews/full-audit-report-2026-06-10.md`](./docs/reviews/full-audit-report-2026-06-10.md) —— 最新已追踪的全栈审查报告
 
 ---
 
@@ -261,7 +259,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 ## 协议
 
-尚未选定。在 `LICENSE` 文件落地之前,默认视为作者保留所有权利。
+IntentLoom 使用 [MIT License](./LICENSE) 发布。
 
 ---
 

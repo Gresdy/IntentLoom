@@ -2,5 +2,5 @@
 # the same thing. Bump this together with src-tauri/Cargo.toml's
 # tauri-build / tauri requirements.
 [toolchain]
-channel = "1.82.0"
+channel = "1.88.0"
 profile = "minimal"

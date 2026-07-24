@@ -229,22 +229,20 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 ## Status
 
-The two-roadmap plan in [`docs/plan/`](./docs/plan/README.md) is largely shipped on `main`:
+The current tracked plan and audit notes are largely shipped on `main`:
 
-- **Multi-agent cockpit** (W1-W3): hardcoded `cli: "claude"` removed, all six adapters (Claude / Codex / Gemini / OpenCode / OpenClaw / Hermes) live and unit-tested, stream JSON normalized at the front-end, `Conversation` is bound to its engine, missing CLIs are honestly marked, every tab is gated by the same availability check.
+- **Multi-agent cockpit** (W1-W3): hardcoded `cli: "claude"` removed, six adapter entries (Claude / Codex / Gemini / OpenCode / OpenClaw / Hermes) are wired into the registry, stream JSON is normalized at the front-end, `Conversation` is bound to its engine, missing CLIs are marked, and every tab is gated by the same availability check. OpenCode's protocol is still awaiting on-device verification.
 - **Loom as product** (W1-W3): 3-column layout, right-rail LoomPanel, tool cards render real diffs, artifact tally shared between the live panel and the conversation summary card.
 
-Type-check, Vite build, and `cargo test --lib` all pass cleanly. The next push is W4 polish and on-device validation with real users — see [`docs/plan/`](./docs/plan/README.md) for the full breakdown.
+The local front-end type-check, test suite, and Vite build pass. Rust and desktop packaging are validated in CI against the pinned toolchain; the next push is W4 polish and on-device validation with real users.
 
 ---
 
 ## Documentation
 
-- [`docs/plan/README.md`](./docs/plan/README.md) — current two-axis roadmap, what shipped and what's next
-- [`docs/plan/multi-agent-cockpit.md`](./docs/plan/multi-agent-cockpit.md) — the multi-CLI routing plan in depth
-- [`docs/plan/the-loom-as-product.md`](./docs/plan/the-loom-as-product.md) — the Loom panel design rationale
-- [`docs/planning/ADJUSTMENT_PLAN.md`](./docs/planning/ADJUSTMENT_PLAN.md) — broader cross-stack adjustment plan (P0/P1)
-- [`docs/reviews/full-audit-report-2026-06-04.md`](./docs/reviews/full-audit-report-2026-06-04.md) — the full-stack audit that seeded both plans
+- [`docs/plan/2026-06-05-product-assessment.md`](./docs/plan/2026-06-05-product-assessment.md) — product assessment and priorities
+- [`docs/plan/2026-06-06-e2e-runbook.md`](./docs/plan/2026-06-06-e2e-runbook.md) — desktop E2E runbook
+- [`docs/reviews/full-audit-report-2026-06-10.md`](./docs/reviews/full-audit-report-2026-06-10.md) — the latest tracked full-stack audit
 
 ---
 
@@ -261,7 +259,7 @@ Issues and PRs are welcome. A few things that will save everyone time:
 
 ## License
 
-Not yet chosen. Until a `LICENSE` file lands, treat this as "all rights reserved" by the author.
+IntentLoom is released under the [MIT License](./LICENSE).
 
 ---
 
