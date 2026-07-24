@@ -5,6 +5,35 @@ use tauri::{command, AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
+const ALLOWED_CHILD_ENV_KEYS: &[&str] = &[
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_SMALL_FAST_MODEL",
+    "CODEX_API_KEY",
+    "GEMINI_API_KEY",
+    "GEMINI_MODEL",
+    "GOOGLE_API_KEY",
+    "GOOGLE_GEMINI_BASE_URL",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "OPENROUTER_API_KEY",
+];
+
+fn apply_allowed_env(cmd: &mut Command, env: &HashMap<String, String>) {
+    for (key, value) in env {
+        if ALLOWED_CHILD_ENV_KEYS.contains(&key.as_str()) {
+            cmd.env(key, value);
+        } else {
+            tracing::warn!(key, "Ignoring unsupported child environment variable");
+        }
+    }
+}
+
 use crate::agents::{find_adapter, StreamOptions};
 use crate::agents::resolve_binary;
 
@@ -134,7 +163,7 @@ fn apply_model_to_command(cmd: &mut Command, cli: &str, model: Option<&str>) {
 /// mode / reasoning flags make it onto the wire.
 fn build_command(cli: &str, prompt: &str, opts: &StreamOptions) -> Result<Command, String> {
     let adapter = find_adapter(cli).ok_or_else(|| format!("Unknown AI CLI: {cli}"))?;
-    let adapter_cmd = adapter.build_stream_command(prompt, opts);
+    let mut adapter_cmd = adapter.build_stream_command(prompt, opts);
 
     // The adapter's `build_stream_command` constructs
     // `Command::new(self.binary())` with just the bare name (e.g.
@@ -154,6 +183,18 @@ fn build_command(cli: &str, prompt: &str, opts: &StreamOptions) -> Result<Comman
         // No resolution; fall through with the adapter's original
         // Command so the spawn error stays informative
         // ("No such file or directory" against the bare name).
+        if !opts.env.is_empty() {
+            apply_allowed_env(&mut adapter_cmd, &opts.env);
+        }
+        if let Some(cwd) = opts.cwd.as_deref().filter(|s| !s.is_empty()) {
+            let path = std::path::Path::new(cwd);
+            if !path.is_dir() {
+                return Err(format!(
+                    "AI CLI error: 工作目录不可用: {cwd} (文件夹可能已被删除)"
+                ));
+            }
+            adapter_cmd.current_dir(path);
+        }
         return Ok(adapter_cmd);
     };
 
@@ -206,9 +247,7 @@ fn build_command(cli: &str, prompt: &str, opts: &StreamOptions) -> Result<Comman
     // a DeepSeek / Bailian / custom provider can redirect the
     // CLI to a different endpoint without the user touching
     // their shell profile. An empty map is a no-op.
-    if !opts.env.is_empty() {
-        cmd.envs(&opts.env);
-    }
+    apply_allowed_env(&mut cmd, &opts.env);
     cmd.stdin(std::process::Stdio::null());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
@@ -760,6 +799,24 @@ mod tests {
         // parent's CWD, which is what the hook is asserting
         // by passing empty.
         assert!(cmd.as_std().get_current_dir().is_none());
+    }
+
+    #[test]
+    fn allowed_child_environment_excludes_process_control_keys() {
+        let mut env = HashMap::new();
+        env.insert("OPENAI_API_KEY".to_string(), "test-key".to_string());
+        env.insert("PATH".to_string(), "/tmp".to_string());
+        let mut cmd = Command::new("claude");
+        apply_allowed_env(&mut cmd, &env);
+        let vars: Vec<(String, String)> = cmd
+            .as_std()
+            .get_envs()
+            .filter_map(|(key, value)| {
+                Some((key.to_string_lossy().into_owned(), value?.to_string_lossy().into_owned()))
+            })
+            .collect();
+        assert!(vars.iter().any(|(key, value)| key == "OPENAI_API_KEY" && value == "test-key"));
+        assert!(!vars.iter().any(|(key, _)| key == "PATH"));
     }
 
     #[test]

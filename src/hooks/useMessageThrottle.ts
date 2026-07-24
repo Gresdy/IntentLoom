@@ -9,7 +9,7 @@ export function useMessageThrottle<T>(
   const [value, setValue] = useState<T>(initialValue);
   const [throttledValue, setThrottledValue] = useState<T>(initialValue);
   const pendingValue = useRef<T | null>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const updateValue = useCallback((newValue: T) => {
     pendingValue.current = newValue;
@@ -57,7 +57,7 @@ export function useThinkingThrottle(throttleMs: number = 50) {
   const [thinking, setThinking] = useState('');
   const [throttledThinking, setThrottledThinking] = useState('');
   const pendingThinking = useRef('');
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastUpdateRef = useRef<number>(0);
 
   const appendThinking = useCallback((content: string) => {
@@ -107,7 +107,7 @@ export function useThinkingThrottle(throttleMs: number = 50) {
 export function useContentThrottle(throttleMs: number = UPDATE_THROTTLE_MS) {
   const [content, setContent] = useState('');
   const pendingContent = useRef('');
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastUpdateRef = useRef<number>(0);
 
   const appendContent = useCallback((text: string) => {

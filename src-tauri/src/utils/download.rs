@@ -42,8 +42,9 @@ fn download_bytes_with_timeout(
     headers: &[(&str, &str)],
     timeout_secs: u64,
 ) -> Result<Vec<u8>, String> {
+    validate_download_url(url)?;
     let agent = ureq::AgentBuilder::new()
-        .redirects(5)
+        .redirects(0)
         .timeout(std::time::Duration::from_secs(timeout_secs))
         .build();
     let mut request = agent.get(url);
@@ -230,13 +231,40 @@ fn sanitize_relative_subpath(raw: &str) -> Result<PathBuf, String> {
 }
 
 fn is_supported_zip_url(url: &str) -> bool {
-    (url.starts_with("https://") || url.starts_with("http://"))
-        && url
-            .split(['?', '#'])
-            .next()
-            .unwrap_or_default()
-            .to_ascii_lowercase()
-            .ends_with(".zip")
+    let Ok(parsed) = url::Url::parse(url) else {
+        return false;
+    };
+    parsed.scheme() == "https"
+        && parsed.path().to_ascii_lowercase().ends_with(".zip")
+        && is_public_download_host(parsed.host_str().unwrap_or_default())
+}
+
+fn validate_download_url(raw_url: &str) -> Result<(), String> {
+    let parsed = url::Url::parse(raw_url).map_err(|err| format!("下载地址无效: {err}"))?;
+    if parsed.scheme() != "https" {
+        return Err("仅允许通过 HTTPS 下载技能文件".to_string());
+    }
+    if !is_public_download_host(parsed.host_str().unwrap_or_default()) {
+        return Err("下载地址必须指向公开 HTTPS 主机".to_string());
+    }
+    Ok(())
+}
+
+fn is_public_download_host(host: &str) -> bool {
+    let normalized = host.trim_end_matches('.').to_ascii_lowercase();
+    if normalized.is_empty()
+        || normalized == "localhost"
+        || normalized.ends_with(".localhost")
+        || normalized.ends_with(".local")
+        || normalized == "metadata.google.internal"
+    {
+        return false;
+    }
+    match normalized.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(ip)) => !ip.is_private() && !ip.is_loopback() && !ip.is_link_local() && !ip.is_unspecified(),
+        Ok(std::net::IpAddr::V6(ip)) => !ip.is_loopback() && !ip.is_unspecified() && !ip.is_unique_local() && !ip.is_unicast_link_local(),
+        Err(_) => true,
+    }
 }
 
 impl DownloadSource {
@@ -280,8 +308,12 @@ pub fn extract_zip(buf: &[u8], extract_dir: &Path) -> Result<(), String> {
         .canonicalize()
         .unwrap_or_else(|_| extract_dir.to_path_buf());
 
+    const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
+    const MAX_TOTAL_EXTRACT_SIZE: u64 = 200 * 1024 * 1024;
+    let mut total_size = 0_u64;
+
     for i in 0..zip.len() {
-        let file = zip.by_index(i).map_err(|err| err.to_string())?;
+        let mut file = zip.by_index(i).map_err(|err| err.to_string())?;
         let Some(enclosed) = file.enclosed_name() else {
             continue;
         };
@@ -300,13 +332,23 @@ pub fn extract_zip(buf: &[u8], extract_dir: &Path) -> Result<(), String> {
             continue;
         }
 
+        let file_size = file.size();
+        if file_size > MAX_FILE_SIZE {
+            return Err(format!("压缩包中的文件过大: {}", enclosed.display()));
+        }
+        total_size = total_size
+            .checked_add(file_size)
+            .ok_or_else(|| "压缩包解压大小溢出".to_string())?;
+        if total_size > MAX_TOTAL_EXTRACT_SIZE {
+            return Err("压缩包解压后的总大小超过 200 MB".to_string());
+        }
+
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent).map_err(|err| err.to_string())?;
         }
         let mut outfile = fs::File::create(&out_path).map_err(|err| err.to_string())?;
 
-        const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
-        std::io::copy(&mut file.take(MAX_FILE_SIZE), &mut outfile).map_err(|err| err.to_string())?;
+        std::io::copy(&mut file, &mut outfile).map_err(|err| err.to_string())?;
     }
 
     Ok(())
@@ -402,7 +444,7 @@ fn find_preferred_root(extract_dir: &Path, preferred_subpath: &Path) -> Result<O
 
 #[cfg(test)]
 mod tests {
-    use super::{find_skill_root, parse_download_source, DownloadSource};
+    use super::{find_skill_root, is_public_download_host, parse_download_source, DownloadSource};
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -442,6 +484,15 @@ mod tests {
                 url: "https://example.com/files/skill-pack.zip?download=1".to_string(),
             }
         );
+    }
+
+    #[test]
+    fn rejects_non_https_or_private_zip_urls() {
+        assert!(parse_download_source("http://example.com/files/skill-pack.zip").is_err());
+        assert!(parse_download_source("https://127.0.0.1/files/skill-pack.zip").is_err());
+        assert!(!is_public_download_host("localhost"));
+        assert!(!is_public_download_host("10.0.0.1"));
+        assert!(is_public_download_host("example.com"));
     }
 
     #[test]

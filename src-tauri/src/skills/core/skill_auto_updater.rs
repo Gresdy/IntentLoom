@@ -39,13 +39,13 @@ struct AutoUpdatePayload {
     ran_at: String,
 }
 
-pub fn start<R: Runtime>(app: AppHandle<R>, store: Arc<SkillStore>) {
+pub fn start(app: tauri::AppHandle, store: Arc<SkillStore>) {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(INITIAL_DELAY).await;
         loop {
             if let Some(interval) = read_interval(&store) {
                 if is_due(read_last_run(&store), interval) {
-                    match run_round(&app, &store).await {
+                    match run_round_inner(app.clone(), &store).await {
                         Ok(()) => record_round_completion(&app, &store),
                         Err(err) => {
                             log::warn!("skill auto-updater: round errored: {err}")
@@ -66,7 +66,7 @@ pub fn start<R: Runtime>(app: AppHandle<R>, store: Arc<SkillStore>) {
 /// Called by both the background scheduler and the tray's manual
 /// "Check for skill updates" so the user-visible bookkeeping stays in sync
 /// regardless of which surface triggered the check.
-pub fn record_round_completion<R: Runtime>(app: &AppHandle<R>, store: &SkillStore) {
+pub fn record_round_completion(app: &tauri::AppHandle, store: &SkillStore) {
     let now = Utc::now();
     write_last_run(store, now);
     let payload = AutoUpdatePayload {
@@ -127,6 +127,14 @@ fn is_due(last_run: Option<DateTime<Utc>>, interval: Duration) -> bool {
 }
 
 async fn run_round<R: Runtime>(_app: &AppHandle<R>, store: &Arc<SkillStore>) -> Result<(), String> {
+    let store_for_task = store.clone();
+    tauri::async_runtime::spawn_blocking(move || run_round_blocking(&store_for_task))
+        .await
+        .map_err(|err| format!("join error: {err}"))??;
+    Ok(())
+}
+
+async fn run_round_inner(_app: tauri::AppHandle, store: &Arc<SkillStore>) -> Result<(), String> {
     let store_for_task = store.clone();
     tauri::async_runtime::spawn_blocking(move || run_round_blocking(&store_for_task))
         .await

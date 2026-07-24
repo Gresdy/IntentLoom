@@ -11,6 +11,7 @@ import {
   resolveReasoningId,
   useComposerPrefsStore,
 } from "@/stores/useComposerPrefsStore";
+import { getModeSpec } from "@/lib/cliCapabilities";
 import { resolveOpenclawSession } from "@/stores/useOpenclawSessionStore";
 import { buildArtifactSummary, hasAnyArtifact } from "@/lib/artifactTally";
 import type { ArtifactTally } from "@/lib/artifactTally";
@@ -1184,7 +1185,7 @@ export function useReasonixController() {
   );
 
   const pickWorkspace = useCallback(async (): Promise<string | null> => {
-    // Backend (commands::projects::pick_workspace) pops the native
+    // The registered cc-switch directory command pops the native
     // folder picker via tauri-plugin-dialog and returns
     // `Option<String>`. `None` means the user cancelled the dialog
     // (or no workspace is selectable on this platform), and we
@@ -1193,7 +1194,9 @@ export function useReasonixController() {
     // state (so StatusBar / TopBar re-render immediately) and
     // localStorage (so the choice survives an app restart).
     try {
-      const picked = await invoke<string | null>("pick_workspace");
+      const picked = await invoke<string | null>("cc_switch_pick_directory", {
+        defaultPath: cwd ?? null,
+      });
       if (typeof picked === "string" && picked.length > 0) {
         setCwd(picked);
         writePersistedCwd(picked);
@@ -1243,21 +1246,20 @@ export function useReasonixController() {
     [providers, switchProvider, setCurrentApp],
   );
 
-  const setPlanFn = useCallback((_v: boolean) => {
-    // TODO: 实现 Plan 模式
-  }, []);
-
-  const setBypassFn = useCallback((_v: boolean) => {
-    // Intentional no-op: the "Bypass permissions" toggle was a
-    // 0.x demo of the StatusBar API and never made it into the
-    // product. The StatusBar no longer renders the toggle, and
-    // `setBypass` is no longer exported from this controller. We
-    // keep the local binding only because removing it would force
-    // a downstream call-site change in any future migration —
-    // touching that is out of scope for T1. The next person who
-    // comes back to clean this up can delete the binding and the
-    // return key together.
-  }, []);
+  const setPlanFn = useCallback(
+    (enabled: boolean) => {
+      const cli = useModelStore.getState().currentApp as AppId;
+      const modeSpec = getModeSpec(cli);
+      if (!modeSpec) return;
+      const mode = enabled
+        ? modeSpec.options.some((option) => option.id === "plan")
+          ? "plan"
+          : modeSpec.defaultId
+        : modeSpec.defaultId;
+      useComposerPrefsStore.getState().setMode(cli, mode);
+    },
+    [],
+  );
 
   const answerQuestion = useCallback(
     (_id: string, _choices: string[]) => {},
@@ -1275,7 +1277,6 @@ export function useReasonixController() {
     approve,
     answerQuestion,
     setPlan: setPlanFn,
-    setBypass: setBypassFn,
     newSession,
     listSessions,
     resumeSession,

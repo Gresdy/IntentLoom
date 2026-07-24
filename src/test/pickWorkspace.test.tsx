@@ -80,7 +80,9 @@ describe("reasonixAdapter.pickWorkspace", () => {
       picked = await c.pickWorkspace();
     });
 
-    expect(invokeMock).toHaveBeenCalledWith("pick_workspace");
+    expect(invokeMock).toHaveBeenCalledWith("cc_switch_pick_directory", {
+      defaultPath: null,
+    });
     expect(picked).toBeNull();
     expect(c.getCwd()).toBeUndefined();
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
@@ -107,7 +109,7 @@ describe("reasonixAdapter.pickWorkspace", () => {
     const c = mountController();
 
     expect(c.getCwd()).toBe("/Users/me/code/persisted");
-    // We never invoked pick_workspace in this test, so the spy
+    // We never invoked the directory picker in this test, so the spy
     // should still be untouched.
     expect(invokeMock).not.toHaveBeenCalled();
     c.unmount();

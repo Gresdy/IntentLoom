@@ -87,25 +87,30 @@ async fn update_tray_menu(
     }
 }
 
-/// Stub: cc-switch 在 `commands/settings.rs` 和 `commands/lightweight.rs` 里
-/// 通过 `crate::refresh_tray_menu` 调用入口重建托盘菜单。IntentLoom 没有 cc-switch
-/// 的 tray icon 持久化场景，用 no-op 占位即可。
 #[allow(dead_code)]
-pub fn refresh_tray_menu(_app: &tauri::AppHandle, _state: &crate::cc_switch::store::AppState) -> bool { true }
+pub fn refresh_tray_menu(app: &tauri::AppHandle, _state: &crate::cc_switch::store::AppState) -> bool {
+    tray::refresh_tray_menu(app);
+    app.tray_by_id(tray::TRAY_ID).is_some()
+}
 
-/// Stub: cc-switch 在 `commands/settings.rs` 用 `crate::quit_app` 做退出前的清理钩子。
-/// IntentLoom 不需要 cc-switch 自己的退出流程，no-op 即可。
 #[allow(dead_code)]
-pub fn quit_app(_app: &tauri::AppHandle) { }
+pub fn quit_app(app: &tauri::AppHandle) {
+    app.exit(0);
+}
 
-/// Stub: cc-switch 的轻量模式用 `set_tray_icon_enabled` 控制托盘显示。
-/// IntentLoom 不用此路径。
 #[allow(dead_code)]
-pub fn set_tray_icon_enabled(_app: &tauri::AppHandle, _enabled: bool) { }
+pub fn set_tray_icon_enabled(app: &tauri::AppHandle, enabled: bool) {
+    if let Some(tray) = app.tray_by_id(tray::TRAY_ID) {
+        if let Err(error) = tray.set_visible(enabled) {
+            log::warn!("设置托盘图标可见性失败: {error}");
+        }
+    }
+}
 
-/// Stub: cc-switch 在多种路径下调度 `schedule_tray_refresh` 以重建菜单。
 #[allow(dead_code)]
-pub fn schedule_tray_refresh(_app: &tauri::AppHandle) { }
+pub fn schedule_tray_refresh(app: &tauri::AppHandle) {
+    tray::schedule_tray_refresh(app);
+}
 
 /// Stub: cc-switch 的 `restart_process` 命令调用的底层实现。
 /// IntentLoom 由 Tauri 自带的 updater 负责重启，无需 cc-switch 自己的逻辑。

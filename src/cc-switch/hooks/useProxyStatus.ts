@@ -23,7 +23,7 @@ export function useProxyStatus() {
   // 查询状态（自动轮询）
   const { data: status, isLoading } = useQuery({
     queryKey: ["proxyStatus"],
-    queryFn: () => invoke<ProxyStatus>("get_proxy_status"),
+    queryFn: () => invoke<ProxyStatus>("cc_switch_get_proxy_status"),
     // 仅在服务运行时轮询
     refetchInterval: (query) => (query.state.data?.running ? 2000 : false),
     // 保持之前的数据，避免闪烁
@@ -33,13 +33,13 @@ export function useProxyStatus() {
   // 查询各应用接管状态
   const { data: takeoverStatus } = useQuery({
     queryKey: ["proxyTakeoverStatus"],
-    queryFn: () => invoke<ProxyTakeoverStatus>("get_proxy_takeover_status"),
+    queryFn: () => invoke<ProxyTakeoverStatus>("cc_switch_get_proxy_takeover_status"),
     placeholderData: (previousData) => previousData,
   });
 
   // 启动服务器（总开关：仅启动服务，不接管）
   const startProxyServerMutation = useMutation({
-    mutationFn: () => invoke<ProxyServerInfo>("start_proxy_server"),
+    mutationFn: () => invoke<ProxyServerInfo>("cc_switch_start_proxy_server"),
     onSuccess: (info) => {
       toast.success(
         t("proxy.server.started", {

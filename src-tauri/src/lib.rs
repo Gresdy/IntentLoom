@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 // `Manager` trait 提供 .manage() / .state() 等 runtime 接口, tauri::App <R> 与 tauri::AppHandle 都实现它
+use tauri::tray::TrayIconBuilder;
 use tauri::Manager;
 
 mod commands;
@@ -76,7 +77,22 @@ pub fn run() {
                     )));
                 }
             };
+            let app_handle = app.handle().clone();
+            let menu = cc_switch::tray::create_tray_menu(&app_handle, &state)
+                .map_err(|error| std::io::Error::other(error.to_string()))?;
             app.manage(state);
+
+            let mut tray = TrayIconBuilder::with_id(cc_switch::tray::TRAY_ID)
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| {
+                    cc_switch::tray::handle_tray_menu_event(app, event.id().as_ref());
+                });
+            if let Some(icon) = app.default_window_icon().cloned() {
+                tray = tray.icon(icon);
+            }
+            tray.build(&app_handle)
+                .map_err(|error| std::io::Error::other(error.to_string()))?;
             tracing::info!("cc-switch::init::setup() 完成, AppState 已 manage()");
             Ok(())
         })
@@ -374,10 +390,6 @@ pub fn run() {
             commands::permissions::deny_permission,
             commands::permissions::list_pending_permissions,
             commands::permissions::request_permission,
-            // proxy
-            commands::proxy::get_proxy_status,
-            commands::proxy::start_proxy,
-            commands::proxy::stop_proxy,
             // experts
             commands::experts::list_experts,
             commands::experts::create_expert,
