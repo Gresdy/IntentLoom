@@ -81,7 +81,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@unocss/reset": "^66.7.5",
-    "@vitejs/plugin-react": "^4.3.0",
+    "@vitejs/plugin-react": "^6.0.4",
     "autoprefixer": "^10.4.20",
     "jsdom": "^25.0.0",
     "postcss": "^8.5.22",
