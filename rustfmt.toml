@@ -1,0 +1,9 @@
+# rustfmt is intentionally not enforced for these paths — they are vendored
+# from upstream (cc-switch / skills / agents) and stable across releases.
+# Reformatting on a routine `cargo fmt` run would bury semantic changes
+# in whitespace-only diffs.
+ignore = [
+    "src-tauri/src/skills",
+    "src-tauri/src/agents",
+    "src-tauri/src/cc_switch",
+]

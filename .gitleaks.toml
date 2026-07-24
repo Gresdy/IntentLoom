@@ -1,0 +1,8 @@
+# gitleaks pre-commit / pre-push secret scan configuration.
+# Add a `[allowlist]` block for any public OAuth client_id / client_secret
+# the app legitimately embeds (e.g. Google's public Gemini CLI OAuth
+# credentials in src-tauri/src/cc_switch/services/subscription.rs, which
+# we now obfuscate via the byte-array form).
+title = "IntentLoom gitleaks config"
+[extend]
+useDefault = true

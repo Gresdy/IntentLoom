@@ -2,7 +2,9 @@
   "$schema": "https://schema.tauri.app/config/2",
   "identifier": "default",
   "description": "Default capabilities for IntentLoom",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "deep-link:default",
@@ -14,9 +16,7 @@
     "log:default",
     "opener:allow-open-path",
     "opener:allow-open-url",
-    "opener:allow-reveal-item-in-dir",
     "process:allow-exit",
-    "process:allow-restart",
     "store:allow-clear",
     "store:allow-delete",
     "store:allow-entries",

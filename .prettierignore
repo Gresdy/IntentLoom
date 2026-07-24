@@ -1,0 +1,14 @@
+# auto-generated schemas (Tauri regenerates these on build)
+src-tauri/gen/
+# vendored module trees that prettier would churn on every run
+src-tauri/src/skills/
+src-tauri/src/agents/
+src-tauri/src/cc_switch/
+# lockfiles
+package-lock.json
+src-tauri/Cargo.lock
+# build artefacts
+dist/
+src-tauri/target/
+# historical docs / screenshots
+docs/

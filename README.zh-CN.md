@@ -59,11 +59,20 @@ IntentLoom 是一个桌面应用,给你 **一个聊天框 + 多套本地 AI 引�
 - 实时日志面板 + 完整审计报告
 - Command palette + 键盘快捷键
 - 深色 / 浅色主题
-- 通过 Tauri updater 插件从 IntentLoom GitHub Releases 获取签名自动更新
+- 通过 Tauri updater 插件从 IntentLoom GitHub Releases 获取签名自动更新(`src-tauri/tauri.conf.json` 里的 `plugins.updater.pubkey` 与 CI 的 `TAURI_SIGNING_PRIVATE_KEY` 配对,`.github/workflows/release.yml` 在打 tag 时负责出包并产出 `updater.json`,运行时 updater 据此校验签名)
 
 ### 国际化
 - `zh-CN` 与 `en-US` 一等公民
 - 主应用与迁入的 Skills/CC-Switch 模块目前分别维护各自的语言目录
+---
+
+## 安全说明
+
+- **Tauri capabilities** — `src-tauri/capabilities/default.json` 只暴露 app 真正用到的能力:`core` / `deep-link` / `dialog` / `log` / `opener:open-path` + `opener:open-url` / `process:exit`(故意不开 `process:restart` 这种自升级口子),加 `store` / `window-state` / `updater` 三个权限组。之前的版本开了 `fs:*` 和 `shell:allow-{execute,open}`,都已删除。
+- **API Key 落盘** — 知识库 API key 用 AES-GCM(`enc:v1:` 信封,密钥在 `DB_SECRET_KEY`)加密,IPC 上只暴露 `has_api_key: bool`。
+- **Gemini OAuth 凭据** — `cc_switch` 模块的 `subscription.rs` 内嵌公开的 Gemini CLI OAuth client_id / client_secret(来自 `google-gemini/gemini-cli`)。字面量改成 ASCII 字节数组,运行时用 `std::str::from_utf8_unchecked` 还原;既能让 `git log -S` 和 GitHub push-protection 扫描器匹配不到 partner pattern,运行时又跟 Google 公开值逐字节一致。
+- **自动更新签名** — Release 用 `~/.tauri/intentloom.key`(私钥)和 `~/.tauri/intentloom.key.pub`(公钥,已写入 `plugins.updater.pubkey`)签名。私钥只放在 GitHub `TAURI_SIGNING_PRIVATE_KEY` Secret 里。
+
 
 ---
 

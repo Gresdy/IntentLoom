@@ -1,0 +1,11 @@
+# Default owner for everything in the repo.
+*       @Gresdy
+
+# Tauri / Rust surface — extra scrutiny.
+/src-tauri/      @Gresdy
+/src-tauri/src/commands/   @Gresdy
+/src-tauri/capabilities/   @Gresdy
+/src-tauri/tauri.conf.json @Gresdy
+
+# Frontend state stores (zustand).
+/src/stores/     @Gresdy

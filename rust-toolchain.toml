@@ -1,0 +1,6 @@
+# Pin the toolchain so the release workflow and developer machines build
+# the same thing. Bump this together with src-tauri/Cargo.toml's
+# tauri-build / tauri requirements.
+[toolchain]
+channel = "1.82.0"
+profile = "minimal"
