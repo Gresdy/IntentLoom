@@ -246,8 +246,9 @@ export function buildTestDemoItems(): ReasonixItem[] {
 export function seedTestDemo(): ReasonixItem[] {
   const items = buildTestDemoItems();
   useTestItemsStore.getState().setInjectedItems(items);
-  // dev log so the integration test can verify the call landed
-  if (typeof window !== "undefined") {
+  // Guarded by import.meta.env.DEV so the dev / Playwright
+  // verification log is tree-shaken from production builds.
+  if (import.meta.env.DEV && typeof window !== "undefined") {
     // eslint-disable-next-line no-console
     console.log("[seedTestDemo] injected", items.length, "items");
   }

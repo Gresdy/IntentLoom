@@ -27,6 +27,7 @@ import { Onboarding } from "./components/Onboarding";
 import { Resizer } from "./components/Resizer";
 import { useThemeStore } from "./stores/useThemeStore";
 import { useModelStore } from "./stores/useModelStore";
+import { safeStorageGet, safeStorageSet } from "./lib/safeLocalStorage";
 import { seedProvidersFromPresets } from "./config/providerPresets";
 import type { AppId } from "./shared/types";
 import { useConversationStore, selectCurrentConversationId } from "./stores/conversationStore";
@@ -163,15 +164,17 @@ export const ReasonixApp: React.FC = () => {
   // default baked into globals.css; the [240, 520] range keeps the
   // chat area usable on laptop screens.
   const [loomPanelWidth, setLoomPanelWidth] = useState<number>(() => {
-    if (typeof window === "undefined") return 320;
-    const raw = window.localStorage.getItem("intentloom.loomWidth");
+    // `safeStorageGet` swallows the SecurityError / disabled-storage
+    // failure modes so this lazy initializer never throws and
+    // crashes the app at mount time.
+    const raw = safeStorageGet("intentloom.loomWidth");
     const n = raw ? Number.parseInt(raw, 10) : NaN;
     return Number.isFinite(n) && n >= 240 && n <= 520 ? n : 320;
   });
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("intentloom.loomWidth", String(loomPanelWidth));
-    }
+    // Best-effort persist: failure (quota / disabled storage) is
+    // non-fatal; the next mount will just fall back to 320.
+    safeStorageSet("intentloom.loomWidth", String(loomPanelWidth));
   }, [loomPanelWidth]);
 
   // T10: seed `useModelStore.providers` from the bundled
@@ -185,14 +188,46 @@ export const ReasonixApp: React.FC = () => {
   // === Dev/test injection: ?demo=1 in the URL auto-injects the
   // synthetic demo conversation on mount, so screenshots /
   // Playwright runs can verify message rendering without going
-  // through the real CLI streaming path. Reads window.location
-  // once on mount and never again (no re-runs on URL change).
+  // through the real CLI streaming path.
+  //
+  // Safety rails (v2):
+  //  - We never overwrite a real conversation silently. If the
+  //    active transcript already has items, we refuse the inject
+  //    and surface a toast so the user understands why nothing
+  //    happened. Pass `?demo=1&force=1` to bypass (Playwright only).
+  //  - We always toast either way so the behaviour is observable.
+  //  - We mirror the latest items-length into a ref so the
+    //    once-on-mount effect below can read it without re-running
+    //    on every controller update.
+  const itemsLenRef = useRef(0);
+  itemsLenRef.current = state.items.length;
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get("demo") === "1") {
-      try { clearTestDemo(); seedTestDemo(); } catch (e) { console.error("[demo inject]", e); }
+    if (params.get("demo") !== "1") return;
+    const forced = new URLSearchParams(window.location.search).get("force") === "1";
+    const hasRealConversation = itemsLenRef.current > 0;
+    if (hasRealConversation && !forced) {
+      addToast({
+        type: "warning",
+        message: "当前已有真实对话,示例对话已跳过。要强制覆盖请用 ?demo=1&force=1。",
+        duration: 6000,
+      });
+      return;
     }
+    try {
+      clearTestDemo();
+      seedTestDemo();
+      addToast({
+        type: "info",
+        message: forced ? "已强制注入示例对话" : "已注入示例对话",
+        duration: 3500,
+      });
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[demo inject]", e);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // URL is the source of truth for navigation state: deep links,
   // browser back/forward, and reload all stay in sync.
@@ -348,16 +383,18 @@ export const ReasonixApp: React.FC = () => {
     // availability is reported separately via `isUnavailable` below.
     const meta = ALL_AGENTS.find((a) => a.id === appId);
     if (meta?.disabled) {
-      window.alert(`${meta.label} 暂未上线。`);
+      addToast({ type: "info", message: `${meta.label} 暂未上线。`, duration: 4000 });
       return;
     }
     // Phase 1.5: if the backend reported the CLI is not installed,
     // surface a clear "which" failure message instead of letting
     // the user click through and get a generic spawn error.
     if (isUnavailable(appId)) {
-      window.alert(
-        `${meta?.label ?? appId} 未在 $PATH 中找到。请安装后刷新。`
-      );
+      addToast({
+        type: "warning",
+        message: `${meta?.label ?? appId} 未在 $PATH 中找到。请安装后刷新。`,
+        duration: 5000,
+      });
       return;
     }
     // 切换agent时清除notices和currentToolCalls，避免报错信息残留

@@ -19,6 +19,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { cn } from "../utils";
+import { readStoredToolOrder } from "../lib/readStoredToolOrder";
 import { useApp } from "../context/AppContext";
 import { CreatePresetDialog } from "./CreatePresetDialog";
 import { RenamePresetDialog } from "./RenamePresetDialog";
@@ -86,8 +87,7 @@ export function Sidebar() {
   useEffect(() => { setOrderedPresets(presets); }, [presets]);
   useEffect(() => { setOrderedProjects(projects); }, [projects]);
   useEffect(() => {
-    const stored = localStorage.getItem("skills-manager:tool-order");
-    const storedOrder: string[] = stored ? JSON.parse(stored) : [];
+    const storedOrder = readStoredToolOrder("skills-manager:tool-order");
     const sorted = [
       ...storedOrder.flatMap((key) => {
         const t = installedCodingTools.find((t) => t.key === key);
@@ -98,8 +98,7 @@ export function Sidebar() {
     setOrderedCodingTools(sorted);
   }, [installedCodingTools]);
   useEffect(() => {
-    const stored = localStorage.getItem("skills-manager:lobster-tool-order");
-    const storedOrder: string[] = stored ? JSON.parse(stored) : [];
+    const storedOrder = readStoredToolOrder("skills-manager:lobster-tool-order");
     const sorted = [
       ...storedOrder.flatMap((key) => {
         const t = installedLobsterTools.find((t) => t.key === key);

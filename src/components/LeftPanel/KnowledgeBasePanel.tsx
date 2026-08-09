@@ -19,6 +19,7 @@ import {
 import { useKnowledgeBaseStore } from "../../stores/knowledgeBaseStore";
 import type { KnowledgeBase, KbDocument } from "../../shared/types";
 import { useToastStore } from "../../lib/useToast";
+import { ConfirmDialog } from "@/components/common/Dialog";
 
 const fmtSize = (n: number) => {
   if (n < 1024) return `${n} B`;
@@ -58,6 +59,18 @@ export function KnowledgeBasePanel() {
     clearAsk,
   } = useKnowledgeBaseStore();
   const addToast = useToastStore((s) => s.addToast);
+  // Replaces the two synchronous `window.confirm()` calls in
+    // `handleDeleteKb` / `handleDeleteDoc` with a single
+    // in-project modal so the destructive action picks up
+    // brand chrome + Esc cancel instead of blocking the
+    // renderer thread. We pre-validate the delete via the
+    // click handler, then open the modal — the actual delete
+    // is dispatched from the modal's onConfirm.
+  const [pendingDelete, setPendingDelete] = useState<
+    | { kind: "kb"; name: string; id: string }
+    | { kind: "doc"; name: string; id: string }
+    | null
+  >(null);
 
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -90,15 +103,17 @@ export function KnowledgeBasePanel() {
     }
   };
 
-  const handleDeleteKb = async (kb: KnowledgeBase) => {
-    if (
-      !window.confirm(`确定删除知识库「${kb.name}」？所有文档与向量将被清除。`)
-    ) {
-      return;
-    }
+  const handleDeleteKb = (kb: KnowledgeBase) => {
+    setPendingDelete({ kind: "kb", name: kb.name, id: kb.id });
+  };
+
+  const runDeleteKb = async () => {
+    if (!pendingDelete || pendingDelete.kind !== "kb") return;
+    const id = pendingDelete.id;
+    const name = pendingDelete.name;
     try {
-      await deleteBase(kb.id);
-      addToast({ type: "success", message: `已删除 ${kb.name}` });
+      await deleteBase(id);
+      addToast({ type: "success", message: `已删除 ${name}` });
     } catch (e) {
       addToast({ type: "error", message: `删除失败：${e}` });
     }
@@ -130,12 +145,17 @@ export function KnowledgeBasePanel() {
     }
   };
 
-  const handleDeleteDoc = async (doc: KbDocument) => {
-    if (!window.confirm(`确定删除「${doc.name}」？相关向量会被一起清理。`))
-      return;
+  const handleDeleteDoc = (doc: KbDocument) => {
+    setPendingDelete({ kind: "doc", name: doc.name, id: doc.id });
+  };
+
+  const runDeleteDoc = async () => {
+    if (!pendingDelete || pendingDelete.kind !== "doc") return;
+    const id = pendingDelete.id;
+    const name = pendingDelete.name;
     try {
-      await deleteDocument(doc.id);
-      addToast({ type: "success", message: `已删除 ${doc.name}` });
+      await deleteDocument(id);
+      addToast({ type: "success", message: `已删除 ${name}` });
     } catch (e) {
       addToast({ type: "error", message: `删除失败：${e}` });
     }
@@ -448,6 +468,26 @@ export function KnowledgeBasePanel() {
           }}
         />
       )}
+      <ConfirmDialog
+        isOpen={pendingDelete !== null}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={async () => {
+          const kind = pendingDelete?.kind;
+          setPendingDelete(null);
+          if (kind === "kb") await runDeleteKb();
+          else if (kind === "doc") await runDeleteDoc();
+        }}
+        title={pendingDelete?.kind === "kb" ? "删除知识库" : "删除文档"}
+        message={
+          pendingDelete
+            ? pendingDelete.kind === "kb"
+              ? `确定删除知识库「${pendingDelete.name}」？所有文档与向量将被清除。`
+              : `确定删除「${pendingDelete.name}」？相关向量会被一起清理。`
+            : ""
+        }
+        confirmText="删除"
+        variant="danger"
+      />
     </div>
   );
 }

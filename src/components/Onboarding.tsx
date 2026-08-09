@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, type ComponentType } from "react";
 import { X, PanelLeft, MessageSquare, Layers, LayoutGrid, ArrowRight } from "lucide-react";
+import { safeStorageGet, safeStorageSet } from "@/lib/safeLocalStorage";
 
 // One-time, post-install tour that walks the user past the four
 // primary areas (sidebar, chat, loom, tools). Once dismissed we
@@ -36,15 +37,12 @@ export function Onboarding() {
   const tourRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (window.localStorage.getItem(STORAGE_KEY)) return;
+    if (safeStorageGet(STORAGE_KEY)) return;
     setOpen(true);
   }, []);
 
   const dismiss = useCallback(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(STORAGE_KEY, "1");
-    }
+    safeStorageSet(STORAGE_KEY, "1");
     setOpen(false);
   }, []);
 

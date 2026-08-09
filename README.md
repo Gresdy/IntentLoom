@@ -25,7 +25,7 @@ Most "AI IDE" products try to be the model. IntentLoom is for people who already
 Two things drove the design:
 
 1. **Multi-CLI routing that doesn't lie.** Switching the top tab actually changes which binary runs your prompt. CLIs that are not on `PATH` are visibly marked as unavailable — no fake "connected" state.
-2. **A chat box alone is not a product.** The welcome screen promises "weave the chaos of an idea into a clear product." A bare chat transcript does not deliver on that. The right side of the app is a permanent **Loom panel** that always shows: what you asked, what the AI is planning, which tools it is invoking, and what artifacts it has produced.
+2. **A chat box alone is not a product.** The welcome screen now surfaces the 6 local CLIs and their availability, with a one-liner: "one chat box, many local engines — pick a tab on top, the same box talks to it." A bare chat transcript still does not deliver on that, so the right side of the app is a permanent **Loom panel** that always shows: what you asked, what the AI is planning, which tools it is invoking, and what artifacts it has produced.
 
 ---
 
@@ -253,7 +253,7 @@ Issues and PRs are welcome. A few things that will save everyone time:
 - One PR per change, scoped tightly.
 - Touch the matching test when you touch an adapter, a parser, or a store. The `vitest` suite and the per-adapter `cargo test` are the only thing standing between a refactor and silent regression.
 - If you change a CLI's flags, run it on a real install with `--help` first and update the adapter test in the same commit.
-- Keep the Loom metaphor honest: the welcome screen promises "weave"; the product should keep earning that promise.
+- Keep the Loom panel and multi-CLI routing aligned with what the README describes — the 6-CLI status row on the welcome screen, the "not installed" gating on the top tabs, the artifact tally on the right Loom panel. Any of those drifting from the actual behavior breaks the user's trust in the product as a whole.
 
 ---
 

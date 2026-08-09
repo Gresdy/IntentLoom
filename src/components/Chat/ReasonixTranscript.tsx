@@ -26,6 +26,7 @@ import { FileChangePreview, type FileChange } from "./FileChangePreview";
 import { PermissionCard } from "./PermissionCard";
 import { AgentBadge, getAgentMeta } from "./AgentBadge";
 import { useMessageStore } from "@/stores/messageStore";
+import { useAgentStore, type AgentInfo } from "@/lib/useAgents";
 import { useAutoScroll } from "@/hooks/useAutoScroll";
 import { usePendingConfirmationsRecovery } from "@/hooks/usePendingConfirmationsRecovery";
 import { formatMessageTime } from "@/chat/formatMessageTime";
@@ -201,6 +202,18 @@ export function Transcript({ items, onPrompt, onNewChat, onPickWorkspace, onSeed
   };
 
   if (items.length === 0) {
+  const agents: AgentInfo[] = useAgentStore((s) => s.agents);
+  const ready = agents.filter((a) => a.available).length;
+  const totalKnown = agents.length;
+  const registryLoaded = totalKnown > 0;
+    const allClis = [
+      { id: "claude",   label: "Claude Code" },
+      { id: "codex",    label: "Codex" },
+      { id: "gemini",   label: "Gemini CLI" },
+      { id: "opencode", label: "OpenCode" },
+      { id: "openclaw", label: "OpenClaw" },
+      { id: "hermes",   label: "Hermes" },
+    ];
     return (
       <div className="welcome">
         <div
@@ -210,17 +223,49 @@ export function Transcript({ items, onPrompt, onNewChat, onPickWorkspace, onSeed
           I
         </div>
         <h1 className="welcome__title">IntentLoom</h1>
-        <p className="welcome__tag">将混沌的想法编织成清晰的产品</p>
+        <p className="welcome__tag">
+          一个聊天框，多套本地引擎 — 在顶部 tab 切换，聊天框始终是同一个。
+        </p>
+        <div className="welcome__clis" aria-label="本地 CLI 引擎就绪状态">
+          {allClis.map((cli) => {
+            const info = agents.find((a) => a.id === cli.id);
+            const status: "ready" | "missing" | "unknown" = info
+              ? (info.available ? "ready" : "missing")
+              : "unknown";
+            const dot = status === "ready" ? "ok" : status === "missing" ? "off" : "idle";
+            const tip = status === "ready"
+              ? `${cli.label} 已就绪`
+              : status === "missing"
+                ? `${cli.label} 未安装或不可用`
+                : `${cli.label} 正在检测`;
+            return (
+              <span
+                key={cli.id}
+                className={`welcome__cli welcome__cli--${status}`}
+                title={tip}
+                data-testid={`welcome-cli-${cli.id}`}
+              >
+                <span className={`welcome__cli-dot welcome__cli-dot--${dot}`} />
+                {cli.label}
+              </span>
+            );
+          })}
+        </div>
+        <div className="welcome__cli-summary">
+          {registryLoaded
+            ? `${ready}/${totalKnown} 个引擎已就绪 · 未安装的会在顶部 tab 标"未安装"，点不动`
+            : "正在检测本地引擎…可在「设置 → AI 助手」里手动刷新"}
+        </div>
         <div className="welcome__hints">
           <span><kbd>Ctrl</kbd>+<kbd>K</kbd> 命令面板</span>
           <span><kbd>Tab</kbd> 切换模式</span>
           <span><kbd>Ctrl</kbd>+<kbd>N</kbd> 新会话</span>
         </div>
         <div className="welcome__examples">
-          <button className="welcome__ex" onClick={() => onPrompt?.("帮我解释这段代码的功能")}>帮我解释这段代码的功能</button>
-          <button className="welcome__ex" onClick={() => onPrompt?.("重构这个组件，使其更易维护")}>重构这个组件，使其更易维护</button>
-          <button className="welcome__ex" onClick={() => onPrompt?.("为这个函数编写单元测试")}>为这个函数编写单元测试</button>
-          <button className="welcome__ex" onClick={() => onPrompt?.("分析项目架构，给出改进建议")}>分析项目架构，给出改进建议</button>
+          <button className="welcome__ex" onClick={() => onPrompt?.("帮我用 Claude 重构 src/components/Chat 下的 ReasonixComposer")}>用 Claude 重构 src/components/Chat/ReasonixComposer</button>
+          <button className="welcome__ex" onClick={() => onPrompt?.("在 Codex 里给这段函数写单测")}>让 Codex 给我这段函数写单测</button>
+          <button className="welcome__ex" onClick={() => onPrompt?.("让 Gemini 解释一下这段代码为什么慢")}>让 Gemini 解释一下这段代码为什么慢</button>
+          <button className="welcome__ex" onClick={() => onPrompt?.("在 OpenClaw 里跑一条定时任务，每天早上 9 点总结仓库 issue")}>让 OpenClaw 每天 9 点总结仓库 issue</button>
         </div>
         <div className="welcome__quick-actions" style={{ marginTop: 20, display: "flex", gap: 10 }}>
           {onPickWorkspace && (

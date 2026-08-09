@@ -1238,6 +1238,69 @@ body {
   margin: 6px 0 20px;
 }
 
+/* 6-CLI status pills. Each pill carries a small dot whose colour
+   reflects live availability from the agent registry. The row is
+   the first thing the user sees on an empty transcript, so it
+   has to teach the "multi-CLI cockpit" affordance before any
+   example prompts do. */
+.welcome__clis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  margin: 0 auto 8px;
+  max-width: 520px;
+}
+
+.welcome__cli {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  background: var(--bg-elev);
+  color: var(--fg-dim);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.welcome__cli--ready {
+  border-color: var(--ok, #16a34a);
+  color: var(--fg);
+}
+
+.welcome__cli--missing {
+  color: var(--fg-faint);
+}
+
+.welcome__cli-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.welcome__cli-dot--ok {
+  background: var(--ok, #16a34a);
+}
+
+.welcome__cli-dot--off {
+  background: var(--del, #dc2626);
+}
+
+.welcome__cli-dot--idle {
+  background: var(--fg-faint);
+  opacity: 0.6;
+}
+
+.welcome__cli-summary {
+  font-size: 12px;
+  color: var(--fg-faint);
+  margin-bottom: 20px;
+}
+
 .welcome__hints {
   display: flex;
   gap: 16px;

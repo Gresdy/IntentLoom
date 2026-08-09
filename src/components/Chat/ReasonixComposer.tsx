@@ -5,7 +5,7 @@ import {
   isCaretOnLastLine,
 } from "@/chat/messageHistory";
 import type { KeyboardEvent } from "react";
-import { ArrowUp, Square, AtSign, Paperclip, X } from "lucide-react";
+import { ArrowUp, Square, Paperclip, X } from "lucide-react";
 import type { AppId } from "../../shared/types";
 import type { CliOption } from "../../lib/cliCapabilities";
 import type { ModelOption } from "../../config/cliPresets";
@@ -466,39 +466,10 @@ export function Composer({
              redundant — the hint label calls that out.
              Persisted in localStorage via the zustand
              store so the choice survives an app restart. */}
-        {/* @ 提及 / 附件入口 — UI 占位，下一轮接 selection-reply 与文件选择 */}
-        <div className="composer__entry-points" role="toolbar" aria-label="composer entry points">
-          <button
-            type="button"
-            className="composer__entry"
-            aria-label="插入 @ 提及"
-            title="插入 @ 提及（即将支持）"
-            data-testid="composer-mention"
-            disabled={running || !isAvailable}
-            onClick={() => {
-              setText((prev) => prev + "@");
-              taRef.current?.focus();
-            }}
-          >
-            <AtSign size={14} />
-          </button>
-          <button
-            type="button"
-            className="composer__entry"
-            aria-label="附加文件"
-            title="附加文件（即将支持）"
-            data-testid="composer-attach"
-            disabled={running || !isAvailable}
-            onClick={() => {
-              // Phase 4: UI-only placeholder. Phase 5+ will wire a Tauri
-              // file picker that converts the picked files into the
-              // AionUi AIONUI_FILES_MARKER syntax, then the model can
-              // read them through the workspace mount.
-            }}
-          >
-            <Paperclip size={14} />
-          </button>
-        </div>
+        {/* @ 提及 / 附加文件入口占位已移除 —— 原来这两个按钮挂着
+            "（即将支持）" 的 title，对用户承诺了尚不存在的功能，
+            而且 @ 按钮会把 `@` 追加到输入末尾，行为与"即将支持"
+            自相矛盾。等 selection-reply + 文件选择落地后再加回来。 */}
 
         {cli === "openclaw" && <OpenclawSessionPicker />}
 

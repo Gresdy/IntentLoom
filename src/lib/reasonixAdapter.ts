@@ -389,17 +389,26 @@ export function useReasonixController() {
     // `useTestItemsStore.setInjectedItems` are prepended to the
     // transcript so screenshots / Playwright runs can verify
     // message rendering without a live CLI stream.
+    // useTestItemsStore is a dev/test affordance, so the diagnostic
+    // logs here are guarded by import.meta.env.DEV. Vite tree-shakes
+    // the whole branch in production builds, so the WebView console
+    // stays quiet even if Playwright re-uses the same ?demo=1 URL on
+    // a release build.
+    if (import.meta.env.DEV) {
+      if (injectedItems.length > 0) {
+        // eslint-disable-next-line no-console
+        console.log(
+          "[reasonixAdapter] injecting",
+          injectedItems.length,
+          "test items",
+        );
+      } else {
+        // eslint-disable-next-line no-console
+        console.log("[reasonixAdapter] useMemo run, injectedItems.length=0");
+      }
+    }
     if (injectedItems.length > 0) {
-      // eslint-disable-next-line no-console
-      console.log(
-        "[reasonixAdapter] injecting",
-        injectedItems.length,
-        "test items",
-      );
       for (const it of injectedItems) result.push(it);
-    } else {
-      // eslint-disable-next-line no-console
-      console.log("[reasonixAdapter] useMemo run, injectedItems.length=0");
     }
     // The active agent for this conversation. Persisted
     // conversations carry `metadata.agentId`; for the live

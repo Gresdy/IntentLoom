@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { ConfirmDialog } from "@/components/common/Dialog";
+import { useToastStore } from "@/lib/useToast";
 import { Download, RefreshCw, Plus, Trash2, X } from "lucide-react";
 import type { Skill } from "../../shared/types";
 import { invoke } from "../../lib/tauri";
@@ -41,6 +43,25 @@ export const SkillsPanel: React.FC = () => {
   const [showCustomIdeModal, setShowCustomIdeModal] = useState(false);
   const [customIdeForm, setCustomIdeForm] = useState({ name: "", path: "" });
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  // Replaces the two synchronous `confirm()` calls in the batch /
+    // delete-all handlers with a single in-project modal so the
+    // destructive action picks up brand chrome + keyboard cancel
+    // (Esc) instead of blocking the renderer thread. We pre-
+    // validate the pre-conditions in the click handler (no
+    // selection, empty list) and only open the dialog when the
+    // action can actually proceed.
+  const [pendingDelete, setPendingDelete] = useState<
+    | { kind: "selected"; count: number }
+    | { kind: "all"; count: number }
+    | null
+  >(null);
+  // Replaces the dozen `alert(...)` calls scattered across
+    // this panel. Native `alert()` blocks the renderer thread
+    // and ignores the toast container that the rest of the app
+    // uses, so destructive / informational feedback has been
+    // inconsistent. Routing through `useToastStore` keeps the
+    // chrome (positioning, theme, stacking) in one place.
+  const addToast = useToastStore((s) => s.addToast);
 
   useEffect(() => {
     loadInstalled();
@@ -78,10 +99,10 @@ export const SkillsPanel: React.FC = () => {
       try {
         await invoke("_import_local_skill", { path: selected });
         await loadInstalled();
-        alert("本地技能导入成功");
+        addToast({ type: "success", message: "本地技能导入成功" });
       } catch (err) {
         console.error("Failed to import local skill:", err);
-        alert("本地技能导入失败");
+        addToast({ type: "error", message: "本地技能导入失败" });
       }
     }
   };
@@ -105,7 +126,7 @@ export const SkillsPanel: React.FC = () => {
       setTab("market");
     } catch (err) {
       console.error("Failed to search skills:", err);
-      alert("搜索技能失败，请检查网络连接");
+      addToast({ type: "error", message: "搜索技能失败，请检查网络连接" });
     } finally {
       setLoading(false);
     }
@@ -116,10 +137,10 @@ export const SkillsPanel: React.FC = () => {
     try {
       await invoke("install_skill", { skill, platform });
       await loadInstalled();
-      alert("技能安装成功");
+      addToast({ type: "success", message: "技能安装成功" });
     } catch (err) {
       console.error("Failed to install skill:", err);
-      alert("技能安装失败，请检查网络连接和权限");
+      addToast({ type: "error", message: "技能安装失败，请检查网络连接和权限" });
     } finally {
       setInstalling(null);
     }
@@ -132,7 +153,7 @@ export const SkillsPanel: React.FC = () => {
       setDeleteTarget(null);
     } catch (err) {
       console.error("Failed to uninstall skill:", err);
-      alert("技能卸载失败，请检查权限");
+      addToast({ type: "error", message: "技能卸载失败，请检查权限" });
     }
   };
 
@@ -140,76 +161,77 @@ export const SkillsPanel: React.FC = () => {
     try {
       const selectedSkillsData = installed.filter(skill => selectedSkills.includes(skill.id));
       if (selectedSkillsData.length === 0) {
-        alert("请先选择要安装的技能");
+        addToast({ type: "warning", message: "请先选择要安装的技能" });
         return;
       }
       const results = await invoke("batch_install_skills", { skills: selectedSkillsData, platforms: [platform] });
-      alert(`批量安装完成:\n${(results as string[]).join("\n")}`);
+      addToast({ type: "success", message: `批量安装完成:\n${(results as string[]).join("\n")}` });
       await loadInstalled();
     } catch (err) {
       console.error("Failed to batch install:", err);
-      alert("批量安装失败，请检查网络连接和权限");
+      addToast({ type: "error", message: "批量安装失败，请检查网络连接和权限" });
     }
   };
 
   const handleCreateCustomIde = async () => {
     if (!customIdeForm.name || !customIdeForm.path) {
-      alert("请填写完整的 IDE 信息");
+      addToast({ type: "warning", message: "请填写完整的 IDE 信息" });
       return;
     }
     try {
       await invoke("_save_ide_config", { config: customIdeForm });
       setShowCustomIdeModal(false);
-      alert("自定义 IDE 创建成功");
+      addToast({ type: "success", message: "自定义 IDE 创建成功" });
     } catch (err) {
       console.error("Failed to create custom IDE:", err);
-      alert("创建自定义 IDE 失败");
+      addToast({ type: "error", message: "创建自定义 IDE 失败" });
     }
   };
 
-  const handleBatchDelete = async () => {
+  const handleBatchDelete = () => {
     if (selectedSkills.length === 0) {
-      alert("请先选择要删除的技能");
+      addToast({ type: "warning", message: "请先选择要删除的技能" });
       return;
     }
+    setPendingDelete({ kind: "selected", count: selectedSkills.length });
+  };
 
-    if (!confirm(`确定要删除选中的 ${selectedSkills.length} 个技能吗？`)) {
-      return;
-    }
-
+  // Extracted from `handleBatchDelete` so the modal's onConfirm
+    // can dispatch here without re-running the pre-condition
+    // checks (those already happened in the click handler).
+  const runBatchDelete = async () => {
     try {
       for (const skillId of selectedSkills) {
         await invoke("uninstall_skill", { skillName: skillId, platform });
       }
       await loadInstalled();
       setSelectedSkills([]);
-      alert("批量删除成功");
+      addToast({ type: "success", message: "批量删除成功" });
     } catch (err) {
       console.error("Failed to batch delete:", err);
-      alert("批量删除失败，请检查权限");
+      addToast({ type: "error", message: "批量删除失败，请检查权限" });
     }
   };
 
-  const handleDeleteAll = async () => {
+  const handleDeleteAll = () => {
     if (installed.length === 0) {
-      alert("暂无技能可删除");
+      addToast({ type: "warning", message: "暂无技能可删除" });
       return;
     }
+    setPendingDelete({ kind: "all", count: installed.length });
+  };
 
-    if (!confirm(`确定要删除所有 ${installed.length} 个技能吗？`)) {
-      return;
-    }
-
+  const runDeleteAll = async () => {
     try {
       for (const skill of installed) {
         await invoke("uninstall_skill", { skillName: skill.id, platform });
       }
       await loadInstalled();
       setSelectedSkills([]);
-      alert("全部删除成功");
+      addToast({ type: "success", message: "全部删除成功" });
     } catch (err) {
       console.error("Failed to delete all:", err);
-      alert("全部删除失败，请检查权限");
+      addToast({ type: "error", message: "全部删除失败，请检查权限" });
     }
   };
 
@@ -217,10 +239,10 @@ export const SkillsPanel: React.FC = () => {
     try {
       await invoke("install_skill", { skill, platform });
       await loadInstalled();
-      alert("技能安装到 IDE 成功");
+      addToast({ type: "success", message: "技能安装到 IDE 成功" });
     } catch (err) {
       console.error("Failed to install to IDE:", err);
-      alert("技能安装到 IDE 失败，请检查权限");
+      addToast({ type: "error", message: "技能安装到 IDE 失败，请检查权限" });
     }
   };
 
@@ -230,7 +252,7 @@ export const SkillsPanel: React.FC = () => {
         await invoke("_open_folder", { path: skill.local_path });
       } catch (err) {
         console.error("Failed to open folder:", err);
-        alert("打开文件夹失败");
+        addToast({ type: "error", message: "打开文件夹失败" });
       }
     }
   };
@@ -602,6 +624,26 @@ export const SkillsPanel: React.FC = () => {
           </div>
         )}
       </div>
+      <ConfirmDialog
+        isOpen={pendingDelete !== null}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={async () => {
+          const kind = pendingDelete?.kind;
+          setPendingDelete(null);
+          if (kind === "selected") await runBatchDelete();
+          else if (kind === "all") await runDeleteAll();
+        }}
+        title={pendingDelete?.kind === "all" ? "删除全部技能" : "批量删除技能"}
+        message={
+          pendingDelete
+            ? pendingDelete.kind === "all"
+              ? `确定要删除全部 ${pendingDelete.count} 个技能吗？此操作不可撤销。`
+              : `确定要删除选中的 ${pendingDelete.count} 个技能吗？此操作不可撤销。`
+            : ""
+        }
+        confirmText="删除"
+        variant="danger"
+      />
     </div>
   );
 };

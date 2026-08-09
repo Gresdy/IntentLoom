@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { X, Search, Trash2, Edit2, MessageSquare, Clock } from "lucide-react";
+import { ConfirmDialog } from "@/components/common/Dialog";
 
 interface Session {
   id: string;
@@ -22,6 +23,10 @@ export function HistoryDrawer({ sessions, onResume, onDelete, onRename, onClose 
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  // Replacing the native `confirm()` with the in-project modal so
+  // the destructive action picks up the brand chrome, supports
+  // keyboard cancel (Esc), and does not block the renderer thread.
+  const [pendingDelete, setPendingDelete] = useState<{ path: string; title: string } | null>(null);
 
   const filteredSessions = useMemo(() => {
     if (!search.trim()) return sessions;
@@ -159,9 +164,7 @@ export function HistoryDrawer({ sessions, onResume, onDelete, onRename, onClose 
                       className="hist-act hist-act--danger"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (confirm("确定要删除这个会话吗？")) {
-                          onDelete(session.path);
-                        }
+                        setPendingDelete({ path: session.path, title: session.title });
                       }}
                       title="删除"
                     >
@@ -181,6 +184,17 @@ export function HistoryDrawer({ sessions, onResume, onDelete, onRename, onClose 
         >
           双击会话标题可重命名 · 点击删除按钮删除会话
         </div>
+      <ConfirmDialog
+        isOpen={pendingDelete !== null}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={() => {
+          if (pendingDelete) onDelete(pendingDelete.path);
+        }}
+        title="删除会话"
+        message={pendingDelete ? `确定要删除会话「${pendingDelete.title}」吗？该操作无法撤销。` : ""}
+        confirmText="删除"
+        variant="danger"
+      />
       </aside>
     </div>
   );
