@@ -5,7 +5,7 @@ import {
   isCaretOnLastLine,
 } from "@/chat/messageHistory";
 import type { KeyboardEvent } from "react";
-import { ArrowUp, Square, Paperclip, X } from "lucide-react";
+import { ArrowUp, Square, Paperclip, X, FolderOpen } from "lucide-react";
 import type { AppId } from "../../shared/types";
 import type { CliOption } from "../../lib/cliCapabilities";
 import type { ModelOption } from "../../config/cliPresets";
@@ -70,6 +70,12 @@ interface ComposerProps {
    *  history[0]; ↓ at the last line moves the other way. AionUi
    *  `getConversationInputHistory` port. */
   history?: string[];
+  /** Current working directory. The chip falls back to
+   *  `未选择工作目录` when empty / null, matching the
+   *  placeholder the topbar used to show. */
+  cwd?: string | null;
+  /** Open the OS folder picker to choose a workspace. */
+  onPickWorkspace?: () => void;
 }
 
 export function Composer({
@@ -89,6 +95,8 @@ export function Composer({
   onCancel,
   onCommand,
   history,
+  cwd,
+  onPickWorkspace,
 }: ComposerProps) {
   const [text, setText] = useState("");
   const [showSlashMenu, setShowSlashMenu] = useState(false);
@@ -501,6 +509,41 @@ export function Composer({
                 onChange={onModelChange}
                 downward={false}
               />
+            )}
+            {/*
+              Working-directory chip — sits next to the model
+              selector so the user can see (and change) the cwd
+              at the same place they pick the engine / model.
+              Clicking the chip opens the OS folder picker (the
+              same action as the old topbar `选择工作目录`
+              button). The visible label is the path's basename
+              so a long `~/PycharmProjects/...` does not break
+              the composer row; the full path stays in the
+              `title` tooltip for hover / screen-reader use.
+              When no cwd is set we fall back to the
+              `未选择工作目录` placeholder that used to live in
+              the topbar.
+            */}
+            {onPickWorkspace && (
+              <button
+                type="button"
+                className={
+                  "composer__workspace chip" +
+                  (cwd ? "" : " composer__workspace--empty")
+                }
+                onClick={onPickWorkspace}
+                title={cwd ?? "选择工作目录"}
+                data-testid="composer-workspace"
+                aria-label={
+                  cwd ? `工作目录: ${cwd}` : "选择工作目录"
+                }
+              >
+                <FolderOpen size={12} />
+                <span className="composer__workspace-caption">工作目录</span>
+                <span className="composer__workspace-value">
+                  {cwd ? (cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd) : "未选择工作目录"}
+                </span>
+              </button>
             )}
           </div>
 

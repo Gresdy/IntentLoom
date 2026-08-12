@@ -505,6 +505,56 @@ body {
   overflow: hidden;
 }
 
+/* Non-chat main view. When `isMainView` is true the chat-only
+   `TopUsage` + `Transcript` are unmounted and replaced by a
+   `.main-panel` that hosts the active automation / projects
+   content. The wrapper scrolls independently of the page so a
+   long project list does not push the topbar or footer off
+   screen, and the bordered `__head` re-uses the drawer title
+   chrome the right slide-in used to host. */
+.main--panel {
+  overflow: hidden;
+}
+.main-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  background: var(--bg);
+}
+.main-panel__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 24px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+  background: var(--bg-elev);
+  flex-shrink: 0;
+}
+.main-panel__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.main-panel__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 24px;
+}
+
+/* Placeholder footer used when the Composer is hidden (non-chat
+   main view). Keeps the row's flex layout's column-count
+   constant so the loom-panel and resizer don't shift, while
+   letting the main-panel claim the full main height. */
+.footer--empty {
+  display: none;
+}
+
 /* ── Composer (ReasonixComposer.tsx) ── */
 /* ReasonixComposer.tsx. The composer is edge-to-edge across the chat
    column: no horizontal padding on .composer, no border-radius on the
@@ -602,6 +652,58 @@ body {
 /* Left group hugs the wrap's left padding; the spacer between the two
    groups pushes the right one to the edge of the send button. */
 .composer__prefs--left { flex: 0 1 auto; justify-content: flex-start; }
+
+/* Working-directory chip — sits next to the mode / model menus
+   in `.composer__prefs--left`. Visual styling matches the
+   `.menu__trigger` chip so it reads as a peer of the other
+   composer selectors; the value field is truncated with
+   ellipsis so a long `/Users/.../project` does not break
+   the composer row (the full path stays in `title` and
+   `aria-label`). The empty variant uses a dimmed text
+   colour to telegraph "you have not chosen a workspace
+   yet" without changing the chip's footprint. */
+.composer__workspace {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-soft);
+  background: var(--bg-elev);
+  color: var(--fg-dim);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  max-width: 240px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.composer__workspace:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+.composer__workspace-caption {
+  color: var(--fg-faint);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.composer__workspace-value {
+  color: inherit;
+  font-weight: 500;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl; /* keep the tail of long paths visible */
+  text-align: left;
+}
+.composer__workspace--empty {
+  color: var(--fg-faint);
+  font-style: italic;
+}
+.composer__workspace--empty .composer__workspace-caption {
+  color: var(--fg-faint);
+}
 /* send-group is a single flex row containing the reasoning menu
    (right-anchored) and the send/cancel button. margin-left: auto
    pushes the whole group to the right edge of the composer actions

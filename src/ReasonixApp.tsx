@@ -2,7 +2,7 @@ import { useCallback, useState, useEffect, useMemo, useRef, Suspense, Fragment }
 import { useSearchParams } from "react-router-dom";
 import {
   SquarePen, History, Settings, Command, Moon, Sun, Bot, PanelLeftClose, PanelLeftOpen,
-  FolderOpen, X, Zap, ShieldAlert,
+  FolderOpen, Zap, ShieldAlert,
   MessageCircle, RefreshCw, Loader2,
   LayoutGrid,
   BookOpen,
@@ -235,7 +235,13 @@ export const ReasonixApp: React.FC = () => {
   const panelParam = searchParams.get("panel");
   const activeNav: NavKey = isNavKey(panelParam) ? panelParam : "chat";
   // 「知识库」走 SettingsDrawer 的 knowledge tab，不开右侧 slide-in。
-  const rightPanelOpen = activeNav !== "chat" && activeNav !== "knowledge";
+  // `isMainView` — the main area is showing a non-chat panel
+  // (automation / projects) instead of the chat transcript.
+  // Replaces the old `rightPanelOpen` flag: previously
+  // automation / projects popped a slide-in drawer on the
+  // right; they now render in `.main` directly, so the
+  // active-nav state itself is the "panel is open" signal.
+  const isMainView = activeNav !== "chat";
   // Sidebar expands on hover and stays expanded for the active item. A
   // user-driven pin (Ctrl+B / Ctrl+/) keeps it open regardless of
   // hover or active state — the three sources OR together so any one
@@ -243,7 +249,7 @@ export const ReasonixApp: React.FC = () => {
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
   const [isSidebarPinned, setIsSidebarPinned] = useState(false);
   const isSidebarExpanded =
-    isSidebarHovered || isSidebarPinned || rightPanelOpen;
+    isSidebarHovered || isSidebarPinned || isMainView;
   const settingsOpen = searchParams.get("view") === "settings";
   // 设置弹框默认落点 tab。?view=settings&tab=agents 这样的 URL 会
   // 同步在 SettingsDrawer 里高亮对应 tab,这样顶栏设置按钮、命令面板、
@@ -520,7 +526,7 @@ export const ReasonixApp: React.FC = () => {
           const next = new URLSearchParams(searchParams);
           next.delete("view");
           setSearchParams(next, { replace: true });
-        } else if (rightPanelOpen) {
+        } else if (isMainView) {
           const next = new URLSearchParams(searchParams);
           next.delete("panel");
           setSearchParams(next, { replace: true });
@@ -531,7 +537,7 @@ export const ReasonixApp: React.FC = () => {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [newSession, setThemeMode, themeMode, cmdPaletteOpen, rightPanelOpen, histView, settingsOpen, searchParams, setSearchParams]);
+  }, [newSession, setThemeMode, themeMode, cmdPaletteOpen, isMainView, histView, settingsOpen, searchParams, setSearchParams]);
   // Command palette commands
   const commands = useCommandPalette({
     onNewChat: () => { newSession(); setCmdPaletteOpen(false); },
@@ -603,7 +609,7 @@ export const ReasonixApp: React.FC = () => {
           {NAV_ITEMS.map((item) => (
             <button
               key={item.key}
-              className={`sidebar__nav-item${activeNav === item.key && rightPanelOpen ? " active" : ""}`}
+              className={`sidebar__nav-item${activeNav === item.key ? " active" : ""}`}
               onClick={() => handleNavClick(item.key)}
               title={!isSidebarExpanded ? item.label : undefined}
             >
@@ -692,14 +698,12 @@ export const ReasonixApp: React.FC = () => {
             })}
           </div>
 
-          {/* Spacer */}
+          {/* Spacer. The cwd display + picker used to live
+           * here as `.topbar__model`; it moved into the
+           * composer (next to the model selector) so the
+           * user can see and change the working directory
+           * at the same place they pick the engine / model. */}
           <div className="topbar__spacer" />
-
-          {/* Model path */}
-          <span className="topbar__model" title={state.meta?.cwd ?? "未选择工作目录"}>
-            <FolderOpen size={11} />
-            {state.meta?.cwd ? state.meta.cwd : "未选择工作目录"}
-          </span>
 
           {/* Right controls */}
           <div className="topbar__right" data-tour="tools">
@@ -760,9 +764,6 @@ export const ReasonixApp: React.FC = () => {
             <button className="chip chip--icon" onClick={() => listSessions().then(setHistView)} disabled={state.running} title="历史记录">
               <History size={13} />
             </button>
-            <button className="chip chip--icon" onClick={() => pickWorkspace?.()} title="选择工作目录">
-              <FolderOpen size={13} />
-            </button>
             <button className="chip chip--icon" onClick={() => setThemeMode(themeMode === "dark" ? "light" : "dark")} title="切换主题">
               {themeMode === "dark" ? <Sun size={13} /> : <Moon size={13} />}
             </button>
@@ -778,26 +779,46 @@ export const ReasonixApp: React.FC = () => {
         )}
 
         {/* Main Content */}
-        <main className="main">
-          {/* Top usage bar — aionui-style context-window signal.
-             Sits between the topbar and the transcript so it is
-             always visible during a conversation. The transcript
-             below scrolls inside the existing <main> flex column,
-             so adding this row does not change the chat layout. */}
-          <TopUsage />
-          <ConversationArtifactProvider conversationId={currentConversationId}>
-            <Transcript
-              items={state.items}
-              onNewChat={newSession}
-              onPickWorkspace={pickWorkspace}
-              onSeedDemo={() => { clearTestDemo(); seedTestDemo(); }}
-              onEditUserMessage={handleEditUserMessage}
-              onRegenerateAssistant={handleRegenerateAssistant}
-            />
-          </ConversationArtifactProvider>
+        <main className={`main${isMainView ? " main--panel" : ""}`}>
+          {isMainView ? (
+            <div className="main-panel" data-side-panel={activeNav}>
+              <header className="main-panel__head">
+                <div className="main-panel__title">
+                  {activeNav === "automation" && <Zap size={14} className="ilo-fg-accent" />}
+                  {activeNav === "projects" && <FolderOpen size={14} className="ilo-fg-accent" />}
+                  {PANEL_TITLES[activeNav]}
+                </div>
+              </header>
+              <div className="main-panel__body">
+                {renderRightPanel()}
+              </div>
+            </div>
+          ) : (
+            <>
+              <TopUsage />
+              <ConversationArtifactProvider conversationId={currentConversationId}>
+                <Transcript
+                  items={state.items}
+                  onNewChat={newSession}
+                  onPickWorkspace={pickWorkspace}
+                  onSeedDemo={() => { clearTestDemo(); seedTestDemo(); }}
+                  onEditUserMessage={handleEditUserMessage}
+                  onRegenerateAssistant={handleRegenerateAssistant}
+                />
+              </ConversationArtifactProvider>
+            </>
+          )}
         </main>
 
-        {/* Footer */}
+        {/* Footer — Composer is chat-only. In a non-chat main
+         * view (automation / projects) the user has no draft
+         * to send, so the composer would just take up vertical
+         * space and invite confusion. Render an empty footer
+         * placeholder in that case so the row's flex layout
+         * stays the same shape. */}
+        {isMainView ? (
+          <footer className="footer footer--empty" aria-hidden="true" />
+        ) : (
         <footer className="footer">
           <Composer
             running={state.running}
@@ -815,6 +836,8 @@ export const ReasonixApp: React.FC = () => {
             onSend={send}
             onCancel={cancel}
             history={promptHistory}
+            cwd={state.meta?.cwd}
+            onPickWorkspace={pickWorkspace}
             onCommand={(cmd: SlashCommand, args: string) => {
               // AionUi port — slash commands now dispatch to real handlers
               // instead of being pasted back into the textarea. Unknown
@@ -1017,9 +1040,17 @@ export const ReasonixApp: React.FC = () => {
             onSetModel={setModel}
           />
         </footer>
+        )}
       </div>
 
-      {/* ── Loom Panel (persistent right column) ── */}
+      {/* ── Loom Panel (persistent right column) ──
+       *
+       * Hidden in non-chat main views: the Loom shows intent /
+       * plan / tools / artifacts for the active conversation,
+       * which is not meaningful in automation / projects.
+       * Free up the right column for the panel itself. */}
+      {!isMainView && (
+        <>
       <Resizer
         direction="horizontal"
         className="loom-resizer"
@@ -1030,46 +1061,6 @@ export const ReasonixApp: React.FC = () => {
       <div className="loom-panel-wrapper" data-tour="loom" style={{ width: loomPanelWidth, minWidth: loomPanelWidth }}>
         <LoomPanel />
       </div>
-
-      {/* ── Side Panel (drawer — overlays loom-panel) ──
-       *
-       * 共享 .drawer.drawer--wide chrome,与 Settings drawer 是同一套
-       * 视觉骨架(同样的 backdrop、圆角、阴影、header、关闭按钮)。这
-       * 一并解决了「同一个 App 里有 4 套弹框样式」的问题 —— 现在侧栏
-       * 「自动化」「项目管理」打开的面板与「设置」打开的面板视觉一致。 */}
-      {rightPanelOpen && (
-        <>
-          <div
-            className="drawer-backdrop"
-            onClick={() => {
-              const next = new URLSearchParams(searchParams);
-              next.delete("panel");
-              setSearchParams(next, { replace: true });
-            }}
-          />
-          <aside className="drawer drawer--wide" data-side-panel={activeNav}>
-            <header className="drawer__head">
-              <div className="drawer__title">
-                {activeNav === "automation" && <Zap size={14} className="ilo-fg-accent" />}
-                {activeNav === "projects" && <FolderOpen size={14} className="ilo-fg-accent" />}
-                {PANEL_TITLES[activeNav]}
-              </div>
-              <button
-                className="chip chip--icon"
-                onClick={() => {
-                  const next = new URLSearchParams(searchParams);
-                  next.delete("panel");
-                  setSearchParams(next, { replace: true });
-                }}
-                title="关闭"
-              >
-                <X size={14} />
-              </button>
-            </header>
-            <div className="drawer__body drawer__body--single">
-              {renderRightPanel()}
-            </div>
-          </aside>
         </>
       )}
 
