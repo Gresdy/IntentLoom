@@ -69,7 +69,7 @@ walkdir = "2"
 libc = "0.2"
 ureq = "2"
 opener = "0.7"
-auto-launch = "0.5"
+auto-launch = "0.6"
 once_cell = "1.21.3"
 base64 = "0.22"
 indexmap = { version = "2", features = ["serde"] }
